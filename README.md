@@ -185,6 +185,8 @@ taxa_page:
           - panel:descendants
           - panel:content
           - panel:statistics
+          - panel:keys
+          - panel:sounds
 #
 # An example of a new tab:
 #
@@ -208,6 +210,53 @@ export default {
     // Your code here
   }
 }
+```
+
+### Customizing the Layout
+
+The application comes with a default layout that includes a header and a footer. If you'd like to replace this layout with your own, you can do so by creating a custom layout file.
+
+Steps to replace the default layout
+
+1. In the root folder of your project, create a new folder called `layouts` (if it doesn't already exist).
+2. Inside this folder, create a file named default.vue.
+3. Define your custom layout structure inside this file as needed.
+
+Example of layouts/default.vue
+
+```vuejs
+<template>
+  <div>
+    <slot />
+  </div>
+</template>
+```
+
+This custom layout will replace the default one and be applied throughout the application. You can include your own elements, such as a navigation bar or footer, as needed.
+
+#### Using Multiple Layouts
+
+In addition to replacing the default layout, you can create multiple layouts by adding more .vue files inside the layout folder. You can then specify which layout to use for a specific page by setting the layout name in the meta property of the `<route>` tag in your Single File Component (SFC).
+
+JSON5:
+
+```js
+<route>
+{
+  meta: {
+    layout: 'custom'
+  }
+}
+</route>
+```
+
+YAML:
+
+```yaml
+<route lang="yaml">
+meta:
+  layout: custom
+</route>
 ```
 
 ### External panels
@@ -242,6 +291,8 @@ taxa_page_overview:
         - panel:descendants
         - panel:content
         - panel:statistics
+        - panel:keys
+        - panel:sounds
 ```
 
 ## Defining global components

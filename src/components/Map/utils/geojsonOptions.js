@@ -4,6 +4,7 @@ import { DISABLE_LAYER_OPTIONS } from '../constants'
 import {
   TYPE_MATERIAL,
   COLLECTION_OBJECT,
+  ASSERTED_ABSENT,
   ASSERTED_DISTRIBUTION,
   GEOREFERENCE,
   AGGREGATE
@@ -12,6 +13,7 @@ import {
 const TYPES = [
   TYPE_MATERIAL,
   COLLECTION_OBJECT,
+  ASSERTED_ABSENT,
   ASSERTED_DISTRIBUTION,
   GEOREFERENCE,
   AGGREGATE
@@ -45,9 +47,8 @@ export default ({ L }) => ({
 
   style: (feature) => {
     const type = getRelevantType(feature.properties?.base)
+    const shapeStyle = Shape[type]
 
-    if (Shape[type]) {
-      return Shape[type]
-    }
+    return shapeStyle
   }
 })

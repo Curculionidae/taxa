@@ -1,3 +1,4 @@
-copyright_image: http://licensebuttons.net/l/by/4.0/80x15.png
-copyright_image_link: https://creativecommons.org/licenses/by/4.0/
-copyright_text: Copyright CC-BY
+---
+  copyright_image: http://licensebuttons.net/l/by/4.0/80x15.png
+  copyright_image_link: https://creativecommons.org/licenses/by/4.0/
+  copyright_text: Copyright for data CC-BY, media licensed individually (see attributions). Please also cite original sources.

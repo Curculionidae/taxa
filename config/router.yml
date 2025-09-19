@@ -1,3 +1,4 @@
 ---
-  base_url: /taxa/
+  base_url: /taxonpages/
+
   hash_mode: true

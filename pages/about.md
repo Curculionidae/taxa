@@ -32,8 +32,8 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 
 
 ## Announcements
-* 2025-07-21 - Jakob Jilg joined the effort to help migrate the **World Catalogue of the Curculionidae: Lixinae: Cleonin** by Massimo Meregalli into TaxonWorks.
-* 2024-11-15 - Massimo Meregalli agreed to transfer his **World Catalogue of the Curculionidae: Lixinae: Cleonin** to TaxonWorks to be made available via Curculionidae of the World Online.
+* 2025-07-21 - Jakob Jilg joined the effort to help migrate the **World Catalogue of the Curculionidae: Lixinae: Cleonini** by Massimo Meregalli into TaxonWorks.
+* 2024-11-15 - Massimo Meregalli agreed to transfer his **World Catalogue of the Curculionidae: Lixinae: Cleonini** to TaxonWorks to be made available via Curculionidae of the World Online.
 * 2024-10-15 - Curculionidae of the World Online has been released!
 
 ## Data

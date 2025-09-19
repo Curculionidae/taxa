@@ -2,8 +2,8 @@
 title: About
 contact_email: WeevilWorkers@gmail.com
 copyright: All content is CC 0 so that it may be be shared throughout the world.
-citation: Yunakov, N., Girón, J.C., Brown, S., Jilg, J., Meregalli, M., del Río, M.G., Rincón, J., Cortés-Hernández, K., Cabras, A. (2025) Available at [https://curculionidae.github.io/taxa/#/](https://curculionidae.github.io/taxa/#/) 
-
+citation: Yunakov, N., Girón, J.C., Brown, S., Jilg, J., Meregalli, M., del Río, M.G., Rincón, J., Cortés-Hernández, K., Cabras, A. (2025) Available at [https://curculionidae.github.io/taxonpages/#/](https://curculionidae.github.io/taxonpages/#/) 
+---
 
 # {{frontmatter.title}}
 

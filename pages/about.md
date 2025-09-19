@@ -1,14 +1,12 @@
 ---
 title: About
 contact_email: WeevilWorkers@gmail.com
-copyright: All content is CC 0 so that it may be be shared throughout the world.
-citation: Yunakov, N., Girón, J.C., Brown, S., Jilg, J., Meregalli, M., del Río, M.G., Rincón, J., Cortés-Hernández, K., Cabras, A. (2025) Available at [https://curculionidae.github.io/taxa/#/](https://curculionidae.github.io/taxa/#/) 
 ---
 
 # {{frontmatter.title}}
 
 ## What is Curculionidae of the World Online?
-This Site is an instance of **[TaxonPages](https://github.com/SpeciesFileGroup/taxonpages)**, a frontend interface that displays data from a database curated in **[TaxonWorks](https://taxonworks.org/)**.
+This Site is an instance of <strong>[TaxonPages](https://github.com/SpeciesFileGroup/taxonpages)</strong>, a frontend interface that displays data from a database curated in <strong>[TaxonWorks](https://taxonworks.org/)</strong>.
 TaxonWorks itself offers a wide range of advanced filtering, reporting, and curatorial tools, 
 and with a little guidance from our team, we can provide you access to these additional capabilities. 
 TaxonPages is in active development to gradually incorporate more of this extended functionality, 

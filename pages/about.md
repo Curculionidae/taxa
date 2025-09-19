@@ -6,11 +6,13 @@ contact_email: WeevilWorkers@gmail.com
 # {{frontmatter.title}}
 
 ## What is Curculionidae of the World Online?
-This Site is an instance of <strong>[TaxonPages](https://github.com/SpeciesFileGroup/taxonpages)</strong>, a frontend interface that displays data from a database curated in <strong>[TaxonWorks](https://taxonworks.org/)</strong>.
+This site is an instance of <strong>[TaxonPages](https://github.com/SpeciesFileGroup/taxonpages)</strong>, a frontend interface that displays data from a database curated in <strong>[TaxonWorks](https://taxonworks.org/)</strong>.
 TaxonWorks itself offers a wide range of advanced filtering, reporting, and curatorial tools, 
 and with a little guidance from our team, we can provide you access to these additional capabilities. 
 TaxonPages is in active development to gradually incorporate more of this extended functionality, 
 making it easier for all users to explore and interact with the data.
+
+See also the sister project dedicated to fungus weevils: [Anthribidae of the World Online](https://anthribidae.github.io/species/#/)
 
 ## Contact
 
@@ -27,7 +29,7 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 * [Massimo Meregalli](https://orcid.org/0000-0001-5309-3974) - Data contributor (Lixinae: Cleonini)
 * [Guadalupe del Río](https://orcid.org/0000-0001-9865-6099) - Curator (Entiminae: Naupactini)
 * [Judy Rincón](https://orcid.org/0000-0002-5499-7913) - Curator (Entiminae: Eudiagogini)
-* [Kevin Cortés-Hernández](https://orcid.org/0000-0002-1150-9940) -Curator (Entiminae: Tanymecini)
+* [Kevin Cortés-Hernández](https://orcid.org/0000-0002-1150-9940) - Curator (Entiminae: Tanymecini)
 * [Analyn Cabras](https://orcid.org/0000-0002-0980-1651) - Curator (Entiminae: Pachyrhynchini) † 2024
 
 
@@ -44,7 +46,7 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 The foundation of the project was a database curated by Nikolai Yunakov using the 3i software. Later, the dataset was expanded as part of the <a href="https://ukrbin.com">Ukrainian Biodiversity Information Network</a>. Since January 2023, it has migrated to TaxonWorks and is now managed as an international collaborative project. This catalog is a <strong>work in progress</strong>. So far, the effort has been dedicated to the subfamily <strong>Entiminae</strong>, where the taxonomic database is already quite complete, though gaps remain, particularly in distributional data.<br>
 Currently, we are also migrating the <strong>World Catalogue of the Curculionidae: Lixinae: Cleonini</strong> by Massimo Meregalli into TaxonWorks.<br>
 
-By now, the distribution map does not directly show citations for distributional data. You can download the full occurence dataset for each taxon (including citations) in [Darwin Core format (DwC)](https://dwc.tdwg.org/) by clicking the icon on the right, above the map.<br>
+By now, the distribution map does not directly show citations for distributional data. You can download the full occurrence dataset for each taxon (including citations) in [Darwin Core format (DwC)](https://dwc.tdwg.org/) by clicking the icon on the right, above the map.<br>
 All data behind this site served as JSON through calls to a [TaxonWorks API](https://api.taxonworks.org). Advanced users can explore the Network tab in their browser console.
 
 ## Outlook

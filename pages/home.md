@@ -27,7 +27,7 @@ Welcome to *{{ frontmatter.project }}*, a website of taxon pages generated from 
 * 2024-10-15 - Curculionidae of the World Online has been released!
 
 ## Disclaimer
-This catalog **is a work in progress**. So far the effort has been dedicated to the subfamily Entiminae. If you find information gaps in Entiminae, or if you would like to join the effort to update any Curculionid group, just send us an email at WeevilWorkers@gmail.com.
+This catalog **is a work in progress**. So far the effort has been dedicated to the subfamily Entiminae. If you find information gaps in Entiminae, or if you would like to join the effort to update any curculionid group, just send us an email at WeevilWorkers@gmail.com.
 
 ## Find out more
 Learn how to collaborate with the {{ frontmatter.project }} project. Contact information, technical details, and more are available at [About](/about).

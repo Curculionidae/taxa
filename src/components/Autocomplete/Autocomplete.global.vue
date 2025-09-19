@@ -1,5 +1,4 @@
 <template>
-header-with-minimum-height
   <div class="tp-autocomplete md:block md:mr-0 mr-3 relative w-fit">
 
     <div

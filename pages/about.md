@@ -39,10 +39,7 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 * 2024-10-15 - Curculionidae of the World Online has been released!
 
 ## Data
-<td colspan="6" style="text-align: center">
-  <strong>Some statistics:</strong> Valid Species: <ValidSpeciesCount />; 
-  <ProjectStats :data="['Taxon names', 'Collection objects', 'Project sources', 'Documents', 'Images']" class="capitalize" />
-</td>
+<strong class="font-black">Some Statistics:</strong> <span style="font-weight: 700;">Valid Species:</span> <ValidSpeciesCount/>; <ProjectStats :data="['Taxon names', 'Collection objects', 'Project sources', 'Images', 'Biological associations']" class="capitalize"></ProjectStats><br>
 The foundation of the project was a database curated by Nikolai Yunakov using the 3i software. Later, the dataset was expanded as part of the <a href="https://ukrbin.com">Ukrainian Biodiversity Information Network</a>. Since January 2023, it has migrated to TaxonWorks and is now managed as an international collaborative project. This catalog is a <strong>work in progress</strong>. So far, the effort has been dedicated to the subfamily <strong>Entiminae</strong>, where the taxonomic database is already quite complete, though gaps remain, particularly in distributional data.<br>
 Currently, we are also migrating the <strong>World Catalogue of the Curculionidae: Lixinae: Cleonini</strong> by Massimo Meregalli into TaxonWorks.<br>
 

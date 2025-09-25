@@ -6,8 +6,11 @@
     - label: Home
       link: /
 
-    - label: About
-      link: /about
-
     - label: Entiminae
       link: /otus/712818/overview
+
+    - label: Bibliography
+      link: /bibliography
+
+    - label: About
+      link: /about

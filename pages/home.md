@@ -20,8 +20,8 @@ project: "TaxonPages: Curculionidae of the World"
 
 
   <div style="text-align: center; margin-top: 1rem;">
-    Valid Species: <ValidSpeciesCount/>; 
-    <ProjectStats :data="['Taxon names', 'Collection objects', 'Project sources', 'Documents', 'Images']" class="capitalize"></ProjectStats>
+    <span style="font-weight: 700;">Valid Species:</span> <ValidSpeciesCount/>; 
+    <ProjectStats :data="['Taxon names', 'Collection objects', 'Images', 'Biological associations']" class="capitalize"></ProjectStats>
   </div>
 </div>
 

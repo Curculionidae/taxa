@@ -6,7 +6,8 @@
       :value="value"
     >
       <span>
-        {{ type }}: {{ value }}{{ index < list.length - 1 ? '; ' : '' }}
+         <span style="font-weight: 700;" class="capitalize">{{ type }}:</span>
+        {{ value }}{{ index < list.length - 1 ? '; ' : '' }}
       </span>
     </slot>
   </component>

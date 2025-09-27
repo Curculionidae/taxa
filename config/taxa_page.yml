@@ -2,10 +2,10 @@ taxa_page:
   overview:
     panels:
       - - - panel:gallery
-          - panel:type
-          - panel:type-specimen
           - panel:nomenclature
           - panel:nomenclature-references
+          - panel:type
+          - panel:type-specimen
 
         - - panel:map
           - panel:descendants

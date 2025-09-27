@@ -31,7 +31,7 @@ project: "TaxonPages: Curculionidae of the World"
 
 <div style="text-align: center; margin: 0 auto; line-height: 1.6;">
   <p style="font-weight: 500; font-size: 1.1rem;">
-    Enter a taxon name in the search field to start exploring (e.g., <a href="http://localhost:5173/taxonpages/#/otus/712818/overview">Entiminae</a>).
+    Enter a taxon name in the search field to start exploring (e.g., <a href="https://curculionidae.github.io/taxa/#/otus/712818/overview">Entiminae</a>).
   </p>
   <p style="font-size: 1rem;">
     This catalog is a <strong>work in progress</strong>. So far, the effort has been dedicated to the subfamily <strong>Entiminae</strong>.<br> 

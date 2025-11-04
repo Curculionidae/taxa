@@ -1,11 +1,12 @@
 <template>
-  <input
+  <select
     ref="input"
-    type="text"
     class="box-border p-1.5 px-2 text-base-content rounded border sm:text-sm placeholder:text-sm border-base-border focus:ring-primary-500 focus:border-primary-500"
     :value="props.modelValue ?? props.value"
-    @input="onInput"
-  />
+    @change="onInput"
+  >
+    <slot />
+  </select>
 </template>
 
 <script setup>
@@ -20,8 +21,8 @@ const emit = defineEmits(['update:modelValue'])
 
 const inputRef = useTemplateRef('input')
 
-const onInput = (event) => {
-  emit('update:modelValue', event.target.value)
+function onInput(e) {
+  emit('update:modelValue', e.target.value)
 }
 
 defineExpose({

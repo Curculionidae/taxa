@@ -9,8 +9,11 @@
     - label: Entiminae
       link: /otus/712818/overview
 
+    - label: Search DwC
+      link: /resources/tw/filter/dwc_otus
+
     - label: Bibliography
-      link: /bibliography
+      link: /resources/tw/filter/bibliography
 
     - label: About
       link: /about

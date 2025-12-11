@@ -14,6 +14,4 @@ taxa_page:
           - panel:statistics
           - panel:sounds
 
-  biological_associations:
-    panels:
       - - - panel:biological-associations

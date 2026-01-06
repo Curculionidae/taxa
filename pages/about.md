@@ -55,7 +55,7 @@ The main priority right now lies on nomenclature and taxonomy, while distributio
 Want to create your own site? This website is built completely on open-source software. There is a [site template](https://github.com/SpeciesFileGroup/taxonpages) with more information. Data are curated in a [TaxonWorks](https://taxonworks.org) project then shared via a [TaxonWorks API](https://api.taxonworks.org). Come [chat](https://gitter.im/SpeciesFileGroup/taxonworks) with the TaxonWorks community at any time.
 
 ## Citation & Copyright
-* **Entire Project** - Yunakov, N., Girón Duque, J.C., Brown, S., Jilg, J., Meregalli, M., del Río, M.G., Rincón, J., Cortés-Hernández, K., Cabras, A. (2025). Curculionidae of the World Online. Available at https://curculionidae.github.io/taxa/
+* **Entire Project** - Yunakov, N., Girón Duque, J.C., Brown, S., Jilg, J., Meregalli, M., R.S. Anderson, del Río, M.G., Rincón, J., Cortés-Hernández, K., Cabras, A. (2025). Curculionidae of the World Online. Available at https://curculionidae.github.io/taxa/
 * **Individual taxon pages** - See citation at the bottom of each page.
 
 Copyright for the data is generally CC-BY, while media may be licensed differently. **Please cite both this project and the original sources** for any data or media you reuse.

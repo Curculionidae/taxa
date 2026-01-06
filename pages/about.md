@@ -12,7 +12,7 @@ and with a little guidance from our team, we can provide you access to these add
 TaxonPages is in active development to gradually incorporate more of this extended functionality, 
 making it easier for all users to explore and interact with the data.
 
-See also the sister project dedicated to fungus weevils: [Anthribidae of the World Online](https://anthribidae.github.io/species/#/)
+See also the sister projects, one dedicated to fungus weevils, [Anthribidae of the World Online](https://anthribidae.github.io/species/#/), and another dedicated to leaf-rolling weevils, [Attelabidae Online](https://attelabidae.github.io/species/#/).
 
 ## Contact
 
@@ -27,6 +27,7 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 * [Samuel Brown](https://orcid.org/0000-0001-7112-421X) - Curator (Entiminae)
 * [Jakob Jilg](https://orcid.org/0000-0002-9910-4146) - Curator (Lixinae)
 * [Massimo Meregalli](https://orcid.org/0000-0001-5309-3974) - Data contributor (Lixinae: Cleonini)
+* [Robert S. Anderson](https://orcid.org/0000-0003-0665-2977) - Data contributor (Type images)
 * [Guadalupe del Río](https://orcid.org/0000-0001-9865-6099) - Curator (Entiminae: Naupactini)
 * [Judy Rincón](https://orcid.org/0000-0002-5499-7913) - Curator (Entiminae: Eudiagogini)
 * [Kevin Cortés-Hernández](https://orcid.org/0000-0002-1150-9940) - Curator (Entiminae: Tanymecini)
@@ -34,6 +35,7 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 
 
 ## Announcements
+* 2025-08-01 - Robert Anderson started contributing images of type specimens that he has accumulated over multiple museum visits over the years.
 * 2025-07-21 - Jakob Jilg joined the effort to help migrate the **World Catalogue of the Curculionidae: Lixinae: Cleonini** by Massimo Meregalli into TaxonWorks.
 * 2024-11-15 - Massimo Meregalli agreed to transfer his **World Catalogue of the Curculionidae: Lixinae: Cleonini** to TaxonWorks to be made available via Curculionidae of the World Online.
 * 2024-10-15 - Curculionidae of the World Online has been released!
@@ -47,7 +49,7 @@ By now, the distribution map does not directly show citations for distributional
 All data behind this site served as JSON through calls to a [TaxonWorks API](https://api.taxonworks.org). Advanced users can explore the Network tab in their browser console.
 
 ## Outlook
-The main priority right now lies on nomenclature and taxonomy, while distribution and images (especially type specimens) are being added in parallel. Future plans include host plant associations and morphological data.
+The main priority right now lies on nomenclature and taxonomy, while distribution and images (especially type specimens) are being added in parallel. Future plans include host plant associations and anatomical data.
 
 ## Technical
 Want to create your own site? This website is built completely on open-source software. There is a [site template](https://github.com/SpeciesFileGroup/taxonpages) with more information. Data are curated in a [TaxonWorks](https://taxonworks.org) project then shared via a [TaxonWorks API](https://api.taxonworks.org). Come [chat](https://gitter.im/SpeciesFileGroup/taxonworks) with the TaxonWorks community at any time.

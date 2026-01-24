@@ -12,7 +12,13 @@ and with a little guidance from our team, we can provide you access to these add
 TaxonPages is in active development to gradually incorporate more of this extended functionality, 
 making it easier for all users to explore and interact with the data.
 
-See also the sister projects, one dedicated to fungus weevils, [Anthribidae of the World Online](https://anthribidae.github.io/species/#/), and another dedicated to leaf-rolling weevils, [Attelabidae Online](https://attelabidae.github.io/species/#/).
+## Scope
+Basically we store information for all weevils (Coleoptera: Curculionoidea).<br>
+However, there is another projects that is dedicated to fungus weevils, [Anthribidae of the World Online](https://anthribidae.github.io/species/#/), and another one on leaf-rolling weevils, [Attelabidae Online](https://attelabidae.github.io/species/#/). Those are excellent resources and therefore we are not actively maintaining those groups in our database.
+
+So far, our main effort is directed towards the subfamily Entiminae (broad-nosed weevils). Expect a lot of missing data in all other groups. Starting with the migration of the <strong>World Catalogue of the Curculionidae: Lixinae: Cleonini</strong> by Massimo Meregalli into TaxonWorks, the Lixinae are another group that is being very actively worked on.
+
+
 
 ## Contact
 

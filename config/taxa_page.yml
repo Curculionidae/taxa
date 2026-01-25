@@ -17,13 +17,14 @@ taxa_page:
       - - - panel:biological-associations
 
   specimen_records:
+    label: 'Specimen Records'
     rank_group: ['SpeciesGroup']
     panels:
       - - - panel:specimen-records
       - - - panel:field-occurrences
 
   inaturalist:
-    label: 'iNaturalist'
+    label: 'iNaturalist (Research Grade Images)'
     rank_group: ['GenusGroup', 'SpeciesGroup']
     panels:
       - - - id: panel:inaturalist

@@ -15,3 +15,21 @@ taxa_page:
           - panel:sounds
 
       - - - panel:biological-associations
+
+  specimen_records:
+    rank_group: ['SpeciesGroup']
+    panels:
+      - - - panel:specimen-records
+      - - - panel:field-occurrences
+
+  inaturalist:
+    label: 'iNaturalist'
+    rank_group: ['GenusGroup', 'SpeciesGroup']
+    panels:
+      - - - id: panel:inaturalist
+
+  GBIF:
+    label: 'GBIF'
+    panels:
+      - - - id: panel:gbif
+

@@ -14,7 +14,7 @@ taxa_page:
           - panel:statistics
           - panel:sounds
 
-      - - - panel:biological-associations
+      - - - panel:biological-associations-v2
 
   specimen_records:
     label: 'Specimen Records'

@@ -25,7 +25,6 @@ taxa_page:
 
   inaturalist:
     label: 'iNaturalist (Research-grade Images)'
-    rank_group: ['GenusGroup', 'SpeciesGroup']
     panels:
       - - - id: panel:inaturalist
 

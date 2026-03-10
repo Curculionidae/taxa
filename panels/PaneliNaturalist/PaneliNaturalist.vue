@@ -75,6 +75,13 @@
  * taxon_id via the iNat /v1/taxa endpoint, then use that ID for the
  * observations query.
  *
+ * RANK COMPATIBILITY
+ * -------------------
+ * TaxonWorks and iNaturalist use the same rank name strings (e.g. "subfamily",
+ * "tribe", "genus", "species"), so props.taxon.rank can be passed directly to
+ * the iNat taxa search for most ranks. The panel therefore works at any rank —
+ * family, subfamily, tribe, genus, species, etc.
+ *
  * WHY SUBGENERA NEED SPECIAL HANDLING
  * -------------------------------------
  * TaxonWorks stores subgenera explicitly, e.g. "Otiorhynchus (Nihus)".
@@ -158,12 +165,18 @@ function parseName(expandedName) {
 /**
  * Resolves the TaxonWorks taxon name to an iNaturalist taxon ID.
  *
- * For subgenera: searches iNat by subgenus name with rank=subgenus, then
- * verifies the parent genus matches via the ancestors list. This prevents
- * accidentally matching a same-named subgenus in a completely different genus.
+ * TaxonWorks and iNaturalist use the same rank names (e.g. "subfamily",
+ * "tribe", "genus", "species"), so we can pass props.taxon.rank directly
+ * to the iNat taxa search for most ranks.
  *
- * For species and genera: strips subgenus parentheses and searches by the
- * plain binomial or genus name with the appropriate rank filter.
+ * Subgenera are the exception: the expanded_name contains parentheses
+ * (e.g. "Otiorhynchus (Nihus)") so we parse out just the subgenus name
+ * for the search, and verify the parent genus via the ancestors list to
+ * avoid false matches with same-named subgenera in other genera.
+ *
+ * For species within a subgenus (e.g. "Otiorhynchus (Nihus) sulcatus"),
+ * the subgenus is stripped and the plain binomial "Otiorhynchus sulcatus"
+ * is used, since iNat species names don't include the subgenus.
  *
  * Returns the iNat taxon ID (number), or null if not found.
  */
@@ -171,7 +184,7 @@ async function resolveInatTaxonId() {
   const { genus, subgenus, epithet } = parseName(props.taxon.expanded_name)
 
   if (subgenus && !epithet) {
-    // Subgenus page: search by subgenus name with rank filter
+    // Subgenus page: extract subgenus name from parentheses, verify parent genus
     const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
       params: { q: subgenus, rank: 'subgenus', per_page: 10, all_names: true }
     })
@@ -190,12 +203,13 @@ async function resolveInatTaxonId() {
     return match ? match.id : null
   }
 
-  // Species or genus: drop subgenus parentheses, search by plain name
-  const plainName = epithet ? `${genus} ${epithet}` : genus
-  const rank = epithet ? 'species' : 'genus'
+  // For all other ranks: use props.taxon.rank directly — TaxonWorks and iNat
+  // use the same rank strings (subfamily, tribe, genus, species, etc.)
+  // For species within a subgenus, strip the parentheses to get the plain binomial.
+  const plainName = subgenus && epithet ? `${genus} ${epithet}` : props.taxon.expanded_name
 
   const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
-    params: { q: plainName, rank, per_page: 10 }
+    params: { q: plainName, rank: props.taxon.rank, per_page: 10 }
   })
 
   const match = data.results.find(

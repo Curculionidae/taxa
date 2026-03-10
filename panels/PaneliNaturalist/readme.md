@@ -2,7 +2,7 @@
 
 Displays research-grade iNaturalist observation photos for a taxon, with pagination.
 
-Adapted from the Orthoptera Species File repository. See `PaneliNaturalist.vue` for full inline documentation. Adapting it to only show research-grade observations and adapting the size, shape and grid layout for the images was done with assistance of ChatGPT, fixing the subgenus problem was done by Claude AI without human coding input. I uploaded the code for the GBIF panel to Claude as inspiration, as it resolved API requests more accurtely.
+Adapted from the Orthoptera Species File repository. See `PaneliNaturalist.vue` for full inline documentation. Adapting it to only show research-grade observations and adapting the size, shape and grid layout for the images was done with assistance of ChatGPT. Fixing the taxon matching problem and extending support to all taxonomic ranks was done by Claude AI without human coding input. The code for the GBIF panel was uploaded to Claude as inspiration, as it resolved API requests more accurately.
 
 ## Changes from the original
 
@@ -11,8 +11,9 @@ Adapted from the Orthoptera Species File repository. See `PaneliNaturalist.vue` 
 - Only research-grade observations shown (`quality_grade: 'research'`) for better photo quality
 - Improved image grid layout: `grid-cols-[repeat(auto-fill,minmax(400px,1fr))]`
 - Image size changed from `square` to `medium` for better resolution
+- Panel is no longer restricted to genus and species group ranks — it now works at any rank (family, subfamily, tribe, genus, subgenus, species, etc.)
 
-## Subgenus fix (documentation written by Claude.ai)
+## Taxon matching fix (documentation written by Claude AI)
 
 The original code passed `taxon_name` directly to the iNaturalist observations
 API, which does a fuzzy text search. This caused two problems:
@@ -24,11 +25,12 @@ API, which does a fuzzy text search. This caused two problems:
 
 The fix is a two-step lookup:
 
-1. Parse `expanded_name` to detect whether we are on a genus, subgenus, or
-   species page.
-2. Query the iNaturalist `/v1/taxa` endpoint for an **exact taxon ID**, using
-   `rank=subgenus` (or `genus`/`species`) to avoid rank-level mismatches. For
-   subgenera, the parent genus is also verified via the ancestors list.
+1. Parse `expanded_name` to detect the rank and name components (genus,
+   subgenus, epithet).
+2. Query the iNaturalist `/v1/taxa` endpoint for an **exact taxon ID**, passing
+   the rank from `props.taxon.rank` directly — TaxonWorks and iNaturalist use
+   the same rank name strings, so this works for any rank. For subgenera, the
+   parent genus is also verified via the ancestors list to avoid false matches.
 3. Use `taxon_id` (exact) instead of `taxon_name` (fuzzy) for the observations
    query.
 

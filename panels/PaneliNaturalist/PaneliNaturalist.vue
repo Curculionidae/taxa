@@ -1,18 +1,64 @@
 <template>
   <VCard>
-    <VCardHeader>Observations</VCardHeader>
-    <VCardContent class="min-h-[6rem]">
-      <ClientOnly>
-        <VSpinner v-if="isLoading" />
-      </ClientOnly>
+    <ClientOnly>
+      <VSpinner v-if="isLoading" />
+    </ClientOnly>
 
-      <div
-        v-if="!isLoading && taxonId === null"
-        class="text-xl text-center my-8 w-full"
+    <div
+      v-if="!isLoading && taxonId === null"
+      class="text-xl text-center my-8 w-full"
+    >
+      No iNaturalist taxon found.
+    </div>
+
+    <!-- Upper section: curated taxon photos from /taxa/:id -->
+    <template v-if="taxonPhotoImages.length">
+      <VCardHeader>
+        <a
+          :href="`https://www.inaturalist.org/taxa/${taxonId}`"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hover:underline"
+        >
+          Curated taxon photos
+        </a>
+      </VCardHeader>
+      <VCardContent>
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(400px,1fr))] gap-3">
+          <div
+            v-for="(image, index) in taxonPhotoImages"
+            :key="image.id"
+          >
+            <div
+              class="aspect-[3/2] overflow-hidden rounded cursor-pointer hover:opacity-80 transition"
+              @click="openTaxonPhotoViewer(index)"
+            >
+              <img
+                class="w-full h-full object-cover"
+                :src="image.thumb"
+                :alt="image.attribution.label"
+                :title="image.attribution.label"
+              />
+            </div>
+          </div>
+        </div>
+      </VCardContent>
+    </template>
+
+    <!-- Lower section: paginated research-grade observations -->
+    <VCardHeader>
+      <a
+        v-if="taxonId"
+        :href="`https://www.inaturalist.org/observations?taxon_id=${taxonId}&quality_grade=research`"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="hover:underline"
       >
-        No iNaturalist taxon found.
-      </div>
-
+        Research-grade observations
+      </a>
+      <template v-else>Research-grade observations</template>
+    </VCardHeader>
+    <VCardContent class="min-h-[6rem]">
       <div
         v-if="!isLoading && taxonId !== null && !observations.length"
         class="text-xl text-center my-8 w-full"
@@ -55,6 +101,19 @@
         "
       />
     </VCardContent>
+
+    <!-- ImageViewer for curated taxon photos -->
+    <ImageViewer
+      v-if="taxonPhotoViewer.open"
+      :index="taxonPhotoViewer.index"
+      :images="taxonPhotoImages"
+      :next="taxonPhotoViewer.index < taxonPhotoImages.length - 1"
+      :previous="taxonPhotoViewer.index > 0"
+      @select-index="taxonPhotoViewer.index = $event"
+      @next="taxonPhotoViewer.index++"
+      @previous="taxonPhotoViewer.index--"
+      @close="taxonPhotoViewer.open = false"
+    />
   </VCard>
 </template>
 
@@ -62,7 +121,20 @@
 /**
  * PaneliNaturalist.vue
  *
- * Displays research-grade iNaturalist observation photos for a given taxon.
+ * Two sections:
+ *
+ * UPPER — Curated taxon photos (/v1/taxa/:id)
+ * --------------------------------------------
+ * Shows the curated representative photos that iNaturalist editors select
+ * for the taxon overview page. Fetched from the taxon_photos array.
+ * Clicking a photo opens the ImageViewer lightbox (same component used
+ * elsewhere in TaxonPages) showing the full-size image with attribution
+ * and a link to the photo page on iNaturalist.
+ *
+ * LOWER — Research-grade observations (/v1/observations)
+ * -------------------------------------------------------
+ * Paginated grid of research-grade observation photos. The section header
+ * links to all research-grade observations on iNaturalist.
  *
  * WHY taxon_id INSTEAD OF taxon_name
  * ------------------------------------
@@ -72,15 +144,13 @@
  *   - It can match unrelated taxa with similar names
  *
  * Instead, we first resolve the TaxonWorks name to an exact iNaturalist
- * taxon_id via the iNat /v1/taxa endpoint, then use that ID for the
- * observations query.
+ * taxon_id via the iNat /v1/taxa endpoint, then use that ID for both queries.
  *
  * RANK COMPATIBILITY
  * -------------------
  * TaxonWorks and iNaturalist use the same rank name strings (e.g. "subfamily",
  * "tribe", "genus", "species"), so props.taxon.rank can be passed directly to
- * the iNat taxa search for most ranks. The panel therefore works at any rank —
- * family, subfamily, tribe, genus, species, etc.
+ * the iNat taxa search for most ranks.
  *
  * WHY SUBGENERA NEED SPECIAL HANDLING
  * -------------------------------------
@@ -88,18 +158,9 @@
  * iNaturalist also has subgenera, but not all of them — so we attempt a
  * lookup and show nothing if the subgenus is not found on iNat, rather than
  * silently falling back to showing the whole genus.
- *
- * The taxon prop's expanded_name can take these forms:
- *   "Otiorhynchus"              → genus
- *   "Otiorhynchus sulcatus"     → species (no subgenus)
- *   "Otiorhynchus (Nihus)"      → subgenus
- *   "Otiorhynchus (Nihus) sulcatus" → species within a subgenus
- *
- * parseName() splits this into { genus, subgenus, epithet } so each case
- * can be handled correctly when querying iNat.
  */
 
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -121,6 +182,7 @@ const props = defineProps({
 
 const isLoading = ref(false)
 const observations = ref([])
+const taxonPhotoImages = ref([])
 
 /**
  * taxonId states:
@@ -136,14 +198,43 @@ const pagination = ref({
   total_results: 0
 })
 
+// ImageViewer state for curated taxon photos
+const taxonPhotoViewer = reactive({
+  open: false,
+  index: 0
+})
+
+function openTaxonPhotoViewer(index) {
+  taxonPhotoViewer.index = index
+  taxonPhotoViewer.open = true
+}
+
+/**
+ * Converts a raw iNaturalist taxon_photo entry into the image object shape
+ * expected by the ImageViewer component:
+ *   { id, thumb, original, attribution: { label }, source: { label }, depictions: [] }
+ *
+ * Since taxon photos are not linked to a specific observation, the source
+ * points to the photo page on iNaturalist (inaturalist.org/photos/:id).
+ */
+function makeTaxonPhotoImage(taxonPhoto) {
+  const photo = taxonPhoto.photo
+  const photoUrl = `https://www.inaturalist.org/photos/${photo.id}`
+  const taxonName = taxonPhoto.taxon?.name || ''
+  return {
+    id: photo.id,
+    thumb: photo.medium_url || photo.url.replace('square', 'medium'),
+    original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
+    attribution: { label: photo.attribution || '' },
+    source: {
+      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">${photoUrl}</a>`
+    },
+    depictions: taxonName ? [{ label: taxonName }] : []
+  }
+}
+
 /**
  * Parses a TaxonWorks expanded_name into its components.
- *
- * Examples:
- *   "Otiorhynchus (Nihus)"          → { genus: "Otiorhynchus", subgenus: "Nihus",  epithet: null }
- *   "Otiorhynchus (Nihus) sulcatus" → { genus: "Otiorhynchus", subgenus: "Nihus",  epithet: "sulcatus" }
- *   "Otiorhynchus sulcatus"         → { genus: "Otiorhynchus", subgenus: null,      epithet: "sulcatus" }
- *   "Otiorhynchus"                  → { genus: "Otiorhynchus", subgenus: null,      epithet: null }
  */
 function parseName(expandedName) {
   const subgenusMatch = expandedName.match(/^(\S+)\s+\((\S+)\)(?:\s+(\S+))?$/)
@@ -164,48 +255,29 @@ function parseName(expandedName) {
 
 /**
  * Resolves the TaxonWorks taxon name to an iNaturalist taxon ID.
- *
- * TaxonWorks and iNaturalist use the same rank names (e.g. "subfamily",
- * "tribe", "genus", "species"), so we can pass props.taxon.rank directly
- * to the iNat taxa search for most ranks.
- *
- * Subgenera are the exception: the expanded_name contains parentheses
- * (e.g. "Otiorhynchus (Nihus)") so we parse out just the subgenus name
- * for the search, and verify the parent genus via the ancestors list to
- * avoid false matches with same-named subgenera in other genera.
- *
- * For species within a subgenus (e.g. "Otiorhynchus (Nihus) sulcatus"),
- * the subgenus is stripped and the plain binomial "Otiorhynchus sulcatus"
- * is used, since iNat species names don't include the subgenus.
- *
  * Returns the iNat taxon ID (number), or null if not found.
  */
 async function resolveInatTaxonId() {
   const { genus, subgenus, epithet } = parseName(props.taxon.expanded_name)
 
   if (subgenus && !epithet) {
-    // Subgenus page: extract subgenus name from parentheses, verify parent genus
     const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
       params: { q: subgenus, rank: 'subgenus', per_page: 10, all_names: true }
     })
 
     const match = data.results.find((t) => {
       if (t.name.toLowerCase() !== subgenus.toLowerCase()) return false
-      // Verify parent genus via ancestors to avoid false matches
       if (t.ancestors?.length) {
         return t.ancestors.some(
           (a) => a.rank === 'genus' && a.name.toLowerCase() === genus.toLowerCase()
         )
       }
-      return true // no ancestors returned, trust the name match
+      return true
     })
 
     return match ? match.id : null
   }
 
-  // For all other ranks: use props.taxon.rank directly — TaxonWorks and iNat
-  // use the same rank strings (subfamily, tribe, genus, species, etc.)
-  // For species within a subgenus, strip the parentheses to get the plain binomial.
   const plainName = subgenus && epithet ? `${genus} ${epithet}` : props.taxon.expanded_name
 
   const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
@@ -219,39 +291,58 @@ async function resolveInatTaxonId() {
 }
 
 /**
- * Fetches observations from iNaturalist using the resolved taxon_id.
- * Only research-grade observations are shown (better photo quality).
+ * Fetches the curated taxon photos from /v1/taxa/:id and converts them
+ * into ImageViewer-compatible image objects.
+ */
+async function loadTaxonPhotos() {
+  if (!taxonId.value) return
+
+  try {
+    const { data } = await axios.get(
+      `https://api.inaturalist.org/v1/taxa/${taxonId.value}`
+    )
+    const photos = data.results?.[0]?.taxon_photos || []
+    taxonPhotoImages.value = photos.map(makeTaxonPhotoImage)
+  } catch (e) {
+    // fail silently
+  }
+}
+
+/**
+ * Fetches research-grade observations from iNaturalist using the resolved taxon_id.
  * Called on mount and again on pagination changes.
  */
 async function loadObservations(params = {}) {
   isLoading.value = true
 
   try {
-    // Resolve taxon ID once on first load
     if (taxonId.value === undefined) {
       taxonId.value = await resolveInatTaxonId()
     }
 
-    // Stop if taxon not found on iNat
     if (taxonId.value === null) return
 
-    const { data } = await axios.get('https://api.inaturalist.org/v1/observations', {
-      params: {
-        taxon_id: taxonId.value,
-        quality_grade: 'research',
-        ...params,
-        ...props.parameters
-      }
-    })
+    // Load taxon photos and observations in parallel on first load
+    const [, obsData] = await Promise.all([
+      taxonPhotoImages.value.length ? Promise.resolve() : loadTaxonPhotos(),
+      axios.get('https://api.inaturalist.org/v1/observations', {
+        params: {
+          taxon_id: taxonId.value,
+          quality_grade: 'research',
+          ...params,
+          ...props.parameters
+        }
+      })
+    ])
 
-    observations.value = data.results
+    observations.value = obsData.data.results
     pagination.value = {
-      page: data.page,
-      per_page: data.per_page,
-      total_results: data.total_results
+      page: obsData.data.page,
+      per_page: obsData.data.per_page,
+      total_results: obsData.data.total_results
     }
   } catch (e) {
-    // Network or API errors fail silently; the spinner stops and no results show
+    // Network or API errors fail silently
   } finally {
     isLoading.value = false
   }

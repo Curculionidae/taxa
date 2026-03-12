@@ -24,7 +24,7 @@ taxa_page:
       - - - panel:field-occurrences
 
   inaturalist:
-    label: 'iNaturalist (Research-grade Images)'
+    label: 'iNaturalist'
     panels:
       - - - id: panel:inaturalist
 

@@ -32,7 +32,7 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 * [Jennifer Girón](https://orcid.org/0000-0002-0851-6883) - Taxon Pages technical lead and curator (Entiminae - Americas)
 * [Samuel Brown](https://orcid.org/0000-0001-7112-421X) - Curator (Entiminae)
 * [Jakob Jilg](https://orcid.org/0000-0002-9910-4146) - Curator (Lixinae)
-* [Massimo Meregalli](https://orcid.org/0000-0001-5309-3974) - Data contributor (Lixinae: Cleonini)
+* [Massimo Meregalli](https://orcid.org/0000-0001-5309-3974) - Main author for Lixinae: Cleonini
 * [Robert S. Anderson](https://orcid.org/0000-0003-0665-2977) - Data contributor (Type images)
 * [Guadalupe del Río](https://orcid.org/0000-0001-9865-6099) - Curator (Entiminae: Naupactini)
 * [Judy Rincón](https://orcid.org/0000-0002-5499-7913) - Curator (Entiminae: Eudiagogini)

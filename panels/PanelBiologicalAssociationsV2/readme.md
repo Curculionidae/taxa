@@ -8,7 +8,7 @@ Added features: with inline depictions, asserted distributions, and citations th
 
 ## Setup
 
-Add the panel to your `taxa_page.yml` layout:
+Put this directory (PanelBiologicalAssociationsV2) into the panels folder on the setup branch of your TaxonPages. Add the panel to your `taxa_page.yml` layout:
 
 ```yaml
 - panel:biological-associations-v2

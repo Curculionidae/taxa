@@ -97,8 +97,8 @@
             </VTableBodyCell>
 
             <!--
-              Asserted distributions: area names only, no citation badge.
-              Absent records are shown with strikethrough.
+              Asserted distributions: area name as a button that opens a map
+              popup. Absent records are shown with strikethrough.
             -->
             <VTableBodyCell>
               <div
@@ -107,7 +107,10 @@
                 class="text-sm leading-snug"
                 :class="{ 'line-through opacity-60': dist.isAbsent }"
               >
-                {{ dist.area }}
+                <button
+                  class="hover:underline cursor-pointer text-left font-semibold"
+                  @click="openMapModal(dist)"
+                >{{ dist.area }}</button>
               </div>
             </VTableBodyCell>
 
@@ -148,6 +151,35 @@
             class="px-4 pb-4 text-sm leading-relaxed"
             v-html="linkify(activeCitation.full)"
           />
+        </VModal>
+      </Teleport>
+
+      <!-- Map modal: geographic area polygon for clicked area name -->
+      <Teleport to="body">
+        <VModal
+          v-if="mapModal.open"
+          @close="mapModal = { open: false }"
+        >
+          <template #header>
+            <div class="text-sm font-medium">{{ mapModal.areaName }}</div>
+          </template>
+          <div class="p-4">
+            <div
+              v-if="mapModal.loading"
+              class="min-h-[200px] flex items-center justify-center"
+            >
+              <VSpinner />
+            </div>
+            <p
+              v-else-if="!mapModal.feature"
+              class="min-h-[200px] flex items-center justify-center text-sm opacity-50"
+            >No map data available for this area.</p>
+            <VMap
+              v-else
+              :geojson="{ type: 'FeatureCollection', features: [mapModal.feature] }"
+              height="400px"
+            />
+          </div>
         </VModal>
       </Teleport>
 
@@ -277,6 +309,44 @@ const viewer = reactive({
 // Citation modal state: null means closed
 const activeCitation = ref(null)
 
+// Map modal state and per-OTU GeoJSON promise cache (same pattern as PanelAssertedDistributions)
+const mapModal = ref({ open: false })
+const geoPromiseCache = {}
+
+function fetchGeoForOtu(otuId) {
+  if (geoPromiseCache[otuId]) return geoPromiseCache[otuId]
+  geoPromiseCache[otuId] = (async () => {
+    const byId = {}
+    try {
+      const { data } = await makeAPIRequest.get(
+        `/otus/${otuId}/inventory/distribution.geojson`
+      )
+      for (const f of data?.features || []) {
+        const fp = f.properties || {}
+        // Index by geographic area ID (shape.id) so we can look up by area
+        // regardless of which AssertedDistribution ID is linked here.
+        if (fp.base?.type === 'AssertedDistribution' && fp.shape?.id) {
+          byId[fp.shape.id] = { ...f, properties: { ...fp, base: [fp.base] } }
+        }
+      }
+    } catch {
+      // cache empty result to avoid hammering on error
+    }
+    return byId
+  })()
+  return geoPromiseCache[otuId]
+}
+
+async function openMapModal(dist) {
+  mapModal.value = { open: true, loading: true, areaName: dist.area, feature: null }
+  // Distributions here are linked to the biological association (not the OTU directly),
+  // so they won't appear by AssertedDistribution ID in the OTU's GeoJSON.
+  // Instead we look up by geographic area ID (shape.id), which is the same
+  // regardless of how the distribution was created.
+  const byAreaId = await fetchGeoForOtu(props.otuId)
+  mapModal.value = { open: true, loading: false, areaName: dist.area, feature: byAreaId[dist.areaId] ?? null }
+}
+
 function openViewer(ba) {
   viewer.images = ba.images
   viewer.index = 0
@@ -295,6 +365,8 @@ function linkify(html) {
 }
 
 onMounted(() => {
+  // Pre-fetch GeoJSON for the current OTU immediately so map popups are instant
+  fetchGeoForOtu(props.otuId)
   loadBiologicalAssociations()
 })
 
@@ -458,17 +530,20 @@ async function fetchDistributions(associationIds) {
 
   const result = new Map()
   for (const dist of data) {
-    const associationId = dist.asserted_distribution_object_id
+    // asserted_distribution_object_id is the biological association ID here
+    // (object type is BiologicalAssociation, not Otu)
+    const baId = dist.asserted_distribution_object_id
     const entry = {
       id: dist.id,
+      areaId: dist.asserted_distribution_shape?.id,
       area: dist.asserted_distribution_shape?.name || '',
       isAbsent: !!dist.is_absent
     }
 
-    if (!result.has(associationId)) {
-      result.set(associationId, [])
+    if (!result.has(baId)) {
+      result.set(baId, [])
     }
-    result.get(associationId).push(entry)
+    result.get(baId).push(entry)
   }
 
   return result
@@ -518,6 +593,7 @@ async function loadBiologicalAssociations(page = 1) {
         citationsMap.get(item.id) || []
       )
     )
+
   } catch (e) {
     // silently fail; spinner stops and no results show
   } finally {

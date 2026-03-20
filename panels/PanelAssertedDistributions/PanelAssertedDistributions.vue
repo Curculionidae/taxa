@@ -32,6 +32,7 @@
         <VTableHeader class="normal-case">
           <VTableHeaderRow>
             <VTableHeaderCell>Area</VTableHeaderCell>
+            <VTableHeaderCell v-if="isMergedView">Taxa</VTableHeaderCell>
             <VTableHeaderCell>Absent</VTableHeaderCell>
             <VTableHeaderCell>Citation</VTableHeaderCell>
           </VTableHeaderRow>
@@ -41,52 +42,68 @@
             v-for="group in groupedDistributions"
             :key="group.parent"
           >
-            <!-- Country / region group header -->
+            <!-- Group header -->
             <tr>
               <td
-                colspan="3"
-                class="px-4 pt-5 pb-1 text-sm font-bold border-b"
+                :colspan="isMergedView ? 4 : 3"
+                class="px-4 pt-5 pb-1 text-sm font-bold border-b text-base-content"
               >
                 {{ group.label }}
+                <span class="font-normal opacity-50 ml-1">({{ group.items.length }})</span>
               </td>
             </tr>
 
             <VTableBodyRow
-              v-for="dist in group.items"
-              :key="dist.id"
+              v-for="item in group.items"
+              :key="item.id"
             >
-              <!-- Area name (bold) with type (small, muted) on the same line -->
+              <!-- Area name (bold) with type (small, muted).
+                   Always a button; GeoJSON is pre-fetched in background. -->
               <VTableBodyCell class="pl-8">
-                <span class="font-semibold">{{ dist.areaName }}</span>
-                <span
-                  v-if="dist.areaType"
-                  class="text-xs opacity-50 ml-1.5"
-                >{{ dist.areaType }}</span>
-              </VTableBodyCell>
+                <button
+                  class="font-semibold hover:underline cursor-pointer text-left text-base-content"
+                  @click="openMapModal(item)"
+                >{{ item.areaName }}</button>
+                  <span
+                    v-if="item.areaType"
+                    class="text-xs opacity-50 ml-1.5"
+                  >{{ item.areaType }}</span>
+                </VTableBodyCell>
 
-              <VTableBodyCell>
-                <span
-                  v-if="dist.isAbsent"
-                  class="text-red-600 text-sm font-medium"
+                <!-- Taxa column: OTU names for this area (merged / All tab only) -->
+                <VTableBodyCell
+                  v-if="isMergedView"
+                  class="text-sm"
                 >
-                  Absent
-                </span>
-              </VTableBodyCell>
+                  <template
+                    v-for="(entry, i) in item.otuEntries"
+                    :key="entry.otuId"
+                  >
+                    <em>{{ entry.otuName }}</em><span v-if="i < item.otuEntries.length - 1">; </span>
+                  </template>
+                </VTableBodyCell>
 
-              <!-- Citations inline, separated by "; " -->
-              <VTableBodyCell class="text-sm">
-                <template
-                  v-for="(citation, i) in dist.citationList"
-                  :key="citation.id"
-                >
-                  <button
-                    class="hover:underline cursor-pointer text-secondary-color"
-                    @click="activeCitation = citation"
-                    v-html="citation.display"
-                  />
-                  <span v-if="i < dist.citationList.length - 1">; </span>
-                </template>
-              </VTableBodyCell>
+                <VTableBodyCell>
+                  <span
+                    v-if="item.isAbsent"
+                    class="text-red-600 text-sm font-medium"
+                  >Absent</span>
+                </VTableBodyCell>
+
+                <!-- Citations inline, separated by "; " -->
+                <VTableBodyCell class="text-sm">
+                  <template
+                    v-for="(citation, i) in item.citationList"
+                    :key="citation.id"
+                  >
+                    <button
+                      class="hover:underline cursor-pointer text-secondary-color"
+                      @click="activeCitation = citation"
+                      v-html="citation.display"
+                    />
+                    <span v-if="i < item.citationList.length - 1">; </span>
+                  </template>
+                </VTableBodyCell>
             </VTableBodyRow>
           </template>
         </VTableBody>
@@ -105,6 +122,37 @@
             class="px-4 pb-4 text-sm leading-relaxed"
             v-html="convertUrlsToLinks(activeCitation.full)"
           />
+        </VModal>
+      </Teleport>
+
+      <!-- Map modal: geographic area polygon for clicked area name -->
+      <Teleport to="body">
+        <VModal
+          v-if="mapModal.open"
+          @close="mapModal = { open: false }"
+        >
+          <template #header>
+            <div class="text-sm font-medium">
+              {{ mapModal.areaName }}
+            </div>
+          </template>
+          <div class="p-4">
+            <div
+              v-if="mapModal.loading"
+              class="min-h-[200px] flex items-center justify-center"
+            >
+              <VSpinner />
+            </div>
+            <p
+              v-else-if="!mapModal.feature"
+              class="min-h-[200px] flex items-center justify-center text-sm opacity-50"
+            >No map data available for this area.</p>
+            <VMap
+              v-else
+              :geojson="{ type: 'FeatureCollection', features: [mapModal.feature] }"
+              height="400px"
+            />
+          </div>
         </VModal>
       </Teleport>
 
@@ -192,11 +240,22 @@ const totalCount = ref(0)
 const activeCitation = ref(null)
 const selectedOtuId = ref('all')
 
+
+// Map modal state
+const mapModal = ref({ open: false })
+// Per-OTU GeoJSON promise cache: otuId → Promise<{ assertedDistId → GeoJSON Feature }>
+// Caching the promise (not the result) means a click that arrives while a pre-fetch is
+// still in-flight reuses the same request rather than starting a duplicate.
+const geoPromiseCache = {}
+
 // Show tabs only when records span more than one OTU (e.g. species + subspecies)
 const showTabs = computed(() => {
   const unique = new Set(distributions.value.map((d) => d.otuId))
   return unique.size > 1
 })
+
+// True when the All tab is active with multiple OTUs — shows merged rows (one per area)
+const isMergedView = computed(() => selectedOtuId.value === 'all' && showTabs.value)
 
 // One tab per OTU, sorted by name, prefixed with "All"
 const tabs = computed(() => {
@@ -222,14 +281,54 @@ const filteredDistributions = computed(() => {
 })
 
 /**
- * Groups the current tab's distributions by parent area name.
+ * In the All tab (isMergedView), collapses distributions sharing the same
+ * geographic area into a single row: one entry per area listing all taxa
+ * (otuEntries) and all citations merged together.
+ * In per-OTU tabs, returns the distributions as-is.
+ *
+ * Both produce items compatible with openMapModal(item) — merged items
+ * carry `otuId` and `id` from the first distribution for map lookups.
+ */
+function mergeByArea(dists) {
+  const byArea = new Map()
+  for (const dist of dists) {
+    const key = `${dist.parentName}|${dist.areaName}`
+    if (!byArea.has(key)) {
+      byArea.set(key, {
+        id: dist.id,           // first dist's ID — used for GeoJSON map lookup
+        otuId: dist.otuId,     // first dist's OTU — used for GeoJSON fetch
+        areaName: dist.areaName,
+        areaType: dist.areaType,
+        parentName: dist.parentName,
+        isAbsent: false,
+        otuEntries: [],
+        citationList: []
+      })
+    }
+    const m = byArea.get(key)
+    m.isAbsent = m.isAbsent || dist.isAbsent
+    if (!m.otuEntries.some((e) => e.otuId === dist.otuId)) {
+      m.otuEntries.push({ otuId: dist.otuId, otuName: dist.otuName })
+    }
+    m.citationList.push(...dist.citationList)
+  }
+  return [...byArea.values()]
+}
+
+/**
+ * Groups items by parent area name for rendering.
+ * Source is merged (one row per area) in the All tab, per-distribution otherwise.
  * Earth-children (countries) come first, then sub-national groups alphabetically.
  * Areas within each group are sorted alphabetically.
  */
 const groupedDistributions = computed(() => {
+  const source = isMergedView.value
+    ? mergeByArea(distributions.value)
+    : filteredDistributions.value
+
   const groups = new Map()
 
-  for (const dist of filteredDistributions.value) {
+  for (const dist of source) {
     const parent = dist.parentName
     if (!groups.has(parent)) groups.set(parent, [])
     groups.get(parent).push(dist)
@@ -348,8 +447,51 @@ async function fetchCitations(distributionIds) {
 }
 
 /**
+ * Fetches GeoJSON for a single OTU and returns a map of
+ * AssertedDistribution ID → GeoJSON Feature.
+ *
+ * The promise itself is cached immediately, so concurrent calls (e.g. a
+ * background pre-fetch racing with a user click) share the same in-flight
+ * request instead of issuing duplicates.
+ */
+function fetchGeoForOtu(otuId) {
+  if (geoPromiseCache[otuId]) return geoPromiseCache[otuId]
+
+  geoPromiseCache[otuId] = (async () => {
+    const byId = {}
+    try {
+      const { data } = await makeAPIRequest.get(
+        `/otus/${otuId}/inventory/distribution.geojson`
+      )
+      for (const f of data?.features || []) {
+        const fp = f.properties || {}
+        if (fp.base?.type === 'AssertedDistribution' && fp.base?.id) {
+          // VMap's geojsonOptions expects properties.base to be an array
+          byId[fp.base.id] = { ...f, properties: { ...fp, base: [fp.base] } }
+        }
+      }
+    } catch {
+      // return empty map; promise stays cached to avoid hammering on error
+    }
+    return byId
+  })()
+
+  return geoPromiseCache[otuId]
+}
+
+/**
+ * Opens the map modal for a distribution row.
+ * Awaits the (possibly already in-flight) GeoJSON promise for that OTU.
+ */
+async function openMapModal(dist) {
+  mapModal.value = { open: true, loading: true, areaName: dist.areaName, feature: null }
+  const byId = await fetchGeoForOtu(dist.otuId)
+  mapModal.value = { open: true, loading: false, areaName: dist.areaName, feature: byId[dist.id] ?? null }
+}
+
+/**
  * Loads all asserted distributions for the current taxon (including descendants),
- * then fetches structured citations.
+ * then fetches structured citations and geographic GeoJSON for map popups.
  */
 async function loadDistributions() {
   isLoading.value = true
@@ -375,6 +517,12 @@ async function loadDistributions() {
     distributions.value = data.map((item) =>
       makeDistribution(item, citationsMap.get(item.id) || [])
     )
+
+    // Kick off GeoJSON fetches in the background so they're ready (or nearly
+    // ready) when the user clicks an area name. The promise cache ensures
+    // clicks that arrive before a fetch completes reuse the in-flight request.
+    const otuIds = [...new Set(distributions.value.map((d) => d.otuId))]
+    otuIds.forEach(fetchGeoForOtu)
   } catch (e) {
     // silently fail; spinner stops and no results show
   } finally {

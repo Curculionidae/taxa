@@ -32,6 +32,7 @@ taxa_page:
     label: 'GBIF'
     panels:
       - - - id: panel:gbif
+
   asserted_distributions:
     label: 'Asserted Distributions (List)'
     rank_group: ['SpeciesGroup']

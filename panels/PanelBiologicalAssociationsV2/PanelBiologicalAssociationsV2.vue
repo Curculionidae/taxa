@@ -494,8 +494,10 @@ function fetchGeoForOtu(otuId) {
       const { data } = await makeAPIRequest.get(`/otus/${otuId}/inventory/distribution.geojson`)
       for (const f of data?.features || []) {
         const fp = f.properties || {}
-        if (fp.base?.type === 'AssertedDistribution' && fp.shape?.id) {
-          byId[fp.shape.id] = { ...f, properties: { ...fp, base: [fp.base] } }
+        // Index by AssertedDistribution ID — same approach as PanelAssertedDistributions.
+        // VMap's geojsonOptions requires properties.base to be an array.
+        if (fp.base?.type === 'AssertedDistribution' && fp.base?.id) {
+          byId[fp.base.id] = { ...f, properties: { ...fp, base: [fp.base] } }
         }
       }
     } catch { /* cache empty on error */ }
@@ -506,8 +508,8 @@ function fetchGeoForOtu(otuId) {
 
 async function openMapModal(dist) {
   mapModal.value = { open: true, loading: true, areaName: dist.area, feature: null }
-  const byAreaId = await fetchGeoForOtu(props.otuId)
-  mapModal.value = { open: true, loading: false, areaName: dist.area, feature: byAreaId[dist.areaId] ?? null }
+  const byId = await fetchGeoForOtu(props.otuId)
+  mapModal.value = { open: true, loading: false, areaName: dist.area, feature: byId[dist.id] ?? null }
 }
 
 

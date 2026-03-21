@@ -54,7 +54,7 @@
                   <button
                     class="shrink-0 opacity-40 hover:opacity-100 cursor-pointer leading-none text-xs"
                     title="Show details"
-                    @click="openSpecimenModal(ba.subjectDetail, ba.subjectType, ba.subjectOtuId, ba.subjectId)"
+                    @click="dwcTableRef.show({ id: ba.subjectId, type: ba.subjectType })"
                   >ⓘ</button>
                 </div>
                 <span>
@@ -87,7 +87,7 @@
                   <button
                     class="shrink-0 opacity-40 hover:opacity-100 cursor-pointer leading-none text-xs"
                     title="Show details"
-                    @click="openSpecimenModal(ba.objectDetail, ba.objectType, ba.objectOtuId, ba.objectId)"
+                    @click="dwcTableRef.show({ id: ba.objectId, type: ba.objectType })"
                   >ⓘ</button>
                 </div>
                 <span>
@@ -184,158 +184,9 @@
         </VModal>
       </Teleport>
 
-      <!-- Specimen modal: CollectionObject / FieldOccurrence details -->
-      <Teleport to="body">
-        <VModal
-          v-if="specimenModal.open"
-          @close="specimenModal = { open: false }"
-        >
-          <template #header>
-            <div class="text-sm font-medium">
-              {{ specimenModal.type === 'CollectionObject' ? 'Collection Object' : 'Field Occurrence' }}
-            </div>
-          </template>
-          <div class="px-4 pb-4 text-sm space-y-3">
-            <!-- DWC fields -->
-            <div
-              v-if="specimenModal.dwcLoading"
-              class="flex items-center gap-2 opacity-60"
-            >
-              <VSpinner class="h-4 w-4" />
-              <span>Loading…</span>
-            </div>
-            <dl
-              v-else-if="specimenModal.dwc"
-              class="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5"
-            >
-              <!-- Repository -->
-              <template v-if="specimenModal.dwc.institutionCode">
-                <dt class="opacity-50 whitespace-nowrap">Institution</dt>
-                <dd>{{ specimenModal.dwc.institutionCode }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.collectionCode">
-                <dt class="opacity-50 whitespace-nowrap">Collection</dt>
-                <dd>{{ specimenModal.dwc.collectionCode }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.catalogNumber">
-                <dt class="opacity-50 whitespace-nowrap">Catalog no.</dt>
-                <dd>{{ specimenModal.dwc.catalogNumber }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.typeStatus">
-                <dt class="opacity-50 whitespace-nowrap">Type status</dt>
-                <dd>{{ specimenModal.dwc.typeStatus }}</dd>
-              </template>
-              <!-- Determination -->
-              <template v-if="specimenModal.dwc.identifiedBy">
-                <dt class="opacity-50 whitespace-nowrap">Identified by</dt>
-                <dd>{{ specimenModal.dwc.identifiedBy }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.dateIdentified">
-                <dt class="opacity-50 whitespace-nowrap">Date identified</dt>
-                <dd>{{ specimenModal.dwc.dateIdentified }}</dd>
-              </template>
-              <!-- Organism -->
-              <template v-if="specimenModal.dwc.lifeStage">
-                <dt class="opacity-50 whitespace-nowrap">Life stage</dt>
-                <dd>{{ specimenModal.dwc.lifeStage }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.sex">
-                <dt class="opacity-50 whitespace-nowrap">Sex</dt>
-                <dd>{{ specimenModal.dwc.sex }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.preparations">
-                <dt class="opacity-50 whitespace-nowrap">Preparations</dt>
-                <dd>{{ specimenModal.dwc.preparations }}</dd>
-              </template>
-              <!-- Collection event -->
-              <template v-if="specimenModal.dwc.recordedBy">
-                <dt class="opacity-50 whitespace-nowrap">Recorded by</dt>
-                <dd>{{ specimenModal.dwc.recordedBy }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.eventDate">
-                <dt class="opacity-50 whitespace-nowrap">Date</dt>
-                <dd>{{ specimenModal.dwc.eventDate }}</dd>
-              </template>
-              <template v-else-if="specimenModal.dwc.year">
-                <dt class="opacity-50 whitespace-nowrap">Year</dt>
-                <dd>{{ specimenModal.dwc.year }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.samplingProtocol">
-                <dt class="opacity-50 whitespace-nowrap">Method</dt>
-                <dd>{{ specimenModal.dwc.samplingProtocol }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.habitat">
-                <dt class="opacity-50 whitespace-nowrap">Habitat</dt>
-                <dd>{{ specimenModal.dwc.habitat }}</dd>
-              </template>
-              <!-- Location -->
-              <template v-if="specimenModal.dwc.country">
-                <dt class="opacity-50 whitespace-nowrap">Country</dt>
-                <dd>{{ specimenModal.dwc.country }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.stateProvince">
-                <dt class="opacity-50 whitespace-nowrap">State / Province</dt>
-                <dd>{{ specimenModal.dwc.stateProvince }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.county">
-                <dt class="opacity-50 whitespace-nowrap">County</dt>
-                <dd>{{ specimenModal.dwc.county }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.verbatimLocality">
-                <dt class="opacity-50 whitespace-nowrap">Locality</dt>
-                <dd>{{ specimenModal.dwc.verbatimLocality }}</dd>
-              </template>
-              <!-- Elevation -->
-              <template v-if="specimenModal.dwc.minimumElevationInMeters">
-                <dt class="opacity-50 whitespace-nowrap">Elevation</dt>
-                <dd>
-                  {{ specimenModal.dwc.minimumElevationInMeters }}
-                  <template v-if="specimenModal.dwc.maximumElevationInMeters && specimenModal.dwc.maximumElevationInMeters !== specimenModal.dwc.minimumElevationInMeters">
-                    – {{ specimenModal.dwc.maximumElevationInMeters }}
-                  </template>
-                  m
-                </dd>
-              </template>
-              <template v-else-if="specimenModal.dwc.verbatimElevation">
-                <dt class="opacity-50 whitespace-nowrap">Elevation</dt>
-                <dd>{{ specimenModal.dwc.verbatimElevation }}</dd>
-              </template>
-              <!-- Coordinates + map -->
-              <template v-if="specimenModal.dwc.decimalLatitude">
-                <dt class="opacity-50 whitespace-nowrap">Latitude</dt>
-                <dd>{{ specimenModal.dwc.decimalLatitude }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.decimalLongitude">
-                <dt class="opacity-50 whitespace-nowrap">Longitude</dt>
-                <dd>{{ specimenModal.dwc.decimalLongitude }}</dd>
-              </template>
-              <template v-if="specimenModal.dwc.coordinateUncertaintyInMeters">
-                <dt class="opacity-50 whitespace-nowrap">Coord. uncertainty</dt>
-                <dd>{{ specimenModal.dwc.coordinateUncertaintyInMeters }} m</dd>
-              </template>
-              <template v-if="specimenModal.dwc.decimalLatitude && specimenModal.dwc.decimalLongitude">
-                <dt class="opacity-50 whitespace-nowrap">Map</dt>
-                <dd>
-                  <a
-                    :href="`https://www.openstreetmap.org/?mlat=${specimenModal.dwc.decimalLatitude}&mlon=${specimenModal.dwc.decimalLongitude}&zoom=10`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-secondary-color hover:underline"
-                  >Open in OpenStreetMap</a>
-                </dd>
-              </template>
-            </dl>
-            <p v-else-if="!specimenModal.dwcLoading" class="opacity-50">No details available.</p>
+      <DwcTable ref="dwcTableRef" />
 
-            <RouterLink
-              v-if="specimenModal.otuId"
-              :to="{ name: 'otus-id', params: { id: specimenModal.otuId } }"
-              class="text-secondary-color hover:underline block"
-              @click="specimenModal = { open: false }"
-            >→ View taxon page</RouterLink>
-          </div>
-        </VModal>
-      </Teleport>
+
 
       <!-- ImageViewer -->
       <ImageViewer
@@ -383,6 +234,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest.js'
+import DwcTable from './DwcTable.vue'
 import {
   makeBiologicalAssociation,
   isSpecimenType,
@@ -415,9 +267,9 @@ const pagination = ref({
 
 const viewer = reactive({ images: [], index: 0 })
 const activeCitation = ref(null)
-const specimenModal = ref({ open: false })
+const dwcTableRef = ref(null)
 
-const dwcPromiseCache = {} // keyed by otuId
+const dwcPromiseCache = {} // keyed by otuId — used for OTU search locality
 
 function fetchDwcForOtu(otuId) {
   if (dwcPromiseCache[otuId]) return dwcPromiseCache[otuId]
@@ -426,28 +278,6 @@ function fetchDwcForOtu(otuId) {
     .then((r) => r.data)
     .catch(() => [])
   return dwcPromiseCache[otuId]
-}
-
-async function openSpecimenModal(detail, type, otuId, coId) {
-  specimenModal.value = {
-    open: true,
-    detail: detail || null,
-    type,
-    otuId: otuId || null,
-    coId,
-    dwc: null,
-    dwcLoading: !!(otuId && coId)
-  }
-  if (otuId && coId) {
-    const records = await fetchDwcForOtu(otuId)
-    const record = records.find(
-      (r) => r.dwc_occurrence_object_id === coId
-    )
-    // Guard: modal may have been closed while loading
-    if (specimenModal.value.open && specimenModal.value.coId === coId) {
-      specimenModal.value = { ...specimenModal.value, dwc: record || null, dwcLoading: false }
-    }
-  }
 }
 
 

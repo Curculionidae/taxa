@@ -131,14 +131,9 @@
                 <div
                   v-for="dist in ba.distributions"
                   :key="dist.id"
-                  class="text-sm leading-snug"
+                  class="text-sm leading-snug font-semibold"
                   :class="{ 'line-through opacity-60': dist.isAbsent }"
-                >
-                  <button
-                    class="hover:underline cursor-pointer text-left font-semibold"
-                    @click="openMapModal(dist)"
-                  >{{ dist.area }}</button>
-                </div>
+                >{{ dist.area }}</div>
               </template>
               <span
                 v-else-if="ba.subjectLocality?.text"
@@ -186,35 +181,6 @@
             class="px-4 pb-4 text-sm leading-relaxed"
             v-html="linkify(activeCitation.full)"
           />
-        </VModal>
-      </Teleport>
-
-      <!-- Map modal -->
-      <Teleport to="body">
-        <VModal
-          v-if="mapModal.open"
-          @close="mapModal = { open: false }"
-        >
-          <template #header>
-            <div class="text-sm font-medium">{{ mapModal.areaName }}</div>
-          </template>
-          <div class="p-4">
-            <div
-              v-if="mapModal.loading"
-              class="min-h-[200px] flex items-center justify-center"
-            >
-              <VSpinner />
-            </div>
-            <p
-              v-else-if="!mapModal.feature"
-              class="min-h-[200px] flex items-center justify-center text-sm opacity-50"
-            >No map data available for this area.</p>
-            <VMap
-              v-else
-              :geojson="{ type: 'FeatureCollection', features: [mapModal.feature] }"
-              height="400px"
-            />
-          </div>
         </VModal>
       </Teleport>
 
@@ -449,10 +415,8 @@ const pagination = ref({
 
 const viewer = reactive({ images: [], index: 0 })
 const activeCitation = ref(null)
-const mapModal = ref({ open: false })
 const specimenModal = ref({ open: false })
 
-const geoPromiseCache = {}
 const dwcPromiseCache = {} // keyed by otuId
 
 function fetchDwcForOtu(otuId) {
@@ -486,32 +450,6 @@ async function openSpecimenModal(detail, type, otuId, coId) {
   }
 }
 
-function fetchGeoForOtu(otuId) {
-  if (geoPromiseCache[otuId]) return geoPromiseCache[otuId]
-  geoPromiseCache[otuId] = (async () => {
-    const byId = {}
-    try {
-      const { data } = await makeAPIRequest.get(`/otus/${otuId}/inventory/distribution.geojson`)
-      for (const f of data?.features || []) {
-        const fp = f.properties || {}
-        // Index by AssertedDistribution ID — same approach as PanelAssertedDistributions.
-        // VMap's geojsonOptions requires properties.base to be an array.
-        if (fp.base?.type === 'AssertedDistribution' && fp.base?.id) {
-          byId[fp.base.id] = { ...f, properties: { ...fp, base: [fp.base] } }
-        }
-      }
-    } catch { /* cache empty on error */ }
-    return byId
-  })()
-  return geoPromiseCache[otuId]
-}
-
-async function openMapModal(dist) {
-  mapModal.value = { open: true, loading: true, areaName: dist.area, feature: null }
-  const byId = await fetchGeoForOtu(props.otuId)
-  mapModal.value = { open: true, loading: false, areaName: dist.area, feature: byId[dist.id] ?? null }
-}
-
 
 function openViewer(ba) {
   viewer.images = ba.images
@@ -527,7 +465,6 @@ function linkify(html) {
 }
 
 onMounted(() => {
-  fetchGeoForOtu(props.otuId)
   loadBiologicalAssociations()
 })
 

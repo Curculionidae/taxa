@@ -136,9 +136,9 @@
                 >{{ dist.area }}</div>
               </template>
               <span
-                v-else-if="ba.subjectLocality?.text"
+                v-else-if="ba.subjectLocality?.text || ba.objectLocality?.text"
                 class="text-sm"
-              >{{ ba.subjectLocality.text }}</span>
+              >{{ ba.subjectLocality?.text || ba.objectLocality?.text }}</span>
             </VTableBodyCell>
 
             <!-- Citations -->
@@ -160,9 +160,9 @@
                 class="text-sm"
               />
               <span
-                v-if="!ba.citationList.length && !ba.citations && ba.subjectCollector"
+                v-if="!ba.citationList.length && !ba.citations && (ba.subjectCollector || ba.objectCollector)"
                 class="text-sm opacity-70"
-              >{{ ba.subjectCollector }}</span>
+              >{{ ba.subjectCollector || ba.objectCollector }}</span>
             </VTableBodyCell>
           </VTableBodyRow>
         </VTableBody>

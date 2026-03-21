@@ -31,6 +31,22 @@ export function isSpecimenType(type) {
 }
 
 /**
+ * Extracts the inner HTML of the otu_tag_taxon_name span from an object_tag string.
+ * e.g. "...<span class="otu_tag_taxon_name" title="829664"><i>Cynoglossum officinale</i></span>..."
+ *   → "<i>Cynoglossum officinale</i>"
+ *
+ * Used as a fallback for CO/FO when taxonomy is not extended in the full endpoint.
+ */
+function extractNameHtml(objectTag) {
+  if (!objectTag) return null
+  const span = objectTag.match(/otu_tag_taxon_name[^>]*>([\s\S]*?)<\/span>/)
+  if (!span) return null
+  // Grab everything from the first <i> to the last </i> — drops the trailing author name
+  const italics = span[1].match(/(<i>[\s\S]*<\/i>)/)
+  return italics ? italics[1] : span[1].trim()
+}
+
+/**
  * Returns { prefix, html } for the label cell.
  *
  * OTU / CO / FO    → { prefix: null, html: "<i>Genus species</i>" }
@@ -43,8 +59,14 @@ export function isSpecimenType(type) {
 function buildLabelParts(entity) {
   const genus   = entity.taxonomy?.genus?.[1]
   const species = entity.taxonomy?.species?.[1]
-  const speciesHtml = genus && species ? `<i>${genus} ${species}</i>`
+  let speciesHtml = genus && species ? `<i>${genus} ${species}</i>`
     : genus ? `<i>${genus}</i> sp.` : null
+
+  // CO/FO: taxonomy may not be extended for FieldOccurrences — fall back to
+  // the name HTML already present in the otu_tag_taxon_name span.
+  if (!speciesHtml && isSpecimenType(entity.base_class)) {
+    speciesHtml = extractNameHtml(entity.object_tag)
+  }
 
   if (speciesHtml) {
     if (entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)) {
@@ -113,6 +135,7 @@ export function makeBiologicalAssociation(
                          : (otuByTaxonName.get(objTaxonNameId) || null),
     objectDetail:      obj.object_tag || null,
     objectLocality:    isSpecimenType(obj.base_class) ? (localityByCoId.get(obj.id) || null) : null,
+    objectCollector:   isSpecimenType(obj.base_class) ? (localityByCoId.get(obj.id)?.recordedBy || null) : null,
 
     citations:    data.citations,
     citationList,

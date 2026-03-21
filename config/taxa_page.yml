@@ -7,7 +7,8 @@ taxa_page:
           - panel:type
           - panel:type-specimen
 
-        - - panel:map
+        - - panel:map-v2
+#         - panel:map
           - panel:descendants
           - panel:content
           - panel:keys

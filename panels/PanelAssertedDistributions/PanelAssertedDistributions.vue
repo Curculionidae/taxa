@@ -167,7 +167,8 @@
         v-if="groupedDistributions.length"
         class="text-xs opacity-50 mt-4 text-center"
       >
-        The same distribution data can also be viewed on the map in the Overview panel.
+        The same distribution data can also be viewed on the map in the Overview panel.<br>
+        You can also download a Darwin Core (DwC) spreadsheet with all asserted distributions and specimen records.
       </p>
     </VCardContent>
   </VCard>

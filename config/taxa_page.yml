@@ -32,7 +32,10 @@ taxa_page:
   GBIF:
     label: 'GBIF'
     panels:
-      - - - id: panel:gbif
+      - - - panel:gbif-taxon
+          - panel:gbif-images
+          - panel:gbif-map
+          - panel:gbif-type-specimens
 
   asserted_distributions:
     label: 'Asserted Distributions (List)'

@@ -79,15 +79,13 @@ function loadDwc() {
         return 0
       })
 
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i]
-
-        if (item.associatedMedia) {
-          const images = await getMediaImages(item)
-
-          item.associatedMedia = images
-        }
-      }
+      await Promise.all(
+        data.map(async (item) => {
+          if (item.associatedMedia) {
+            item.associatedMedia = await getMediaImages(item)
+          }
+        })
+      )
       dwcRecords.value = data.map((d) => ({
         ...d,
         label: makeSpecimenLabel(d)

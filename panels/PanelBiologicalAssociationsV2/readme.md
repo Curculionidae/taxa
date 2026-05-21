@@ -1,5 +1,7 @@
 # PanelBiologicalAssociationsV2
 
+> **Compatibility:** `@sfgrp/taxonpages` ≥ 0.5.4 (npm package setup)
+
 New experimental panel (`panel:biological-associations-v2`) displaying biological associations for a taxon. Based on the built-in `panel:biological-associations` panel.
 
 Added features: with inline depictions, asserted distributions, and citations that can be clicked to show the full reference. URLs in references are clickable both in the citation popup and the image popup. 
@@ -24,21 +26,20 @@ Put this directory (PanelBiologicalAssociationsV2) into the panels folder on the
 
 ## API calls
 
-The `/biological_associations/basic` endpoint does not return depictions, distributions, or structured citations. After loading the associations page, four additional batch requests are fired in parallel:
+After loading the associations page (one call to `/biological_associations?extend[]=...`), four additional batch requests are fired in parallel:
 
 1. `/depictions?depiction_object_type=BiologicalAssociation&depiction_object_id[]=...`  
    Returns depiction records for associations on the current page.
 
 2. `/depictions/gallery?depiction_id[]=...`  
    Returns full image data in one call: thumb/original URLs, figure label, and attribution. This is the same endpoint used by the gallery panel internally (`useGallery.js`).  
-   After this, one additional request per image is made to `/images/:id?extend[]=source` to fetch the publication source.
+   Followed by one batch call to `/images?image_id[]=...&extend[]=source` to fetch publication sources for all images at once.
 
 3. `/asserted_distributions?biological_association_id[]=...`  
    Returns asserted distribution records grouped by association ID.
 
-4. `/citations?citation_object_type=BiologicalAssociation&citation_object_id[]=...`  
-   Returns citation records with `source_id` and `citation_source_body` (short form).  
-   Followed by one batch call to `/sources?source_id[]=...` to get the full `cached` reference HTML for each unique source.
+4. `/citations?citation_object_type=BiologicalAssociation&citation_object_id[]=...&extend[]=source`  
+   Returns citation records with the full source object embedded — no separate `/sources` call needed.
 
 ## ImageViewer
 

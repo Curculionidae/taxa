@@ -198,7 +198,7 @@
  *   OTUs already present in step 1a are excluded to prevent duplication.
  *
  * Step 3 — one batch for all records:
- *   /citations  → /sources
+ *   /citations?extend[]=source  (source object embedded, no separate /sources call)
  *
  * SYNONYM DETECTION
  * -----------------
@@ -405,24 +405,17 @@ async function fetchCitations(distributionIds) {
 
   const params = new URLSearchParams()
   params.append('citation_object_type', 'AssertedDistribution')
+  params.append('extend[]', 'source')
   distributionIds.forEach((id) => params.append('citation_object_id[]', id))
 
   const { data: citations } = await makeAPIRequest.get(`/citations?${params.toString()}`)
-  if (!citations.length) return new Map()
-
-  const sourceIds = [...new Set(citations.map((c) => c.source_id))]
-  const srcParams = new URLSearchParams()
-  sourceIds.forEach((id) => srcParams.append('source_id[]', id))
-
-  const { data: sources } = await makeAPIRequest.get(`/sources?${srcParams.toString()}`)
-  const sourceMap = new Map(sources.map((s) => [s.id, s.cached]))
 
   const result = new Map()
   for (const cit of citations) {
     const entry = {
       id: cit.id,
       display: shortCitation(cit.citation_source_body || ''),
-      full: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
+      full: cit.source?.cached || cit.citation_source_body || ''
     }
     if (!result.has(cit.citation_object_id)) result.set(cit.citation_object_id, [])
     result.get(cit.citation_object_id).push(entry)

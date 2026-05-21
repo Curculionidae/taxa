@@ -1,5 +1,7 @@
 # PaneliNaturalist
 
+> **Compatibility:** `@sfgrp/taxonpages` ≥ 0.5.4 (npm package setup)
+
 Displays iNaturalist photos for a taxon in two sections: curated taxon photos and paginated research-grade observations.
 
 Adapted from the Orthoptera Species File repository. Adapting it to only show research-grade observations and adjusting the image size, shape, and grid layout was done with assistance of ChatGPT. Fixing the taxon matching problem, extending support to all taxonomic ranks, and adding the curated taxon photos section was done by vibe coding with Claude.ai without human coding input. The code for the GBIF panel was uploaded to Claude as inspiration, as it resolved API requests more accurately.

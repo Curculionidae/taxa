@@ -1,5 +1,7 @@
 # PanelAssertedDistributions
 
+> **Compatibility:** `@sfgrp/taxonpages` ≥ 0.5.4 (npm package setup)
+
 Table panel (`panel:asserted-distributions`) displaying all asserted distributions for an OTU, its descendants, and its synonyms — grouped by country/parent area, with structured citations.
 
 ## Setup
@@ -61,8 +63,8 @@ Loading completes in ~1–2 seconds. The sequence is optimised: step 1 runs in p
 
 **Step 3 — one batch for all records (~500ms):**
 
-4. **`/citations`** — `citation_object_type=AssertedDistribution&citation_object_id[]=...`
-5. **`/sources`** — `source_id[]=...`
+4. **`/citations`** — `citation_object_type=AssertedDistribution&citation_object_id[]=...&extend[]=source`  
+   Returns citation records with the full source object embedded — no separate `/sources` call needed.
 
 ## Map modal
 

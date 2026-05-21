@@ -223,9 +223,9 @@
 /**
  * PanelBiologicalAssociationsV2.vue
  *
- * Fetches both the full and basic /biological_associations endpoints in parallel:
- *   - Full endpoint: taxonomy + object_tag for CO/FO/AnatomicalPart labels and OTU resolution
- *   - Basic endpoint: pre-formatted subject.properties / object.properties strings
+ * Fetches /biological_associations with extend[]=object,subject,biological_relationship,
+ * taxonomy,biological_relationship_types in one call. Subject/object properties are
+ * extracted inline from biological_relationship_types[].
  *
  * OTU IDs for non-OTU entities (CO, FO, AnatomicalPart) are resolved by extracting
  * taxon_name_id from the otu_tag_taxon_name span and batch-fetching /otus.
@@ -241,10 +241,7 @@ import {
   extractTaxonNameId
 } from './makeBiologicalAssociation.js'
 
-// Full endpoint: taxonomy + object_tag for rich entity display
-const fullExtend = ['object', 'subject', 'biological_relationship', 'taxonomy']
-// Basic endpoint: needed for biological_relationship_types → subject.properties / object.properties
-const basicExtend = ['object', 'subject', 'biological_relationship_types']
+const fullExtend = ['object', 'subject', 'biological_relationship', 'taxonomy', 'biological_relationship_types']
 
 const props = defineProps({
   otuId: {
@@ -334,16 +331,21 @@ async function fetchDepictions(associationIds) {
     allImages.push(image)
   }
 
-  await Promise.all(
-    allImages.map(async (image) => {
-      try {
-        const { data: imgData } = await makeAPIRequest.get(`/images/${image.id}?extend[]=source`)
-        if (imgData.source?.label) {
-          image.source = { label: imgData.source.label.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">$1</a>') }
+  if (allImages.length) {
+    try {
+      const imgParams = new URLSearchParams()
+      allImages.forEach((img) => imgParams.append('image_id[]', img.id))
+      imgParams.append('extend[]', 'source')
+      const { data: imgDataList } = await makeAPIRequest.get(`/images?${imgParams.toString()}`)
+      const sourceByImageId = new Map(imgDataList.map((d) => [d.id, d.source]))
+      for (const image of allImages) {
+        const src = sourceByImageId.get(image.id)
+        if (src?.label) {
+          image.source = { label: src.label.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">$1</a>') }
         }
-      } catch { /* source unavailable */ }
-    })
-  )
+      }
+    } catch { /* source unavailable */ }
+  }
   return result
 }
 
@@ -352,23 +354,17 @@ async function fetchCitations(associationIds) {
 
   const citParams = new URLSearchParams()
   citParams.append('citation_object_type', 'BiologicalAssociation')
+  citParams.append('extend[]', 'source')
   associationIds.forEach((id) => citParams.append('citation_object_id[]', id))
 
   const { data: citations } = await makeAPIRequest.get(`/citations?${citParams.toString()}`)
-  if (!citations.length) return new Map()
-
-  const sourceIds = [...new Set(citations.map((c) => c.source_id))]
-  const srcParams = new URLSearchParams()
-  sourceIds.forEach((id) => srcParams.append('source_id[]', id))
-  const { data: sources } = await makeAPIRequest.get(`/sources?${srcParams.toString()}`)
-  const sourceMap = new Map(sources.map((s) => [s.id, s.cached]))
 
   const result = new Map()
   for (const cit of citations) {
     const entry = {
       id: cit.id,
       short: cit.citation_source_body || '',
-      full: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
+      full: cit.source?.cached || cit.citation_source_body || ''
     }
     if (!result.has(cit.citation_object_id)) result.set(cit.citation_object_id, [])
     result.get(cit.citation_object_id).push(entry)
@@ -427,38 +423,18 @@ async function loadBiologicalAssociations(page = 1) {
   }
 
   try {
-    // Full endpoint gives taxonomy + object_tag for rich entity labels.
-    // Basic endpoint gives pre-formatted subject/object properties strings
-    // (the full endpoint only returns biological_property_id without names).
-    const [fullResult, basicResult] = await Promise.all([
-      useOtuPageRequest(
-        'panel:biological-associations-v2',
-        () => makeAPIRequest.get('/biological_associations', {
-          params: { ...baseParams, extend: fullExtend }
-        })
-      ),
-      makeAPIRequest.get('/biological_associations/basic', {
-        params: { ...baseParams, extend: basicExtend }
-      }).catch(() => ({ data: [] }))
-    ])
+    const { data, headers } = await useOtuPageRequest(
+      'panel:biological-associations-v2',
+      () => makeAPIRequest.get('/biological_associations', {
+        params: { ...baseParams, extend: fullExtend }
+      })
+    )
 
-    const { data, headers } = fullResult
     pagination.value = {
       page: Number(headers['pagination-page']),
       per: Number(headers['pagination-per-page']),
       total: Number(headers['pagination-total'])
     }
-
-    // Properties map keyed by association ID from the basic endpoint
-    const propsMap = new Map(
-      (basicResult.data || []).map((item) => [
-        item.id,
-        {
-          subjectProperties: item.subject?.properties || null,
-          objectProperties:  item.object?.properties  || null
-        }
-      ])
-    )
 
     const associationIds = data.map((d) => d.id)
 
@@ -510,17 +486,26 @@ async function loadBiologicalAssociations(page = 1) {
       })
     )
 
-    biologicalAssociations.value = data.map((item) =>
-      makeBiologicalAssociation(
+    biologicalAssociations.value = data.map((item) => {
+      const types = item.biological_relationship_types || []
+      const subjectProperties = types
+        .filter((t) => t.target === 'subject' && t.biological_property?.name)
+        .map((t) => t.biological_property.name)
+        .join(' | ') || null
+      const objectProperties = types
+        .filter((t) => t.target === 'object' && t.biological_property?.name)
+        .map((t) => t.biological_property.name)
+        .join(' | ') || null
+      return makeBiologicalAssociation(
         item,
         depictionsMap.get(item.id)    || [],
         distributionsMap.get(item.id) || [],
         citationsMap.get(item.id)     || [],
         otuByTaxonName,
         localityByCoId,
-        propsMap.get(item.id) || {}
+        { subjectProperties, objectProperties }
       )
-    )
+    })
 
   } catch (e) {
     // silently fail

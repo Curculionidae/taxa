@@ -215,7 +215,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest.js'
-import { convertUrlsToLinks } from '@/modules/bibliography/utils/convertUrlsToLinks.js'
+function convertUrlsToLinks(text = '') {
+  return text.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+}
 
 const props = defineProps({
   otuId: {

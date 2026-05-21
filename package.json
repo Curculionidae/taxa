@@ -1,0 +1,17 @@
+{
+  "name": "taxonpages-config",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "taxonpages dev",
+    "dev:ssr": "taxonpages dev:ssr",
+    "build": "taxonpages build",
+    "build:ssr": "taxonpages build:ssr",
+    "serve": "taxonpages serve",
+    "preview": "taxonpages preview",
+    "setup": "taxonpages setup"
+  },
+  "dependencies": {
+    "@sfgrp/taxonpages": "latest"
+  }
+}

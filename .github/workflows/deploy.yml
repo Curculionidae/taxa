@@ -1,52 +1,39 @@
-name: Deploy to GitHub Pages 
+name: Deploy to GitHub Pages
 
 on:
   push:
     branches:
-      - main
       - setup
   workflow_dispatch:
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: 'main'
-          fetch-depth: 0
-
-      - uses: actions/checkout@v4
-        with:
-          ref: 'setup'
-          fetch-depth: 0
-          path: _setup
-
-      - name: Insert setup branch
-        run: cp -r _setup/* .
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        id: npm-cache
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          node-version: '22'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+
+      # Reinstall explicitly to bypass any committed package-lock.json
+      # and guarantee every deploy uses the latest published version.
+      - name: Install latest TaxonPages version
+        run: npm install @sfgrp/taxonpages
 
       - name: Build public view
         run: npm run build
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./dist
 
@@ -63,7 +50,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
-
-permissions:
-  contents: write
+        uses: actions/deploy-pages@v5

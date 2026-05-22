@@ -256,7 +256,7 @@
                 :href="`https://www.openstreetmap.org/?mlat=${dwc.decimalLatitude}&mlon=${dwc.decimalLongitude}&zoom=10`"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-secondary-color hover:underline"
+                class="text-secondary hover:underline"
               >Open in OpenStreetMap ↗</a>
             </dd>
           </template>

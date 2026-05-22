@@ -34,6 +34,36 @@ import { makeAPIRequest } from '@/utils'
 import ListSpecimens from './components/ListSpecimens.vue'
 import ListTypeSpecimens from './components/ListTypeSpecimens.vue'
 
+// Module-level cache: institutionCode → full name
+const instNameCache = new Map()
+
+async function resolveInstitutionName(code, institutionID) {
+  if (!code) return null
+  if (instNameCache.has(code)) return instNameCache.get(code)
+  try {
+    if (institutionID) {
+      const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?identifier=${encodeURIComponent(institutionID)}`)
+      if (r.ok) {
+        const j = await r.json()
+        if (j.results?.length === 1) {
+          instNameCache.set(code, j.results[0].name)
+          return j.results[0].name
+        }
+      }
+    }
+    const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?code=${encodeURIComponent(code)}`)
+    if (r.ok) {
+      const j = await r.json()
+      if (j.results?.length === 1) {
+        instNameCache.set(code, j.results[0].name)
+        return j.results[0].name
+      }
+    }
+  } catch {}
+  instNameCache.set(code, null)
+  return null
+}
+
 const MAX = 10
 
 const props = defineProps({
@@ -86,6 +116,15 @@ function loadDwc() {
           }
         })
       )
+
+      // Resolve institution names for unique codes (deduplicated by code)
+      const seenCodes = new Set()
+      await Promise.all(
+        data
+          .filter((d) => d.institutionCode && !seenCodes.has(d.institutionCode) && seenCodes.add(d.institutionCode))
+          .map((d) => resolveInstitutionName(d.institutionCode, d.institutionID))
+      )
+
       dwcRecords.value = data.map((d) => ({
         ...d,
         label: makeSpecimenLabel(d)
@@ -124,12 +163,12 @@ function makeSpecimenLabel(item) {
 
 function getDepositoryData(data) {
   const { institutionCode, institutionID } = data
-
   if (!institutionCode) return
-
+  const fullName = instNameCache.get(institutionCode)
+  const display = fullName ? `${fullName} (${institutionCode})` : institutionCode
   return institutionID
-    ? `<a href="${institutionID}" target="_blank">${institutionCode}</a>`
-    : `<span>${institutionCode}</span>`
+    ? `<a href="${institutionID}" target="_blank">${display}</a>`
+    : `<span>${display}</span>`
 }
 
 function getCountAndSex({ individualCount, sex }) {

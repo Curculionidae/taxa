@@ -36,7 +36,7 @@
           </template>
           <template v-if="dwc.institutionCode">
             <dt class="opacity-50 whitespace-nowrap">Institution</dt>
-            <dd>{{ dwc.institutionCode }}</dd>
+            <dd>{{ institutionFullName ? `${institutionFullName} (${dwc.institutionCode})` : dwc.institutionCode }}</dd>
           </template>
           <template v-if="dwc.collectionCode">
             <dt class="opacity-50 whitespace-nowrap">Collection</dt>
@@ -256,7 +256,7 @@
                 :href="`https://www.openstreetmap.org/?mlat=${dwc.decimalLatitude}&mlon=${dwc.decimalLongitude}&zoom=10`"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-secondary-color hover:underline"
+                class="text-secondary hover:underline"
               >Open in OpenStreetMap ↗</a>
             </dd>
           </template>
@@ -349,7 +349,7 @@
       <RouterLink
         v-if="otuId"
         :to="{ name: 'otus-id', params: { id: otuId } }"
-        class="text-secondary-color hover:underline block px-4 pb-4 text-sm"
+        class="text-secondary hover:underline block px-4 pb-4 text-sm"
         @click="isModalVisible = false"
       >→ View taxon page</RouterLink>
     </div>
@@ -366,6 +366,7 @@ const isModalVisible = ref(false)
 const dwc = ref(null)
 const itemType = ref(null)
 const otuId = ref(null)
+const institutionFullName = ref(null)
 
 const ENDPOINTS = {
   [COLLECTION_OBJECT]: (id) => `/collection_objects/${id}/dwc`,
@@ -375,6 +376,36 @@ const ENDPOINTS = {
 const TYPE_LABELS = {
   [COLLECTION_OBJECT]: 'Collection Object',
   [FIELD_OCCURRENCE]: 'Field Occurrence'
+}
+
+// Module-level cache: institutionCode → full name
+const instNameCache = new Map()
+
+async function resolveInstitutionName(code, institutionID) {
+  if (!code) return null
+  if (instNameCache.has(code)) return instNameCache.get(code)
+  try {
+    if (institutionID) {
+      const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?identifier=${encodeURIComponent(institutionID)}`)
+      if (r.ok) {
+        const j = await r.json()
+        if (j.results?.length === 1) {
+          instNameCache.set(code, j.results[0].name)
+          return j.results[0].name
+        }
+      }
+    }
+    const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?code=${encodeURIComponent(code)}`)
+    if (r.ok) {
+      const j = await r.json()
+      if (j.results?.length === 1) {
+        instNameCache.set(code, j.results[0].name)
+        return j.results[0].name
+      }
+    }
+  } catch {}
+  instNameCache.set(code, null)
+  return null
 }
 
 const typeLabel = computed(() => TYPE_LABELS[itemType.value] ?? itemType.value)
@@ -393,12 +424,18 @@ function show({ id, type, otuId: oid = null }) {
   isModalVisible.value = true
   isLoading.value = true
   dwc.value = null
+  institutionFullName.value = null
   itemType.value = type
   otuId.value = oid
 
   makeAPIRequest(ENDPOINTS[type](id))
     .then(({ data }) => {
       dwc.value = data
+      if (data.institutionCode) {
+        resolveInstitutionName(data.institutionCode, data.institutionID).then((name) => {
+          institutionFullName.value = name
+        })
+      }
     })
     .catch(() => {})
     .finally(() => {

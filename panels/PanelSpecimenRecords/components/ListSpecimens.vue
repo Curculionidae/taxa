@@ -27,7 +27,7 @@
           class="flex justify-start pt-4 px-2 cursor-pointer border-base-muted text-sm"
         >
           <div
-            class="h-5 w-5 text-secondary-color opacity-60 mr-2 cursor-pointer"
+            class="h-5 w-5 text-secondary opacity-60 mr-2 cursor-pointer"
             @click="() => (isExpanded = !isExpanded)"
           >
             <IconPlusCircle class="h-5 w-5" />

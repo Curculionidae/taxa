@@ -37,66 +37,69 @@
 
     <!-- Bottom panel: natural height, scrollable if very tall -->
     <div class="flex-none text-center text-sm px-6 pb-2 max-h-[40vh] overflow-y-auto">
+      <!-- OTU section: badge, name, description -->
       <div
-        v-for="(dep, i) in parsedDepictions"
-        :key="i"
+        v-if="imageDisplay.hasOtu || imageDisplay.name"
         class="my-1"
       >
-        <!-- Line 1: type badge (+ ⓘ for CO/FO) -->
         <div
-          v-if="dep.typeLabel"
-          class="flex items-center justify-center gap-1"
-        >
-          <span class="text-xs opacity-40 uppercase tracking-wide">{{ dep.typeLabel }}</span>
+          v-if="imageDisplay.hasOtu"
+          class="text-xs opacity-40 uppercase tracking-wide"
+        >OTU</div>
+        <div>
+          <RouterLink
+            v-if="imageDisplay.otuId"
+            :to="{ name: 'otus-id', params: { id: imageDisplay.otuId } }"
+            class="text-secondary hover:underline"
+          ><em>{{ imageDisplay.name.italic }}</em>{{ imageDisplay.name.plain ? ' ' + imageDisplay.name.plain : '' }}</RouterLink>
+          <span v-else><em>{{ imageDisplay.name.italic }}</em>{{ imageDisplay.name.plain ? ' ' + imageDisplay.name.plain : '' }}</span>
+        </div>
+        <div
+          v-if="imageDisplay.otuFigLabel"
+          class="opacity-70"
+        >{{ imageDisplay.otuFigLabel }}</div>
+        <div
+          v-if="imageDisplay.otuDesc"
+          class="opacity-70"
+        >{{ imageDisplay.otuDesc }}</div>
+      </div>
+
+      <!-- CO/FO entries: badge + ⓘ, type status, figure label, caption -->
+      <div
+        v-for="co in imageDisplay.coEntries"
+        :key="co.objectId"
+        class="my-0.5"
+      >
+        <div class="flex items-center justify-center gap-1">
+          <span class="text-xs opacity-40 uppercase tracking-wide">{{ co.objectType === 'CollectionObject' ? 'Collection object' : 'Field occurrence' }}</span>
           <button
-            v-if="dep.objectId"
             type="button"
             class="shrink-0 opacity-40 hover:opacity-100 cursor-pointer leading-none text-xs"
             title="Show details"
-            @click="openDwcTable(dep)"
+            @click="openDwcTable(co)"
           >ⓘ</button>
         </div>
-
-        <!-- Line 2: species name as blue link -->
-        <div v-if="dep.italic || dep.plain">
-          <RouterLink
-            v-if="dep.otuId"
-            :to="{ name: 'otus-id', params: { id: dep.otuId } }"
-            class="text-secondary hover:underline"
-          ><em>{{ dep.italic }}</em>{{ dep.plain ? ' ' + dep.plain : '' }}</RouterLink>
-          <span
-            v-else-if="dep.objectId"
-            class="text-secondary hover:underline cursor-pointer"
-            @click="openDwcTable(dep)"
-          ><em>{{ dep.italic }}</em>{{ dep.plain ? ' ' + dep.plain : '' }}</span>
-          <span v-else><em>{{ dep.italic }}</em>{{ dep.plain ? ' ' + dep.plain : '' }}</span>
-        </div>
-
-        <!-- Line 3: type status (CO only) -->
         <div
-          v-if="dep.typeStatus"
-          class="text-xs font-semibold"
-        >{{ dep.typeStatus }}</div>
-
-        <!-- Line 4: figure label -->
+          v-if="co.typeStatus"
+          class="font-semibold"
+        >{{ co.typeStatus }}</div>
         <div
-          v-if="dep.figureLabel"
+          v-if="co.figureLabel"
           class="opacity-70 text-xs"
-        >{{ dep.figureLabel }}</div>
-
-        <!-- Line 5: caption -->
+        >{{ co.figureLabel }}</div>
         <div
-          v-if="dep.caption"
+          v-if="co.caption"
           class="opacity-70 text-xs"
-        >{{ dep.caption }}</div>
+        >{{ co.caption }}</div>
       </div>
 
       <!-- Attribution + citations (image-level) -->
-      <div
-        v-if="image.attribution?.label || image.citations?.length"
-        class="opacity-60 my-1"
-      >
-        <span v-if="image.attribution?.label">{{ image.attribution.label }}</span><template
+      <div class="opacity-60 my-1">
+        <span v-if="image.attribution?.label">{{ image.attribution.label }}</span>
+        <span
+          v-else-if="!image.citations?.length"
+          class="italic"
+        >attribution missing</span><template
           v-for="(cit, i) in image.citations || []"
           :key="cit.id"
         > <span
@@ -172,14 +175,31 @@ const activeCitation = ref(null)
 // DWC cache keyed by object id: { typeStatus, scientificName }
 const dwcCache = reactive({})
 
+// OTU validity cache: rawOtuId → validOtuId (resolved asynchronously)
+const otuValidCache = reactive({})
+
 const DWC_ENDPOINTS = {
   CollectionObject: (id) => `/collection_objects/${id}/dwc`,
   FieldOccurrence:  (id) => `/field_occurrences/${id}/dwc`
 }
 
+// Infer depiction type when depiction_object_type isn't serialized by the inventory endpoint.
+// CO/FO are identified first by label prefix, preventing their "uuid: " from being
+// mistaken for the OTU ': ' separator. Anything else with ': ' is treated as OTU.
+function inferDepictionType(dep) {
+  if (dep.depiction_object_type) return dep.depiction_object_type
+  const label = dep.label || ''
+  if (label.startsWith('CollectionObject ')) return 'CollectionObject'
+  if (label.startsWith('FieldOccurrence '))  return 'FieldOccurrence'
+  if (label.indexOf(': ') > 0)               return 'Otu'
+  if (dep.depiction_object_id)               return 'Otu'
+  return null
+}
+
 function fetchDwcForImage(img) {
   for (const dep of (img?.depictions || [])) {
-    const endpoint = DWC_ENDPOINTS[dep.depiction_object_type]
+    const type = inferDepictionType(dep)
+    const endpoint = DWC_ENDPOINTS[type]
     if (!endpoint || dep.depiction_object_id in dwcCache) continue
     const id = dep.depiction_object_id
     dwcCache[id] = null
@@ -224,76 +244,85 @@ function splitName(name) {
 
 const image = computed(() => props.images[props.index] || {})
 
-// One entry per depiction, always in the same field order:
-//   typeLabel, objectId/otuId, italic, plain, typeStatus, figureLabel, caption
-// OTU entries always come first. CO/FO entries suppress the species name when
-// an OTU depiction is already present (the name would be the same — showing it
-// twice is redundant and confusing).
-const parsedDepictions = computed(() => {
+// Extract the description embedded in an OTU label after ': ', stripping the trailing
+// '. (Type).' marker. Falls back to dep.caption if available.
+function otuDescription(dep) {
+  if (!dep) return ''
+  if (dep.caption) return dep.caption
+  const label = dep.label || ''
+  const colonIdx = label.indexOf(': ')
+  if (colonIdx < 0) return ''
+  return label.substring(colonIdx + 2).replace(/\s*\.\s*\(\w+\)\s*\.\s*$/, '').trim()
+}
+
+// Unified display object for the current image.
+// Name is always shown first (OTU label or DWC scientificName for CO-only).
+// OTU description appears directly below the name.
+// CO/FO entries follow, each with badge, type status, and their own figure label / caption.
+const imageDisplay = computed(() => {
   const deps = image.value.depictions || []
-  const hasOtu = deps.some((d) => d.depiction_object_type === 'Otu')
-  const result = []
 
-  // Pass 1: OTU depictions
-  for (const dep of deps) {
-    if (dep.depiction_object_type !== 'Otu') continue
-    const colonIdx = (dep.label || '').indexOf(': ')
-    const namePart = colonIdx > 0 ? dep.label.substring(0, colonIdx) : (dep.label || '')
-    const { italic, plain } = splitName(namePart)
-    if (!italic && !plain) continue
-    result.push({
-      typeLabel:   'OTU',
-      otuId:       dep.depiction_object_id,
-      objectId:    null,
-      objectType:  null,
-      italic,      plain,
-      typeStatus:  '',
-      figureLabel: dep.figure_label || '',
-      caption:     dep.caption      || ''
-    })
+  // OTU depiction: use inferred type
+  const otuDep = deps.find((d) => inferDepictionType(d) === 'Otu')
+
+  // CO/FO depictions: use inferred type
+  const coDeps = deps.filter((d) => {
+    const t = inferDepictionType(d)
+    return t === 'CollectionObject' || t === 'FieldOccurrence'
+  })
+
+  // Primary name: from OTU label (before ': ') — only when non-empty after parsing
+  let name = null
+  let otuId = null
+
+  if (otuDep) {
+    const label = otuDep.label || ''
+    const colonIdx = label.indexOf(': ')
+    const namePart = colonIdx > 0 ? label.substring(0, colonIdx) : label
+    const parsed = splitName(namePart)
+    if (parsed.italic || parsed.plain) name = parsed
+    otuId = otuDep.depiction_object_id || null
   }
 
-  // Pass 2: CO/FO depictions — name suppressed when an OTU is already shown
-  for (const dep of deps) {
-    const type = dep.depiction_object_type
-    if (type !== 'CollectionObject' && type !== 'FieldOccurrence') continue
+  // Fallback: DWC scientificName from first CO/FO when OTU label is empty
+  if (!name && coDeps.length) {
+    const cached = dwcCache[coDeps[0].depiction_object_id]
+    if (cached?.scientificName) name = splitName(cached.scientificName)
+  }
+
+  // iNat synthetic fallback: null-type dep whose label is just the taxon name
+  if (!name && !otuDep && !coDeps.length) {
+    const synDep = deps.find((d) => !inferDepictionType(d))
+    if (synDep?.label) name = splitName(synDep.label)
+  }
+
+  // CO/FO entries — use inferred type for badge label
+  const coEntries = coDeps.map((dep) => {
     const cached = dwcCache[dep.depiction_object_id]
-    const { italic, plain } = hasOtu ? { italic: '', plain: '' } : splitName(cached?.scientificName || '')
-    result.push({
-      typeLabel:   type === 'CollectionObject' ? 'Collection object' : 'Field occurrence',
-      otuId:       null,
+    return {
       objectId:    dep.depiction_object_id,
-      objectType:  type,
-      italic,      plain,
-      typeStatus:  cached?.typeStatus || '',
-      figureLabel: dep.figure_label  || '',
-      caption:     dep.caption       || ''
-    })
-  }
+      objectType:  inferDepictionType(dep),
+      typeStatus:  cached?.typeStatus  || '',
+      figureLabel: dep.figure_label    || '',
+      caption:     dep.caption         || ''
+    }
+  })
 
-  // Pass 3: iNat synthetic depictions (no depiction_object_type)
-  for (const dep of deps) {
-    if (dep.depiction_object_type) continue
-    const { italic, plain } = splitName(dep.label || '')
-    if (!italic && !plain) continue
-    result.push({
-      typeLabel:   '',
-      otuId:       null,
-      objectId:    null,
-      objectType:  null,
-      italic,      plain,
-      typeStatus:  '',
-      figureLabel: '',
-      caption:     ''
-    })
+  return {
+    name,
+    otuId,
+    hasOtu:      !!otuDep,
+    otuDesc:     otuDescription(otuDep),
+    otuFigLabel: otuDep?.figure_label || '',
+    coEntries
   }
-
-  return result
 })
 
-const depictionTitle = computed(() =>
-  parsedDepictions.value.map((d) => [d.italic, d.plain].filter(Boolean).join(' ')).join('; ')
-)
+const depictionTitle = computed(() => {
+  const { name } = imageDisplay.value
+  if (!name) return ''
+  return [name.italic, name.plain].filter(Boolean).join(' ')
+})
 
 function openDwcTable(dep) {
   dwcTableRef.value?.show({ id: dep.objectId, type: dep.objectType })

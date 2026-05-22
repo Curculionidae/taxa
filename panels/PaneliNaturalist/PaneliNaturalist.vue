@@ -240,7 +240,7 @@ function makeTaxonPhotoImage(taxonPhoto) {
     original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
     attribution: { label: photo.attribution || '' },
     source: {
-      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">${photoUrl}</a>`
+      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${photoUrl}</a>`
     },
     depictions: taxonName ? [{ label: taxonName }] : []
   }

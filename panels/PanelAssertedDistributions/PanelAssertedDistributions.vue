@@ -18,7 +18,7 @@
           :key="tab.id"
           class="px-3 py-1.5 text-sm -mb-px border-b-2 transition-colors"
           :class="selectedOtuId === tab.id
-            ? 'border-current text-secondary-color font-medium'
+            ? 'border-current text-secondary font-medium'
             : 'border-transparent opacity-50 hover:opacity-100'"
           @click="selectedOtuId = tab.id"
         >
@@ -105,7 +105,7 @@
                   :key="citation.id"
                 >
                   <button
-                    class="hover:underline cursor-pointer text-secondary-color"
+                    class="hover:underline cursor-pointer text-secondary"
                     @click="activeCitation = citation"
                     v-html="citation.display"
                   />

@@ -89,8 +89,24 @@ const props = defineProps({
   }
 })
 
+function normalizeImage(img) {
+  const { url, project_token } = __APP_ENV__
+  return {
+    id: img.id,
+    thumb: img.thumb,
+    medium: img.medium,
+    original: img.original_png
+      ? `${url}/${img.original_png.substring(8)}?project_token=${project_token}`
+      : img.original,
+    attribution: img.attribution || { label: '' },
+    source: img.source || { label: '' },
+    citations: img.citations || [],
+    depictions: img.depictions || []
+  }
+}
+
 const store = useImageStore()
-const twImages = computed(() => store.images || [])
+const twImages = computed(() => (store.images || []).map(normalizeImage))
 
 const subImages = ref([])
 const isLoadingSub = ref(false)
@@ -205,19 +221,7 @@ async function fetchSubordinateFallback() {
       }
     }
 
-    const { url, project_token } = __APP_ENV__
-    subImages.value = raw.map((img) => ({
-      id: img.id,
-      thumb: img.thumb,
-      medium: img.medium,
-      original: img.original_png
-        ? `${url}/${img.original_png.substring(8)}?project_token=${project_token}`
-        : img.original,
-      attribution: img.attribution || { label: '' },
-      source: img.source || { label: '' },
-      citations: img.citations || [],
-      depictions: img.depictions || []
-    }))
+    subImages.value = raw.map(normalizeImage)
   } catch {
     // fail silently
   } finally {
@@ -294,7 +298,7 @@ function makeTaxonPhotoImage(taxonPhoto) {
     original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
     attribution: { label: photo.attribution || '' },
     source: {
-      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">${photoUrl}</a>`
+      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${photoUrl}</a>`
     },
     depictions: taxonName ? [{ label: taxonName }] : []
   }
@@ -309,7 +313,7 @@ function makeObservationImage(obs, photo) {
     original: photo.url.replace('square', 'original'),
     attribution: { label: photo.attribution || '' },
     source: {
-      label: `<a href="${obsUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">${obsUrl}</a>`
+      label: `<a href="${obsUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${obsUrl}</a>`
     },
     depictions: obs.taxon?.name ? [{ label: obs.taxon.name }] : []
   }

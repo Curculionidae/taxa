@@ -5,7 +5,7 @@
         v-for="(item, i) in items"
         :key="i"
         class="py-2 last:border-0 border-b"
-        :class="CLICKABLE_TYPES.includes(item.type) ? 'cursor-pointer text-secondary-color hover:underline' : ''"
+        :class="CLICKABLE_TYPES.includes(item.type) ? 'cursor-pointer text-secondary hover:underline' : ''"
         @click="CLICKABLE_TYPES.includes(item.type) ? emit('selected', item) : null"
       >
         <!-- CollectionObject / FieldOccurrence -->
@@ -27,12 +27,12 @@
             <template v-else-if="baDetailsMap.get(item.id)">
               <RouterLink
                 :to="`/otus/${baDetailsMap.get(item.id).otherId}/overview`"
-                class="text-secondary-color hover:underline"
+                class="text-secondary hover:underline"
               ><span class="italic">{{ splitName(baDetailsMap.get(item.id).otherLabel).name }}</span>{{ splitName(baDetailsMap.get(item.id).otherLabel).author ? ' ' + splitName(baDetailsMap.get(item.id).otherLabel).author : '' }}</RouterLink>
               <span class="mx-1 text-gray-400">/</span>
               <RouterLink
                 :to="`/otus/${targets?.[i]?.id}/overview`"
-                class="text-secondary-color hover:underline"
+                class="text-secondary hover:underline"
               ><span class="italic">{{ splitName(targets?.[i]?.label ?? '').name }}</span>{{ splitName(targets?.[i]?.label ?? '').author ? ' ' + splitName(targets?.[i]?.label ?? '').author : '' }}</RouterLink>
             </template>
             <!-- fallback while loading or if match fails -->
@@ -44,7 +44,7 @@
               <button
                 v-for="cit in citationsByItemId.get(item.id) || []"
                 :key="cit.id"
-                class="text-secondary-color hover:underline mr-2"
+                class="text-secondary hover:underline mr-2"
                 @click.stop="emit('citation-selected', cit)"
               >{{ cit.display }}</button>
             </template>
@@ -69,7 +69,7 @@
               <button
                 v-for="cit in citationsByItemId.get(item.id) || []"
                 :key="cit.id"
-                class="text-secondary-color hover:underline mr-2"
+                class="text-secondary hover:underline mr-2"
                 @click.stop="emit('citation-selected', cit)"
               >{{ cit.display }}</button>
             </template>

@@ -90,7 +90,7 @@ function linkify(html) {
   if (!html) return ''
   return html.replace(
     /(?<!href=["'])(?<!">)(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">$1</a>'
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>'
   )
 }
 import { useDistributionStore } from './store/useDistributionStore.js'

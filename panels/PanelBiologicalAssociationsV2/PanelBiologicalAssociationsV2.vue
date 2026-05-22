@@ -149,7 +149,7 @@
                 class="text-sm leading-snug"
               >
                 <button
-                  class="text-left hover:underline cursor-pointer text-secondary-color"
+                  class="text-left hover:underline cursor-pointer text-secondary"
                   @click="activeCitation = citation"
                   v-html="citation.short"
                 />
@@ -287,7 +287,7 @@ function linkify(html) {
   if (!html) return ''
   return html.replace(
     /(?<!href=["'])(?<!">)(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">$1</a>'
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>'
   )
 }
 
@@ -341,7 +341,7 @@ async function fetchDepictions(associationIds) {
       for (const image of allImages) {
         const src = sourceByImageId.get(image.id)
         if (src?.label) {
-          image.source = { label: src.label.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">$1</a>') }
+          image.source = { label: src.label.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>') }
         }
       }
     } catch { /* source unavailable */ }

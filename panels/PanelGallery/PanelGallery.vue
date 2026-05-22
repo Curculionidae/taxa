@@ -1,0 +1,369 @@
+<template>
+  <VCard v-if="showCard">
+    <VCardHeader
+      v-if="subImages.length && !twImages.length"
+    >
+      No depictions for this taxon — showing a random sample from subordinate taxa
+    </VCardHeader>
+    <VCardHeader
+      v-if="inatImages.length"
+      class="flex items-center gap-3"
+    >
+      <img
+        :src="inatMark"
+        alt="iNaturalist"
+        class="h-8 w-auto shrink-0"
+      />
+      <span class="text-amber-600 dark:text-amber-400 grow">
+        No images found on TaxonWorks, fetched from iNaturalist instead
+      </span>
+    </VCardHeader>
+    <VCardContent>
+      <VSpinner v-if="isLoadingInat || isLoadingSub" />
+      <template v-else-if="currentImage">
+        <GalleryMainImage
+          :image="currentImage"
+          @open:viewer="isViewerOpen = true"
+        />
+        <div class="flex flex-row overflow-x-auto gap-1.5 pt-2 pb-2">
+          <div
+            v-for="(image, index) in activeImages"
+            :key="image.id"
+            class="w-24 h-20 flex-shrink-0 cursor-pointer rounded-md border overflow-hidden hover:opacity-80 transition"
+            :class="galleryIndex === index ? 'border-secondary' : 'border-base-muted'"
+            @click="galleryIndex = index"
+          >
+            <img
+              class="w-24 h-20 object-contain"
+              :src="image.thumb"
+              :alt="image.depictions?.map((d) => d.label).join(';')"
+            />
+          </div>
+        </div>
+        <GalleryViewer
+          v-if="isViewerOpen"
+          :index="galleryIndex"
+          :images="activeImages"
+          :next="galleryIndex < activeImages.length - 1"
+          :previous="galleryIndex > 0"
+          @select-index="galleryIndex = $event"
+          @next="galleryIndex++"
+          @previous="galleryIndex--"
+          @close="isViewerOpen = false"
+        />
+      </template>
+    </VCardContent>
+  </VCard>
+</template>
+
+<script setup>
+import { computed, watch, ref, onServerPrefetch, onMounted, onBeforeUnmount } from 'vue'
+import axios from 'axios'
+import { useImageStore } from '@/modules/otus/store/useImageStore'
+import { makeAPIRequest } from '@/utils/request'
+import GalleryMainImage from '@/components/Gallery/GalleryMainImage.vue'
+import GalleryViewer from './GalleryViewer.vue'
+import inatMark from '../PaneliNaturalist/inat-mark.svg'
+
+const INAT_MAX = 10
+const SUB_MAX_IMAGES = 10
+const SUB_PAGES = 4        // pages sampled in parallel for diversity
+const SUB_IMAGE_TIMEOUT_MS = 8000
+
+const props = defineProps({
+  otuId: {
+    type: [String, Number],
+    required: true
+  },
+  sort_order: {
+    type: Array,
+    default: () => []
+  },
+  taxon: {
+    type: Object,
+    default: undefined
+  },
+  otu: {
+    type: Object,
+    default: undefined
+  }
+})
+
+const store = useImageStore()
+const twImages = computed(() => store.images || [])
+
+const subImages = ref([])
+const isLoadingSub = ref(false)
+
+const inatImages = ref([])
+const isLoadingInat = ref(false)
+
+const activeImages = computed(() => {
+  if (twImages.value.length) return twImages.value
+  if (subImages.value.length) return subImages.value
+  return inatImages.value
+})
+
+const galleryIndex = ref(0)
+const isViewerOpen = ref(false)
+const currentImage = computed(() => activeImages.value[galleryIndex.value])
+
+watch(activeImages, () => { galleryIndex.value = 0 })
+
+const showCard = computed(() =>
+  activeImages.value.length > 0 || isLoadingInat.value || isLoadingSub.value
+)
+
+// ── TaxonWorks loading ────────────────────────────────────────────────────────
+
+onServerPrefetch(async () => {
+  await store.loadImages(props.otuId, { sortOrder: props.sort_order })
+})
+
+onMounted(() => {
+  if (!store.images) {
+    store.loadImages(props.otuId, { sortOrder: props.sort_order })
+  }
+})
+
+onBeforeUnmount(() => {
+  store.resetRequest()
+  store.$reset()
+})
+
+// When TaxonWorks finishes loading with no direct images, try subordinate taxa
+// first, then fall back to iNaturalist only if those are also empty.
+watch(
+  () => store.images,
+  async (images) => {
+    if (images !== null && images.length === 0) {
+      await fetchSubordinateFallback()
+      if (!subImages.value.length) {
+        fetchInatFallback()
+      }
+    }
+  },
+  { immediate: true }
+)
+
+// ── Subordinate taxa fallback ─────────────────────────────────────────────────
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), ms)
+    )
+  ])
+}
+
+async function fetchSubordinateFallback() {
+  if (!props.taxon?.id) return
+  isLoadingSub.value = true
+  try {
+    const imageParams = {
+      'taxon_name_id[]': [props.taxon.id],
+      per: SUB_MAX_IMAGES,
+      extend: ['depictions', 'attribution', 'source', 'citations']
+    }
+
+    const first = await withTimeout(
+      makeAPIRequest.get('/images', { params: imageParams }),
+      SUB_IMAGE_TIMEOUT_MS
+    )
+
+    const total = parseInt(first.headers['pagination-total'] || '0', 10)
+    const totalPages = Math.ceil(total / SUB_MAX_IMAGES)
+    let raw = first.data || []
+
+    if (totalPages > 1) {
+      // Sample SUB_PAGES evenly across the full range and fetch in parallel.
+      // Pages spread across insertion history ≈ spread across different curators/families.
+      const n = Math.min(SUB_PAGES, totalPages)
+      const pages = Array.from({ length: n - 1 }, (_, i) =>
+        Math.round(2 + (i * (totalPages - 2)) / Math.max(n - 2, 1))
+      ).filter((p, i, a) => a.indexOf(p) === i) // deduplicate page numbers
+
+      const extra = await Promise.allSettled(
+        pages.map(page =>
+          withTimeout(
+            makeAPIRequest.get('/images', { params: { ...imageParams, page } }),
+            SUB_IMAGE_TIMEOUT_MS
+          )
+        )
+      )
+      for (const result of extra) {
+        if (result.status === 'fulfilled') raw.push(...(result.value.data || []))
+      }
+
+      // Deduplicate by id, then shuffle
+      const seen = new Set()
+      raw = raw.filter(img => !seen.has(img.id) && seen.add(img.id))
+      for (let i = raw.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [raw[i], raw[j]] = [raw[j], raw[i]]
+      }
+    }
+
+    const { url, project_token } = __APP_ENV__
+    subImages.value = raw.map((img) => ({
+      id: img.id,
+      thumb: img.thumb,
+      medium: img.medium,
+      original: img.original_png
+        ? `${url}/${img.original_png.substring(8)}?project_token=${project_token}`
+        : img.original,
+      attribution: img.attribution || { label: '' },
+      source: img.source || { label: '' },
+      citations: img.citations || [],
+      depictions: img.depictions || []
+    }))
+  } catch {
+    // fail silently
+  } finally {
+    isLoadingSub.value = false
+  }
+}
+
+// ── iNaturalist fallback ──────────────────────────────────────────────────────
+
+/**
+ * Copied verbatim from PaneliNaturalist.vue.
+ * Uses props.taxon.expanded_name directly — avoids otu.object_label which
+ * may include authorship, breaking the exact-name match against iNat's t.name.
+ */
+function parseName(expandedName) {
+  const subgenusMatch = expandedName.match(/^(\S+)\s+\((\S+)\)(?:\s+(\S+))?$/)
+  if (subgenusMatch) {
+    return {
+      genus: subgenusMatch[1],
+      subgenus: subgenusMatch[2],
+      epithet: subgenusMatch[3] || null
+    }
+  }
+  const parts = expandedName.trim().split(/\s+/)
+  return {
+    genus: parts[0],
+    subgenus: null,
+    epithet: parts[1] || null
+  }
+}
+
+async function resolveInatTaxonId() {
+  if (!props.taxon?.expanded_name) return null
+
+  const { genus, subgenus, epithet } = parseName(props.taxon.expanded_name)
+
+  if (subgenus && !epithet) {
+    const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
+      params: { q: subgenus, rank: 'subgenus', per_page: 10, all_names: true }
+    })
+    const match = data.results.find((t) => {
+      if (t.name.toLowerCase() !== subgenus.toLowerCase()) return false
+      if (t.ancestors?.length) {
+        return t.ancestors.some(
+          (a) => a.rank === 'genus' && a.name.toLowerCase() === genus.toLowerCase()
+        )
+      }
+      return true
+    })
+    return match ? match.id : null
+  }
+
+  const plainName = subgenus && epithet
+    ? `${genus} ${epithet}`
+    : props.taxon.expanded_name
+
+  const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
+    params: { q: plainName, rank: props.taxon.rank, per_page: 10 }
+  })
+  const match = data.results.find(
+    (t) => t.name.toLowerCase() === plainName.toLowerCase()
+  )
+  return match ? match.id : null
+}
+
+function makeTaxonPhotoImage(taxonPhoto) {
+  const photo = taxonPhoto.photo
+  const photoUrl = `https://www.inaturalist.org/photos/${photo.id}`
+  const taxonName = taxonPhoto.taxon?.name || ''
+  return {
+    id: photo.id,
+    thumb: photo.medium_url || photo.url.replace('square', 'medium'),
+    medium: photo.medium_url || photo.url.replace('square', 'medium'),
+    original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
+    attribution: { label: photo.attribution || '' },
+    source: {
+      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">${photoUrl}</a>`
+    },
+    depictions: taxonName ? [{ label: taxonName }] : []
+  }
+}
+
+function makeObservationImage(obs, photo) {
+  const obsUrl = `https://www.inaturalist.org/observations/${obs.id}`
+  return {
+    id: photo.id,
+    thumb: photo.url.replace('square', 'medium'),
+    medium: photo.url.replace('square', 'medium'),
+    original: photo.url.replace('square', 'original'),
+    attribution: { label: photo.attribution || '' },
+    source: {
+      label: `<a href="${obsUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary-color hover:underline">${obsUrl}</a>`
+    },
+    depictions: obs.taxon?.name ? [{ label: obs.taxon.name }] : []
+  }
+}
+
+async function fetchInatFallback() {
+  if (!props.taxon?.expanded_name) return
+
+  isLoadingInat.value = true
+  try {
+    const taxonId = await resolveInatTaxonId()
+    if (!taxonId) return
+
+    // Curated taxon photos first
+    const { data: taxonData } = await axios.get(
+      `https://api.inaturalist.org/v1/taxa/${taxonId}`
+    )
+    const curatedImages = (taxonData.results?.[0]?.taxon_photos || [])
+      .slice(0, INAT_MAX)
+      .map(makeTaxonPhotoImage)
+
+    const remaining = INAT_MAX - curatedImages.length
+    let observationImages = []
+
+    if (remaining > 0) {
+      const { data: obsData } = await axios.get(
+        'https://api.inaturalist.org/v1/observations',
+        {
+          params: {
+            taxon_id: taxonId,
+            quality_grade: 'research',
+            per_page: remaining
+          }
+        }
+      )
+      observationImages = obsData.results
+        .filter((obs) => obs.observation_photos?.[0])
+        .map((obs) => makeObservationImage(obs, obs.observation_photos[0].photo))
+    }
+
+    inatImages.value = [...curatedImages, ...observationImages]
+  } catch {
+    // fail silently
+  } finally {
+    isLoadingInat.value = false
+  }
+}
+</script>
+
+<style scoped>
+:deep(.w-24.h-20.cursor-pointer) {
+  transition: opacity 150ms;
+}
+:deep(.w-24.h-20.cursor-pointer:hover) {
+  opacity: 0.8;
+}
+</style>

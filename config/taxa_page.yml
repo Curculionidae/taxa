@@ -1,7 +1,7 @@
 taxa_page:
   overview:
     panels:
-      - - - panel:gallery
+      - - - panel:gallery-v2
           - panel:nomenclature
           - panel:nomenclature-references
           - panel:type

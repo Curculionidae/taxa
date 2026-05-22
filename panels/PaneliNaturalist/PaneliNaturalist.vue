@@ -13,12 +13,17 @@
 
     <!-- Upper section: curated taxon photos from /taxa/:id -->
     <template v-if="taxonPhotoImages.length">
-      <VCardHeader>
+      <VCardHeader class="flex items-center gap-3">
+        <img
+          :src="inatMark"
+          alt="iNaturalist"
+          class="h-8 w-auto shrink-0"
+        />
         <a
           :href="`https://www.inaturalist.org/taxa/${taxonId}`"
           target="_blank"
           rel="noopener noreferrer"
-          class="hover:underline"
+          class="hover:underline grow"
         >
           Curated taxon photos
         </a>
@@ -46,17 +51,24 @@
     </template>
 
     <!-- Lower section: paginated research-grade observations -->
-    <VCardHeader>
+    <VCardHeader class="flex items-center gap-3">
+      <img
+        :src="inatMark"
+        alt="iNaturalist"
+        class="h-8 w-auto shrink-0"
+      />
       <a
         v-if="taxonId"
         :href="`https://www.inaturalist.org/observations?taxon_id=${taxonId}&quality_grade=research`"
         target="_blank"
         rel="noopener noreferrer"
-        class="hover:underline"
+        class="hover:underline grow"
       >
         Research-grade observations
       </a>
-      <template v-else>Research-grade observations</template>
+      <template v-else>
+        <span class="grow">Research-grade observations</span>
+      </template>
     </VCardHeader>
     <VCardContent class="min-h-[6rem]">
       <div
@@ -162,6 +174,7 @@
 
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
+import inatMark from './inat-mark.svg'
 
 const props = defineProps({
   taxon: {

@@ -310,7 +310,7 @@
         </template>
 
         <!-- ── Other ── -->
-        <template v-if="hasAny('dynamicProperties','informationWithheld','dataGeneralizations','associatedTaxa','associatedMedia','associatedReferences','associatedSequences')">
+        <template v-if="hasAny('dynamicProperties','informationWithheld','dataGeneralizations','associatedTaxa','associatedMedia','associatedReferences','associatedSequences') || mediaImages.length">
           <div class="col-span-2 mt-3 mb-1">
             <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Other</h4>
           </div>
@@ -318,17 +318,29 @@
             <dt class="opacity-50 whitespace-nowrap">Associated taxa</dt>
             <dd>{{ dwc.associatedTaxa }}</dd>
           </template>
-          <template v-if="dwc.associatedMedia">
+          <template v-if="mediaImages.length || dwc.associatedMedia">
             <dt class="opacity-50 whitespace-nowrap">Associated media</dt>
-            <dd class="flex flex-col gap-0.5">
-              <a
-                v-for="url in dwc.associatedMedia.split(/[\s|,]+/).filter(Boolean)"
-                :key="url"
-                :href="url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-secondary hover:underline truncate"
-              >{{ url }}</a>
+            <dd>
+              <div v-if="mediaImages.length" class="flex flex-wrap gap-1.5 mt-0.5">
+                <a
+                  v-for="img in mediaImages"
+                  :key="img.id"
+                  :href="img.original"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block w-24 h-20 rounded border border-base-muted overflow-hidden bg-base-foreground shrink-0"
+                ><img :src="img.thumb" class="w-full h-full object-cover" /></a>
+              </div>
+              <div v-else class="flex flex-col gap-0.5">
+                <a
+                  v-for="url in dwc.associatedMedia.split(/[\s|,]+/).filter(Boolean)"
+                  :key="url"
+                  :href="url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-secondary hover:underline truncate"
+                >{{ url }}</a>
+              </div>
             </dd>
           </template>
           <template v-if="dwc.associatedReferences">
@@ -417,6 +429,7 @@ const dwc = ref(null)
 const itemType = ref(null)
 const otuId = ref(null)
 const institutionFullName = ref(null)
+const mediaImages = ref([])
 
 const ENDPOINTS = {
   [COLLECTION_OBJECT]: (id) => `/collection_objects/${id}/dwc`,
@@ -506,6 +519,19 @@ const typeStatusHtml = computed(() => {
   return escHtml(prefix) + (italic ? `<em>${escHtml(italic)}</em>` : '') + (plain ? ` ${escHtml(plain)}` : '')
 })
 
+async function loadMediaImages(associatedMedia) {
+  const links = associatedMedia.split('|').map(l => l.trim()).filter(Boolean)
+  const results = await Promise.all(
+    links.map(link => {
+      const m = link.match(/\/api\/v1(.+)/)
+      if (!m) return Promise.resolve(null)
+      return makeAPIRequest.get(m[1]).then(({ data }) => data).catch(() => null)
+    })
+  )
+  mediaImages.value = results.filter(Boolean)
+}
+
+
 function show({ id, type }) {
   isModalVisible.value = true
   isLoading.value = true
@@ -513,6 +539,7 @@ function show({ id, type }) {
   institutionFullName.value = null
   itemType.value = type
   otuId.value = null
+  mediaImages.value = []
 
   makeAPIRequest(ENDPOINTS[type](id))
     .then(({ data }) => {
@@ -523,6 +550,7 @@ function show({ id, type }) {
           institutionFullName.value = name
         })
       }
+      if (data.associatedMedia) loadMediaImages(data.associatedMedia)
     })
     .catch(() => {})
     .finally(() => {

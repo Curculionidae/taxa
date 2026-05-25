@@ -66,8 +66,6 @@ import GalleryViewer from './GalleryViewer.vue'
 import inatMark from '../PaneliNaturalist/inat-mark.svg'
 
 const INAT_MAX = 10
-const SUB_MAX_IMAGES = 10
-const SUB_PAGES = 4        // pages sampled in parallel for diversity
 const SUB_IMAGE_TIMEOUT_MS = 8000
 
 const props = defineProps({
@@ -86,6 +84,10 @@ const props = defineProps({
   otu: {
     type: Object,
     default: undefined
+  },
+  subMaxImages: {
+    type: Number,
+    default: 10
   }
 })
 
@@ -177,51 +179,44 @@ async function fetchSubordinateFallback() {
   if (!props.taxon?.id) return
   isLoadingSub.value = true
   try {
-    const imageParams = {
+    const perPage = Math.ceil(props.subMaxImages / 2)
+    const params = {
       'taxon_name_id[]': [props.taxon.id],
-      per: SUB_MAX_IMAGES,
+      per: perPage,
       extend: ['depictions', 'attribution', 'source', 'citations']
     }
 
-    const first = await withTimeout(
-      makeAPIRequest.get('/images', { params: imageParams }),
+    // Lightweight probe (per=1) to get total image count without fetching data.
+    const probe = await withTimeout(
+      makeAPIRequest.get('/images', {
+        params: { 'taxon_name_id[]': [props.taxon.id], per: 1 }
+      }),
       SUB_IMAGE_TIMEOUT_MS
     )
+    const total = parseInt(probe.headers['pagination-total'] || '0', 10)
+    if (!total) return
 
-    const total = parseInt(first.headers['pagination-total'] || '0', 10)
-    const totalPages = Math.ceil(total / SUB_MAX_IMAGES)
-    let raw = first.data || []
+    const totalPages = Math.ceil(total / perPage)
 
+    // Pick 2 distinct random pages (or 1 if only 1 page exists).
+    const pageA = Math.floor(Math.random() * totalPages) + 1
+    let pageB = pageA
     if (totalPages > 1) {
-      // Sample SUB_PAGES evenly across the full range and fetch in parallel.
-      // Pages spread across insertion history ≈ spread across different curators/families.
-      const n = Math.min(SUB_PAGES, totalPages)
-      const pages = Array.from({ length: n - 1 }, (_, i) =>
-        Math.round(2 + (i * (totalPages - 2)) / Math.max(n - 2, 1))
-      ).filter((p, i, a) => a.indexOf(p) === i) // deduplicate page numbers
-
-      const extra = await Promise.allSettled(
-        pages.map(page =>
-          withTimeout(
-            makeAPIRequest.get('/images', { params: { ...imageParams, page } }),
-            SUB_IMAGE_TIMEOUT_MS
-          )
-        )
-      )
-      for (const result of extra) {
-        if (result.status === 'fulfilled') raw.push(...(result.value.data || []))
-      }
-
-      // Deduplicate by id, then shuffle
-      const seen = new Set()
-      raw = raw.filter(img => !seen.has(img.id) && seen.add(img.id))
-      for (let i = raw.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [raw[i], raw[j]] = [raw[j], raw[i]]
-      }
+      while (pageB === pageA) pageB = Math.floor(Math.random() * totalPages) + 1
     }
 
-    subImages.value = raw.map(normalizeImage)
+    const pages = pageA === pageB ? [pageA] : [pageA, pageB]
+    const results = await Promise.all(
+      pages.map(page =>
+        withTimeout(
+          makeAPIRequest.get('/images', { params: { ...params, page } }),
+          SUB_IMAGE_TIMEOUT_MS
+        )
+      )
+    )
+
+    const raw = results.flatMap(r => r.data || [])
+    subImages.value = raw.slice(0, props.subMaxImages).map(normalizeImage)
   } catch {
     // fail silently
   } finally {

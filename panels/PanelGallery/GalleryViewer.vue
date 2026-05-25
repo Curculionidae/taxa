@@ -1,5 +1,9 @@
 <template>
   <div
+    ref="viewerRef"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Image viewer"
     class="fixed z-[10000] inset-0 flex flex-col backdrop-blur-md bg-base-foreground overflow-hidden"
   >
     <!-- Toolbar -->
@@ -17,8 +21,11 @@
 
     <!-- Image area: takes all remaining vertical space -->
     <div class="flex-1 min-h-0 relative flex items-center justify-center">
+      <VSpinner v-if="isLoading" class="absolute" />
       <img
-        class="max-w-full max-h-full object-contain cursor-zoom-out"
+        ref="imageElement"
+        class="max-w-full max-h-full object-contain cursor-zoom-out transition-opacity duration-200"
+        :class="isLoading ? 'opacity-20' : 'opacity-100'"
         :src="image.original"
         :alt="depictionTitle"
         @click="emit('close')"
@@ -61,7 +68,8 @@
         <div
           v-if="imageDisplay.otuDesc"
           class="opacity-70"
-        >{{ imageDisplay.otuDesc }}</div>
+          v-html="italicizeNames(imageDisplay.otuDesc)"
+        />
       </div>
 
       <!-- CO/FO entries: badge + ⓘ, type status, figure label, caption -->
@@ -73,6 +81,7 @@
         <div class="flex items-center justify-center gap-1">
           <span class="text-xs opacity-40 uppercase tracking-wide">{{ co.objectType === 'CollectionObject' ? 'Collection object' : 'Field occurrence' }}</span>
           <button
+            v-if="co.dwcOk"
             type="button"
             class="shrink-0 opacity-40 hover:opacity-100 cursor-pointer leading-none text-xs"
             title="Show details"
@@ -82,7 +91,8 @@
         <div
           v-if="co.typeStatus"
           class="font-semibold"
-        >{{ co.typeStatus }}</div>
+          v-html="italicizeNames(co.typeStatus)"
+        />
         <div
           v-if="co.figureLabel"
           class="opacity-70 text-xs"
@@ -90,7 +100,8 @@
         <div
           v-if="co.caption"
           class="opacity-70 text-xs"
-        >{{ co.caption }}</div>
+          v-html="italicizeNames(co.caption)"
+        />
       </div>
 
       <!-- Attribution + citations (image-level) -->
@@ -171,6 +182,27 @@ const emit = defineEmits(['close', 'next', 'previous', 'selectIndex'])
 
 const dwcTableRef = ref(null)
 const activeCitation = ref(null)
+const imageElement = ref(null)
+const viewerRef = ref(null)
+const isLoading = ref(true)
+
+let previouslyFocusedElement = null
+
+function trapFocus(e) {
+  const focusable = viewerRef.value?.querySelectorAll(
+    'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )
+  if (!focusable?.length) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
 
 // DWC cache keyed by object id: { typeStatus, scientificName }
 const dwcCache = reactive({})
@@ -196,6 +228,31 @@ function inferDepictionType(dep) {
   return null
 }
 
+async function resolveValidOtu(otuId) {
+  if (!otuId || otuId in otuValidCache) return
+  otuValidCache[otuId] = otuId  // optimistic: assume valid while loading
+  try {
+    const { data: otu } = await makeAPIRequest.get(`/otus/${otuId}`)
+    const taxonNameId = otu.taxon_name_id
+    if (!taxonNameId) return
+    const { data: tn } = await makeAPIRequest.get(`/taxon_names/${taxonNameId}`)
+    const validId = tn.cached_valid_taxon_name_id
+    if (!validId || validId === taxonNameId) return
+    const { data: otus } = await makeAPIRequest.get('/otus', {
+      params: { 'taxon_name_id[]': validId, per: 1 }
+    })
+    if (otus[0]?.id) otuValidCache[otuId] = otus[0].id
+  } catch { /* keep optimistic */ }
+}
+
+function resolveValidOtuForImage(img) {
+  for (const dep of (img?.depictions || [])) {
+    if (inferDepictionType(dep) === 'Otu' && dep.depiction_object_id) {
+      resolveValidOtu(dep.depiction_object_id)
+    }
+  }
+}
+
 function fetchDwcForImage(img) {
   for (const dep of (img?.depictions || [])) {
     const type = inferDepictionType(dep)
@@ -207,23 +264,41 @@ function fetchDwcForImage(img) {
       .then(({ data }) => {
         dwcCache[id] = {
           typeStatus:     data.typeStatus     || '',
-          scientificName: data.scientificName || ''
+          scientificName: data.scientificName || '',
+          otuId:          data.otu_id         || null
         }
+        if (data.otu_id) resolveValidOtu(data.otu_id)
       })
-      .catch(() => { dwcCache[id] = { typeStatus: '', scientificName: '' } })
+      .catch(() => { dwcCache[id] = { typeStatus: '', scientificName: '', otuId: null, error: true } })
   }
 }
 
-// Fetch DWC for current image and prefetch adjacent ones.
+// Fetch DWC and resolve OTU validity for current image and prefetch adjacent ones.
 watch(
   () => props.index,
   (idx) => {
+    isLoading.value = true
     fetchDwcForImage(props.images[idx])
     fetchDwcForImage(props.images[idx + 1])
     fetchDwcForImage(props.images[idx - 1])
+    resolveValidOtuForImage(props.images[idx])
+    resolveValidOtuForImage(props.images[idx + 1])
+    resolveValidOtuForImage(props.images[idx - 1])
   },
   { immediate: true }
 )
+
+// Wraps genus+epithet sequences in <em> within plain-text strings (type status, captions).
+// Handles optional [sic] or similar bracketed notes between genus and epithet.
+// Minimum 3 chars per lowercase word to skip prepositions (of, at, in).
+function italicizeNames(text) {
+  if (!text) return ''
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return escaped.replace(
+    /\b([A-Z][a-z]+(?:\s+\([A-Z][a-z]+\))?)(\s+(?:\[[^\]]*\]\s+)?[a-z][a-z]{2,}(?:\s+[a-z][a-z]{2,})*)/g,
+    '<em>$1$2</em>'
+  )
+}
 
 // Split "Genus (Subgenus) species (Author, year)" into italic name and plain authorship.
 // Rules:
@@ -252,7 +327,9 @@ function otuDescription(dep) {
   const label = dep.label || ''
   const colonIdx = label.indexOf(': ')
   if (colonIdx < 0) return ''
-  return label.substring(colonIdx + 2).replace(/\s*\.\s*\(\w+\)\s*\.\s*$/, '').trim()
+  const raw = label.substring(colonIdx + 2).replace(/\s*\.\s*\(\w+\)\s*\.\s*$/, '').trim()
+  // Suppress if nothing remains after stripping the type marker (e.g. ": (Otu).")
+  return /^\s*\(\w+\)\s*\.?\s*$/.test(raw) ? '' : raw
 }
 
 // Unified display object for the current image.
@@ -274,6 +351,7 @@ const imageDisplay = computed(() => {
   // Primary name: from OTU label (before ': ') — only when non-empty after parsing
   let name = null
   let otuId = null
+  let hasOtu = false
 
   if (otuDep) {
     const label = otuDep.label || ''
@@ -281,13 +359,20 @@ const imageDisplay = computed(() => {
     const namePart = colonIdx > 0 ? label.substring(0, colonIdx) : label
     const parsed = splitName(namePart)
     if (parsed.italic || parsed.plain) name = parsed
-    otuId = otuDep.depiction_object_id || null
+    const rawOtuId = otuDep.depiction_object_id || null
+    otuId = rawOtuId ? (otuValidCache[rawOtuId] ?? rawOtuId) : null
+    hasOtu = true
   }
 
-  // Fallback: DWC scientificName from first CO/FO when OTU label is empty
+  // Fallback: DWC scientificName + otu_id from first CO/FO when no OTU depiction
   if (!name && coDeps.length) {
     const cached = dwcCache[coDeps[0].depiction_object_id]
     if (cached?.scientificName) name = splitName(cached.scientificName)
+    if (cached?.otuId) {
+      const rawOtuId = cached.otuId
+      otuId = otuValidCache[rawOtuId] ?? rawOtuId
+      hasOtu = true
+    }
   }
 
   // iNat synthetic fallback: null-type dep whose label is just the taxon name
@@ -296,22 +381,29 @@ const imageDisplay = computed(() => {
     if (synDep?.label) name = splitName(synDep.label)
   }
 
-  // CO/FO entries — use inferred type for badge label
+  // CO/FO entries — use inferred type for badge label.
+  // dwcLoading: fetch still in flight; dwcOk: fetch succeeded (no 404).
+  // Entries where DWC failed and there is no own content are filtered out to avoid
+  // showing a broken ⓘ button with nothing beneath it.
   const coEntries = coDeps.map((dep) => {
     const cached = dwcCache[dep.depiction_object_id]
+    const dwcLoading = cached === null || cached === undefined
+    const dwcOk      = !dwcLoading && !cached?.error
     return {
       objectId:    dep.depiction_object_id,
       objectType:  inferDepictionType(dep),
       typeStatus:  cached?.typeStatus  || '',
       figureLabel: dep.figure_label    || '',
-      caption:     dep.caption         || ''
+      caption:     dep.caption         || '',
+      dwcOk,
+      dwcLoading
     }
-  })
+  }).filter(co => co.dwcLoading || co.dwcOk || co.figureLabel || co.caption)
 
   return {
     name,
     otuId,
-    hasOtu:      !!otuDep,
+    hasOtu,
     otuDesc:     otuDescription(otuDep),
     otuFigLabel: otuDep?.figure_label || '',
     coEntries
@@ -334,12 +426,24 @@ function handleKey(e) {
   if (e.key === 'ArrowRight' && props.next) emit('next')
 }
 
+function handleKeyDown(e) {
+  if (e.key === 'Tab') trapFocus(e)
+}
+
 onMounted(() => {
+  previouslyFocusedElement = document.activeElement
   document.addEventListener('keyup', handleKey)
+  document.addEventListener('keydown', handleKeyDown)
   document.body.classList.add('overflow-hidden')
+  // If the first image is already cached the load event fires before this runs
+  if (imageElement.value.complete) isLoading.value = false
+  imageElement.value.addEventListener('load',  () => { isLoading.value = false })
+  imageElement.value.addEventListener('error', () => { isLoading.value = false })
 })
 onUnmounted(() => {
   document.removeEventListener('keyup', handleKey)
+  document.removeEventListener('keydown', handleKeyDown)
   document.body.classList.remove('overflow-hidden')
+  previouslyFocusedElement?.focus()
 })
 </script>

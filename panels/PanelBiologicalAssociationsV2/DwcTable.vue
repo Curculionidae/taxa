@@ -1,3 +1,5 @@
+<!-- SYNC: This file is intentionally duplicated in PanelMapV2/components/DwcTable.vue.
+     Both copies must be kept identical. If you change one, change the other. -->
 <template>
   <VModal
     v-if="isModalVisible"
@@ -57,21 +59,32 @@
         </template>
 
         <!-- ── Identification ── -->
-        <template v-if="hasAny('scientificName','typeStatus','identifiedBy','dateIdentified','identificationQualifier','verbatimIdentification','identificationRemarks')">
+        <template v-if="hasAny('scientificName','typeStatus','identifiedBy','dateIdentified','identificationQualifier','verbatimIdentification','identificationRemarks','previousIdentifications')">
           <div class="col-span-2 mt-3 mb-1">
             <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Identification</h4>
           </div>
           <template v-if="dwc.scientificName">
             <dt class="opacity-50 whitespace-nowrap">Scientific name</dt>
-            <dd class="italic">{{ dwc.scientificName }}</dd>
+            <dd>
+              <RouterLink
+                v-if="otuId"
+                :to="{ name: 'otus-id', params: { id: otuId } }"
+                class="text-secondary hover:underline"
+                @click="isModalVisible = false"
+              ><em>{{ scientificNameParts.italic }}</em><span v-html="scientificNameSuffix" /></RouterLink>
+              <template v-else><em>{{ scientificNameParts.italic }}</em><span v-html="scientificNameSuffix" /></template>
+            </dd>
           </template>
           <template v-if="dwc.typeStatus">
             <dt class="opacity-50 whitespace-nowrap">Type status</dt>
-            <dd>{{ dwc.typeStatus }}</dd>
+            <dd v-html="typeStatusHtml" />
           </template>
           <template v-if="dwc.identifiedBy">
             <dt class="opacity-50 whitespace-nowrap">Identified by</dt>
-            <dd>{{ dwc.identifiedBy }}</dd>
+            <dd>
+              <a v-if="dwc.identifiedByID?.startsWith('http')" :href="dwc.identifiedByID" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">{{ dwc.identifiedBy }}</a>
+              <template v-else>{{ dwc.identifiedBy }}</template>
+            </dd>
           </template>
           <template v-if="dwc.dateIdentified">
             <dt class="opacity-50 whitespace-nowrap">Date identified</dt>
@@ -89,16 +102,31 @@
             <dt class="opacity-50 whitespace-nowrap">ID remarks</dt>
             <dd>{{ dwc.identificationRemarks }}</dd>
           </template>
+          <template v-if="dwc.previousIdentifications">
+            <dt class="opacity-50 whitespace-nowrap">Previous IDs</dt>
+            <dd>{{ dwc.previousIdentifications }}</dd>
+          </template>
+        </template>
+
+        <!-- ── Label ── -->
+        <template v-if="dwc.verbatimLabel">
+          <div class="col-span-2 mt-3 mb-1">
+            <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Verbatim label</h4>
+          </div>
+          <dd class="col-span-2 whitespace-pre-line">{{ dwc.verbatimLabel }}</dd>
         </template>
 
         <!-- ── Collection event ── -->
-        <template v-if="hasAny('recordedBy','eventDate','year','verbatimEventDate','fieldNumber','samplingProtocol','samplingEffort','habitat','fieldNotes','eventRemarks')">
+        <template v-if="hasAny('recordedBy','eventDate','year','verbatimEventDate','eventTime','fieldNumber','samplingProtocol','samplingEffort','habitat','fieldNotes','eventRemarks')">
           <div class="col-span-2 mt-3 mb-1">
             <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Collection event</h4>
           </div>
           <template v-if="dwc.recordedBy">
             <dt class="opacity-50 whitespace-nowrap">Collected by</dt>
-            <dd>{{ dwc.recordedBy }}</dd>
+            <dd>
+              <a v-if="dwc.recordedByID?.startsWith('http')" :href="dwc.recordedByID" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">{{ dwc.recordedBy }}</a>
+              <template v-else>{{ dwc.recordedBy }}</template>
+            </dd>
           </template>
           <template v-if="dwc.eventDate">
             <dt class="opacity-50 whitespace-nowrap">Date</dt>
@@ -111,6 +139,10 @@
           <template v-if="dwc.verbatimEventDate && dwc.verbatimEventDate !== dwc.eventDate">
             <dt class="opacity-50 whitespace-nowrap">Verbatim date</dt>
             <dd>{{ dwc.verbatimEventDate }}</dd>
+          </template>
+          <template v-if="dwc.eventTime">
+            <dt class="opacity-50 whitespace-nowrap">Time</dt>
+            <dd>{{ dwc.eventTime }}</dd>
           </template>
           <template v-if="dwc.fieldNumber">
             <dt class="opacity-50 whitespace-nowrap">Field no.</dt>
@@ -217,7 +249,7 @@
         </template>
 
         <!-- ── Coordinates ── -->
-        <template v-if="hasAny('decimalLatitude','verbatimCoordinates','georeferencedBy','georeferenceProtocol','georeferenceRemarks')">
+        <template v-if="hasAny('decimalLatitude','verbatimCoordinates')">
           <div class="col-span-2 mt-3 mb-1">
             <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Coordinates</h4>
           </div>
@@ -234,20 +266,8 @@
             <dd>{{ dwc.geodeticDatum }}</dd>
           </template>
           <template v-if="dwc.verbatimCoordinates">
-            <dt class="opacity-50 whitespace-nowrap">Verbatim coords.</dt>
+            <dt class="opacity-50 whitespace-nowrap">Verbatim</dt>
             <dd>{{ dwc.verbatimCoordinates }}</dd>
-          </template>
-          <template v-if="dwc.georeferencedBy">
-            <dt class="opacity-50 whitespace-nowrap">Georeferenced by</dt>
-            <dd>{{ dwc.georeferencedBy }}</dd>
-          </template>
-          <template v-if="dwc.georeferenceProtocol">
-            <dt class="opacity-50 whitespace-nowrap">Protocol</dt>
-            <dd>{{ dwc.georeferenceProtocol }}</dd>
-          </template>
-          <template v-if="dwc.georeferenceRemarks">
-            <dt class="opacity-50 whitespace-nowrap">Georeference remarks</dt>
-            <dd>{{ dwc.georeferenceRemarks }}</dd>
           </template>
           <template v-if="dwc.decimalLatitude && dwc.decimalLongitude">
             <dt class="opacity-50 whitespace-nowrap">Map</dt>
@@ -262,6 +282,33 @@
           </template>
         </template>
 
+        <!-- ── Georeference ── -->
+        <template v-if="hasAny('georeferencedBy','georeferenceProtocol','georeferenceSources','georeferenceRemarks')">
+          <div class="col-span-2 mt-3 mb-1">
+            <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Georeference</h4>
+          </div>
+          <template v-if="dwc.georeferencedBy">
+            <dt class="opacity-50 whitespace-nowrap">By</dt>
+            <dd>{{ dwc.georeferencedBy }}</dd>
+          </template>
+          <template v-if="dwc.georeferencedDate">
+            <dt class="opacity-50 whitespace-nowrap">Date</dt>
+            <dd>{{ dwc.georeferencedDate }}</dd>
+          </template>
+          <template v-if="dwc.georeferenceProtocol">
+            <dt class="opacity-50 whitespace-nowrap">Protocol</dt>
+            <dd>{{ dwc.georeferenceProtocol }}</dd>
+          </template>
+          <template v-if="dwc.georeferenceSources">
+            <dt class="opacity-50 whitespace-nowrap">Source</dt>
+            <dd>{{ dwc.georeferenceSources }}</dd>
+          </template>
+          <template v-if="dwc.georeferenceRemarks">
+            <dt class="opacity-50 whitespace-nowrap">Remarks</dt>
+            <dd>{{ dwc.georeferenceRemarks }}</dd>
+          </template>
+        </template>
+
         <!-- ── Other ── -->
         <template v-if="hasAny('dynamicProperties','informationWithheld','dataGeneralizations','associatedTaxa','associatedMedia','associatedReferences','associatedSequences')">
           <div class="col-span-2 mt-3 mb-1">
@@ -273,7 +320,16 @@
           </template>
           <template v-if="dwc.associatedMedia">
             <dt class="opacity-50 whitespace-nowrap">Associated media</dt>
-            <dd>{{ dwc.associatedMedia }}</dd>
+            <dd class="flex flex-col gap-0.5">
+              <a
+                v-for="url in dwc.associatedMedia.split(/[\s|,]+/).filter(Boolean)"
+                :key="url"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-secondary hover:underline truncate"
+              >{{ url }}</a>
+            </dd>
           </template>
           <template v-if="dwc.associatedReferences">
             <dt class="opacity-50 whitespace-nowrap">Associated refs.</dt>
@@ -346,12 +402,6 @@
         class="opacity-50"
       >No details available.</p>
 
-      <RouterLink
-        v-if="otuId"
-        :to="{ name: 'otus-id', params: { id: otuId } }"
-        class="text-secondary hover:underline block px-4 pb-4 text-sm"
-        @click="isModalVisible = false"
-      >→ View taxon page</RouterLink>
     </div>
   </VModal>
 </template>
@@ -420,17 +470,54 @@ function hasAny(...keys) {
   return dwc.value && keys.some((k) => dwc.value[k])
 }
 
-function show({ id, type, otuId: oid = null }) {
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function splitScientificName(name) {
+  const words = (name || '').trim().split(/\s+/)
+  let i = 1
+  while (i < words.length) {
+    const w = words[i]
+    if (/^[a-z]/.test(w)) { i++; continue }
+    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) { i++; continue }
+    if (/^\[/.test(w)) { i++; continue }
+    break
+  }
+  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
+}
+
+const scientificNameParts = computed(() =>
+  dwc.value?.scientificName ? splitScientificName(dwc.value.scientificName) : { italic: '', plain: '' }
+)
+
+const scientificNameSuffix = computed(() => {
+  const plain = scientificNameParts.value.plain
+  return plain ? ' ' + escHtml(plain) : ''
+})
+
+const typeStatusHtml = computed(() => {
+  const s = dwc.value?.typeStatus
+  if (!s) return ''
+  const idx = s.indexOf(' of ')
+  if (idx === -1) return escHtml(s)
+  const prefix = s.slice(0, idx + 4)
+  const { italic, plain } = splitScientificName(s.slice(idx + 4))
+  return escHtml(prefix) + (italic ? `<em>${escHtml(italic)}</em>` : '') + (plain ? ` ${escHtml(plain)}` : '')
+})
+
+function show({ id, type }) {
   isModalVisible.value = true
   isLoading.value = true
   dwc.value = null
   institutionFullName.value = null
   itemType.value = type
-  otuId.value = oid
+  otuId.value = null
 
   makeAPIRequest(ENDPOINTS[type](id))
     .then(({ data }) => {
       dwc.value = data
+      otuId.value = data.otu_id ?? null
       if (data.institutionCode) {
         resolveInstitutionName(data.institutionCode, data.institutionID).then((name) => {
           institutionFullName.value = name

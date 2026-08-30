@@ -2,24 +2,21 @@
   <header class="border-b border-base-muted pb-4 mb-6">
     <h1 class="text-2xl font-semibold text-base-content">{{ meta.title }}</h1>
 
-    <p v-if="meta.taxonomicScope" class="mt-1 text-base-content">
-      <span class="text-base-soft">Scope: </span>
-      <RouterLink
+    <p v-if="meta.taxonomicScope" class="mt-1 text-base-content [&_i]:italic">
+      <span class="text-base-soft">Scope: </span><RouterLink
         v-if="meta.otuId"
         :to="{ name: 'otus-id', params: { id: meta.otuId } }"
         target="_blank"
         rel="noopener"
-        class="italic text-base-content hover:underline hover:text-secondary"
-      >{{ meta.taxonomicScope }}</RouterLink>
-      <span v-else class="italic">{{ meta.taxonomicScope }}</span>
+        class="text-secondary hover:underline"
+      ><span v-if="meta.taxonomicScopeHtml" v-html="meta.taxonomicScopeHtml" /><template v-else>{{ meta.taxonomicScope }}</template></RouterLink><span
+        v-else-if="meta.taxonomicScopeHtml"
+        v-html="meta.taxonomicScopeHtml"
+      /><template v-else>{{ meta.taxonomicScope }}</template>
     </p>
 
     <p v-if="primaryCitation" class="mt-2 text-sm text-base-content [&_i]:italic">
-      <span class="text-base-soft">Primary source: </span><span v-html="sanitizeAndLinkifyHtml(primaryCitation)" /><button
-        type="button"
-        class="ml-1 text-xs text-base-soft hover:underline"
-        @click="showCitation = true"
-      >(details)</button>
+      <span class="text-base-soft">Primary source: </span><span v-html="sanitizeAndLinkifyHtml(primaryCitation)" />
     </p>
 
     <p v-if="meta.description" class="mt-2 text-base-content">{{ meta.description }}</p>
@@ -39,29 +36,24 @@
       <button
         v-if="completeness"
         type="button"
-        class="border rounded px-2 py-0.5"
+        class="border rounded px-2 py-0.5 cursor-pointer transition-colors"
         :class="completeness.isComplete
-          ? 'border-base-muted text-base-soft'
-          : 'border-danger text-danger'"
+          ? 'border-success text-success bg-success/10 hover:bg-success/20'
+          : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
         @click="showCompleteness = true"
         @keydown.enter="showCompleteness = true"
         @keydown.space.prevent="showCompleteness = true"
       >{{ completeness.isComplete
         ? `complete (${completeness.expectedCount} ${completeness.targetRank})`
         : `${completeness.coveredCount} / ${completeness.expectedCount} ${completeness.targetRank}` }}</button>
+
+      <button
+        v-if="references.length > 1 || (references.length === 1 && !references[0].isPrimary)"
+        type="button"
+        class="border border-base-muted rounded px-2 py-0.5 cursor-pointer transition-colors bg-base-muted/40 hover:bg-base-muted/70 hover:text-base-content"
+        @click="showReferences = true"
+      >References cited ({{ references.length }})</button>
     </div>
-
-    <button
-      v-if="references.length > 1 || (references.length === 1 && !references[0].isPrimary)"
-      type="button"
-      class="mt-2 block text-sm text-base-soft hover:underline hover:text-secondary"
-      @click="showReferences = true"
-    >References cited ({{ references.length }})</button>
-
-    <VModal v-if="showCitation" @close="showCitation = false">
-      <template #header><div class="text-sm font-medium">Reference</div></template>
-      <div class="px-4 pb-4 text-sm leading-relaxed [&_i]:italic" v-html="sanitizeAndLinkifyHtml(primaryCitation)" />
-    </VModal>
 
     <VModal v-if="showCompleteness && completeness" @close="showCompleteness = false">
       <template #header><div class="text-sm font-medium">Completeness</div></template>
@@ -93,7 +85,6 @@ const props = defineProps({
   primaryCitation: { type: String, default: null }
 })
 
-const showCitation = ref(false)
 const showCompleteness = ref(false)
 const showReferences = ref(false)
 

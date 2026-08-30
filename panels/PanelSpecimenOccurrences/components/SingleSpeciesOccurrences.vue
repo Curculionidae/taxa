@@ -25,7 +25,7 @@
 
     <DwcTable ref="dwcTableRef" />
 
-    <ImageViewer
+    <ImageLightbox
       v-if="isViewerVisible"
       :images="currentImages"
       :index="currentIndex"
@@ -52,6 +52,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
+import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
 import { groupRecords, groupCountLabel } from '../lib/groupRecords'
 
@@ -534,7 +535,7 @@ function getDetHtml({ identifiedBy, dateIdentified }) {
 // privacy/consent equivalent to port, so it's the only one that transfers.
 function identificationQualifierHtml({ identificationQualifier }) {
   if (!identificationQualifier) return ''
-  return `<span class="text-orange-500 font-bold cursor-help" title="Identification qualifier: ${escHtml(identificationQualifier)}">?</span>`
+  return `<span class="text-warning font-bold cursor-help" title="Identification qualifier: ${escHtml(identificationQualifier)}">?</span>`
 }
 
 function badgeHtml(text) {

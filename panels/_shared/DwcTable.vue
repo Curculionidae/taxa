@@ -8,14 +8,20 @@
   Depended on by (relative import paths from panels/_shared/):
     - ../PanelMapV2/PanelMapV2.vue                        — marker/list-row "show details"
     - ../PanelMapV2/components/Search/OtuSearch.vue       — search result rows
-    - ../PanelGallery/GalleryViewer.vue                    — image viewer overlay;
-        wrap the ref's parent in <Teleport to="body"> since GalleryViewer itself
+    - ./ImageLightbox.vue                                 — image viewer overlay;
+        wrap the ref's parent in <Teleport to="body"> since ImageLightbox itself
         renders inside a fixed-position overlay
     - ../PanelBiologicalAssociationsV2/PanelBiologicalAssociationsV2.vue
         — subject/object "ⓘ" button
+    - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
+        — record-row "ⓘ" button
 
-  If you change this file, sanity-check all four call sites — none of them
-  keep their own copy anymore.
+  This component also opens ./ImageLightbox.vue (async) when a media thumbnail
+  is clicked — that instance is passed :show-info-button="false" so it cannot
+  re-open a DwcTable and recurse.
+
+  If you change this file, sanity-check all call sites — none of them keep
+  their own copy anymore.
 
   Layout: a "specimen label" reading order — identity (name, type status,
   collector/date/locality at a glance) and media up top, full Location /
@@ -63,7 +69,7 @@
           </div>
           <div
             v-if="dwc.typeStatus"
-            class="mt-1.5 inline-block text-xs font-medium bg-red-500 text-white rounded px-1.5 py-0.5"
+            class="mt-1.5 inline-block text-xs font-medium bg-danger text-white rounded px-1.5 py-0.5"
             v-html="typeStatusHtml"
           />
 
@@ -104,14 +110,13 @@
             class="mt-3"
           >
             <div v-if="mediaImages.length" class="flex flex-wrap gap-1.5">
-              <a
-                v-for="img in mediaImages"
+              <button
+                v-for="(img, i) in mediaImages"
                 :key="img.id"
-                :href="img.original"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block w-24 h-20 rounded border border-base-muted overflow-hidden bg-base-foreground shrink-0"
-              ><img :src="img.thumb" class="w-full h-full object-cover" /></a>
+                type="button"
+                class="block w-24 h-20 rounded border border-base-muted overflow-hidden bg-base-foreground shrink-0 cursor-pointer hover:opacity-80 transition"
+                @click="lightboxIndex = i"
+              ><img :src="img.thumb" class="w-full h-full object-cover" /></button>
             </div>
             <div v-else class="flex flex-col gap-0.5">
               <a
@@ -506,16 +511,46 @@
 
     </div>
   </VModal>
+
+  <!-- Media strip opens the shared lightbox. show-info-button=false: this
+       lightbox must not offer its own ⓘ back into a DwcTable (recursion). -->
+  <Teleport to="body">
+    <ImageLightbox
+      v-if="lightboxIndex !== null && mediaImages.length"
+      :images="mediaImages"
+      :index="lightboxIndex"
+      :next="lightboxIndex < mediaImages.length - 1"
+      :previous="lightboxIndex > 0"
+      :show-info-button="false"
+      @select-index="lightboxIndex = $event"
+      @next="lightboxIndex++"
+      @previous="lightboxIndex--"
+      @close="lightboxIndex = null"
+    />
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef } from './specimenRef.js'
 
+// Lets a host that renders this above its own overlay (ImageLightbox's ⓘ button)
+// know when the modal has been dismissed — so it can re-take key handling / the
+// body scroll lock instead of both overlays reacting to one Escape.
+const emit = defineEmits(['close'])
+
+// Async: ImageLightbox statically imports this file (its ⓘ button opens a
+// DwcTable), so importing it back statically would be a require cycle. It's
+// also only needed once a media thumbnail is clicked.
+const ImageLightbox = defineAsyncComponent(() => import('./ImageLightbox.vue'))
+
 const isLoading = ref(false)
 const isModalVisible = ref(false)
+watch(isModalVisible, (visible) => {
+  if (!visible) emit('close')
+})
 const dwc = ref(null)
 const itemType = ref(null)
 const currentId = ref(null)
@@ -523,6 +558,7 @@ const otuId = ref(null)
 const institutionFullName = ref(null)
 const collectionFullName = ref(null)
 const mediaImages = ref([])
+const lightboxIndex = ref(null)  // media-strip lightbox: index of open image, null = closed
 const bioAssociations = ref([])
 const isLoadingBioAssociations = ref(false)
 
@@ -690,7 +726,13 @@ async function loadMediaImages(associatedMedia) {
     links.map(link => {
       const m = link.match(/\/api\/v1(.+)/)
       if (!m) return Promise.resolve(null)
-      return makeAPIRequest.get(m[1]).then(({ data }) => data).catch(() => null)
+      // extend[] so the shared lightbox shows real attribution / source
+      // instead of "attribution missing". Not depictions: these are the
+      // specimen's own images, its type status is already in the modal.
+      return makeAPIRequest
+        .get(m[1], { params: { extend: ['attribution', 'source'] } })
+        .then(({ data }) => data)
+        .catch(() => null)
     })
   )
   mediaImages.value = results.filter(Boolean)
@@ -769,6 +811,7 @@ function show({ id, type }) {
   currentId.value = id
   otuId.value = null
   mediaImages.value = []
+  lightboxIndex.value = null
   bioAssociations.value = []
 
   makeAPIRequest(ENDPOINTS[type](id))

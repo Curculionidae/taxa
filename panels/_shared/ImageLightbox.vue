@@ -46,7 +46,7 @@
     <div class="flex-none text-center text-sm px-6 pb-2 max-h-[40vh] overflow-y-auto">
       <!-- OTU section: badge, name, description -->
       <div
-        v-if="imageDisplay.hasOtu || imageDisplay.name"
+        v-if="!minimal && (imageDisplay.hasOtu || imageDisplay.name)"
         class="my-1"
       >
         <div
@@ -74,14 +74,14 @@
 
       <!-- CO/FO entries: badge + ⓘ, type status, figure label, caption -->
       <div
-        v-for="co in imageDisplay.coEntries"
+        v-for="co in (minimal ? [] : imageDisplay.coEntries)"
         :key="co.objectId"
         class="my-0.5"
       >
         <div class="flex items-center justify-center gap-1">
           <span class="text-xs opacity-40 uppercase tracking-wide">{{ co.objectType === 'CollectionObject' ? 'Collection object' : 'Field occurrence' }}</span>
           <button
-            v-if="co.dwcOk"
+            v-if="co.dwcOk && showInfoButton"
             type="button"
             class="shrink-0 opacity-40 hover:opacity-100 cursor-pointer leading-none text-xs"
             title="Show details"
@@ -104,8 +104,39 @@
         />
       </div>
 
+      <!-- Plain figure caption: images with no OTU / CO / FO structure (e.g. a
+           biological-association plate, a keys lead figure) carry the label +
+           caption at the top level. Label in bold, caption below it.
+           `figure_label` / `caption` are free-text (often prose that mentions a
+           binomial: "…feeding on Achillea millefolium", "rostrum, dorsal view")
+           and are rendered verbatim — the name-italiciser greedily italicises
+           the prose that trails a Genus+epithet pair. Both prior renderers (the
+           package ImageViewer, the old keys KeyLightbox) showed these plain.
+           `captionHtml` is pre-sanitised HTML (keys, already linkified). -->
+      <div
+        v-if="showPlainCaption"
+        class="my-1"
+      >
+        <div
+          v-if="image.figure_label"
+          class="font-semibold"
+        >{{ image.figure_label }}</div>
+        <div
+          v-if="image.captionHtml"
+          class="opacity-70 [&_a]:text-secondary [&_a]:hover:underline"
+          v-html="image.captionHtml"
+        />
+        <div
+          v-else-if="image.caption"
+          class="opacity-70"
+        >{{ image.caption }}</div>
+      </div>
+
       <!-- Attribution + citations (image-level) -->
-      <div class="opacity-60 my-1">
+      <div
+        v-if="!minimal"
+        class="opacity-60 my-1"
+      >
         <span v-if="image.attribution?.label">{{ image.attribution.label }}</span>
         <span
           v-else-if="!image.citations?.length"
@@ -122,13 +153,16 @@
 
       <!-- Source -->
       <div
-        v-if="image.source?.label"
+        v-if="!minimal && image.source?.label"
         class="opacity-60 my-1"
         v-html="image.source.label"
       />
 
       <!-- Thumbnail strip -->
-      <div class="flex flex-row overflow-x-auto justify-center gap-1.5 mt-2 pb-2">
+      <div
+        v-if="!minimal"
+        class="flex flex-row overflow-x-auto justify-center gap-1.5 mt-2 pb-2"
+      >
         <div
           v-for="(img, i) in images"
           :key="img.id"
@@ -145,7 +179,11 @@
       </div>
     </div>
 
-    <DwcTable ref="dwcTableRef" />
+    <DwcTable
+      v-if="showInfoButton && !minimal"
+      ref="dwcTableRef"
+      @close="onDwcTableClose"
+    />
 
     <Teleport to="body">
       <VModal
@@ -165,22 +203,38 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import ControlImageNext from '@/components/ImageViewer/ControlImageNext.vue'
 import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.vue'
-import DwcTable from '../_shared/DwcTable.vue'
 import { makeAPIRequest } from '@/utils/request'
+
+// Async both ways: DwcTable imports this file back (its media strip opens this
+// lightbox). Splitting DwcTable into its own chunk also keeps it out of the
+// bundles that use the lightbox in `minimal` mode (keys) or never click ⓘ.
+const DwcTable = defineAsyncComponent(() => import('./DwcTable.vue'))
 
 const props = defineProps({
   images: { type: Array, required: true },
   index:  { type: Number, required: true },
   next:     { type: Boolean, default: false },
-  previous: { type: Boolean, default: false }
+  previous: { type: Boolean, default: false },
+  // The ⓘ button opens a DwcTable for a CO/FO depiction. DwcTable opens this
+  // lightbox for its own media strip, so that nested instance passes false to
+  // stop the loop (DwcTable → lightbox → DwcTable → …).
+  showInfoButton: { type: Boolean, default: true },
+  // Caption-only mode (keys lead figures): render just the bold label + caption
+  // block. No name/OTU block, CO/FO entries, attribution, source, thumbnail
+  // strip, ⓘ button or DWC fetch — those images only ever carry label + caption.
+  minimal: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['close', 'next', 'previous', 'selectIndex'])
 
 const dwcTableRef = ref(null)
+// The ⓘ button opens a DwcTable modal *on top of* this viewer. While it's up, this
+// viewer must not act on Escape (one press would close both) and the DwcTable's
+// VModal owns the body scroll lock.
+const dwcTableOpen = ref(false)
 const activeCitation = ref(null)
 const imageElement = ref(null)
 const viewerRef = ref(null)
@@ -278,6 +332,7 @@ watch(
   () => props.index,
   (idx) => {
     isLoading.value = true
+    if (props.minimal) return  // caption-only: no depiction/DWC resolution
     fetchDwcForImage(props.images[idx])
     fetchDwcForImage(props.images[idx + 1])
     fetchDwcForImage(props.images[idx - 1])
@@ -416,24 +471,52 @@ const depictionTitle = computed(() => {
   return [name.italic, name.plain].filter(Boolean).join(' ')
 })
 
+// A plain image (no OTU / CO / FO depiction structure) whose only text is a
+// top-level figure_label / caption — e.g. a biological-association plate or a
+// keys lead figure. Shown as bold label + caption instead of the name block.
+const showPlainCaption = computed(() => {
+  const img = image.value
+  const hasText = !!(img.figure_label || img.caption || img.captionHtml)
+  if (props.minimal) return hasText
+  const d = imageDisplay.value
+  if (d.hasOtu || d.name || d.coEntries.length) return false
+  return hasText
+})
+
 function openDwcTable(dep) {
-  dwcTableRef.value?.show({ id: dep.objectId, type: dep.objectType })
+  if (!dwcTableRef.value) return
+  dwcTableOpen.value = true
+  dwcTableRef.value.show({ id: dep.objectId, type: dep.objectType })
 }
 
-function handleKey(e) {
-  if (e.key === 'Escape') emit('close')
-  if (e.key === 'ArrowLeft' && props.previous) emit('previous')
-  if (e.key === 'ArrowRight' && props.next) emit('next')
+function onDwcTableClose() {
+  dwcTableOpen.value = false
+  // The DwcTable's VModal cleared `overflow-hidden` on unmount; this viewer is
+  // still up, so re-assert the lock.
+  document.body.classList.add('overflow-hidden')
 }
 
-function handleKeyDown(e) {
-  if (e.key === 'Tab') trapFocus(e)
+// Capture phase so this runs before VModal's bubble-phase keydown listener: when a
+// DwcTable modal is stacked *under* this viewer (its media strip), Escape closes
+// only this viewer, not both. When a DwcTable is stacked *over* this viewer (the ⓘ
+// button), dwcTableOpen is set and we bail so that modal handles its own keys.
+function handleKeydown(e) {
+  if (dwcTableOpen.value) return
+  if (e.key === 'Escape') {
+    e.stopImmediatePropagation()
+    emit('close')
+  } else if (e.key === 'ArrowLeft' && props.previous) {
+    emit('previous')
+  } else if (e.key === 'ArrowRight' && props.next) {
+    emit('next')
+  } else if (e.key === 'Tab') {
+    trapFocus(e)
+  }
 }
 
 onMounted(() => {
   previouslyFocusedElement = document.activeElement
-  document.addEventListener('keyup', handleKey)
-  document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('keydown', handleKeydown, true)
   document.body.classList.add('overflow-hidden')
   // If the first image is already cached the load event fires before this runs
   if (imageElement.value.complete) isLoading.value = false
@@ -441,9 +524,10 @@ onMounted(() => {
   imageElement.value.addEventListener('error', () => { isLoading.value = false })
 })
 onUnmounted(() => {
-  document.removeEventListener('keyup', handleKey)
-  document.removeEventListener('keydown', handleKeyDown)
-  document.body.classList.remove('overflow-hidden')
+  document.removeEventListener('keydown', handleKeydown, true)
+  // A viewer opened *from* a DwcTable (its media strip) passes showInfoButton:false;
+  // that outer DwcTable's VModal still owns the lock, so don't clear it here.
+  if (props.showInfoButton) document.body.classList.remove('overflow-hidden')
   previouslyFocusedElement?.focus()
 })
 </script>

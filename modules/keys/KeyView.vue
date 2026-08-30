@@ -1,5 +1,5 @@
 <template>
-  <div class="tp-keys container mx-auto py-4">
+  <div class="tp-keys mx-auto w-full max-w-5xl py-4">
     <VSpinner v-if="loading" />
     <div v-else-if="error" class="text-danger">Could not load key {{ route.params.id }}.</div>
     <div v-else class="rounded-lg border border-base-muted bg-base-foreground p-4 sm:p-6">
@@ -39,7 +39,9 @@
 import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useRoute } from 'vue-router'
 import { makeAPIRequest } from '@/utils/request'
-import { buildNodes, orderedCouplets, rootId, terminalOtus, lowestCommonAncestor } from './lib/tree.js'
+import { buildNodes, orderedCouplets, terminalOtus, lowestCommonAncestor } from './lib/tree.js'
+import { useKeyImages } from './composables/useKeyImages.js'
+import { useKeyTaxonNames } from './composables/useKeyTaxonNames.js'
 import KeyHeader from './components/KeyHeader.vue'
 import FullKeyView from './components/FullKeyView.vue'
 import GuidedView from './components/GuidedView.vue'
@@ -74,32 +76,56 @@ const nodes = ref({})
 
 const couplets = computed(() => orderedCouplets(nodes.value))
 const terminalOtuList = computed(() => terminalOtus(nodes.value))
+
+// Per-lead taxon-image loader (OTU inventory → iNaturalist fallback), consumed by
+// LeadFigures via inject. KeyView is reused across /key/:id navigations, so its
+// caches are cleared explicitly in load() (keyImages.reset()).
+const keyImages = useKeyImages(terminalOtuList)
+provide('keyImages', keyImages)
+
+// Scientific-name rendering for lead-target pills: name italic, author + year roman
+// (matches the vanilla OTU page's cached_html / cached_author_year split).
+const keyTaxonNames = useKeyTaxonNames(terminalOtuList)
+provide('keyTaxonNames', keyTaxonNames)
 const citations = ref({})
 const activeCitation = ref(null)
 const completeness = ref(null)
+// Scope taxon for the header — resolved by loadScope() independently of the (slower)
+// completeness pipeline. `scopeTaxonName.html` is the taxon's `full_name_tag` (the same
+// field TaxonPages renders its page title from: name parts italic, author roman);
+// until it arrives the header shows the plain `metadata.taxonomic_scope` string.
+const resolvedScopeOtuId = ref(null)
+const scopeTaxonName = ref(null)
 
 const meta = computed(() => ({
   title: rawMeta.value.title || listMeta.value.text || '',
   taxonomicScope: rawMeta.value.taxonomic_scope || null,
+  taxonomicScopeHtml: scopeTaxonName.value?.html || null,
   originCitation: rawMeta.value.origin_citation || null,
   attribution: rawMeta.value.attribution || null,
   description: listMeta.value.description || null,
-  otuId: listMeta.value.otu_id || null,
+  otuId: listMeta.value.otu_id || resolvedScopeOtuId.value || null,
   // key_updated_at / *_in_words is only in the public GET /leads row, never in
   // GET /leads/key/:id — so this chip renders for public keys only (A13 Step 3).
   updatedInWords: listMeta.value.key_updated_at_in_words || null,
   // couplets + taxa always come from the loaded key tree; the /leads row is only
-  // a fallback for the brief moment before nodes populate (A13 Step 1).
+  // a fallback for the brief moment before nodes populate (A13 Step 1). /leads
+  // otus_count also counts the root's scope OTU (otu_id) when the key has one, so
+  // drop that to match terminalOtuList (which is already scope-free).
   coupletsCount: couplets.value.length || listMeta.value.couplets_count || null,
-  otusCount: terminalOtuList.value.length || listMeta.value.otus_count || null
+  otusCount:
+    terminalOtuList.value.length ||
+    (listMeta.value.otus_count
+      ? listMeta.value.otus_count - (listMeta.value.otu_id ? 1 : 0)
+      : null)
 }))
 
-const primaryCitation = computed(() => {
-  if (meta.value.originCitation) return meta.value.originCitation
-  if (!Object.keys(nodes.value).length) return null
-  const rootCites = citations.value[String(rootId(nodes.value))] || []
-  return rootCites[0]?.full || null
-})
+// Primary source = the citation the curator flagged `is_original` in TaxonWorks
+// (exposed as metadata.origin_citation). No fallback: a key that only cites
+// sources for individual couplets but is otherwise original TaxonWorks-team work
+// legitimately has NO primary source — those per-couplet citations still show
+// under "References cited".
+const primaryCitation = computed(() => meta.value.originCitation || null)
 
 const references = computed(() => {
   const byFull = new Map()
@@ -123,6 +149,10 @@ async function load(id) {
   error.value = false
   listMeta.value = {}
   rawMeta.value = {}
+  resolvedScopeOtuId.value = null
+  scopeTaxonName.value = null
+  keyImages.reset()
+  keyTaxonNames.reset()
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
     const listReq = makeAPIRequest.get('/leads').catch(() => ({ data: [] }))
@@ -134,6 +164,7 @@ async function load(id) {
     const { data: list } = await listReq
     if (myGen !== loadGen) return
     listMeta.value = (Array.isArray(list) ? list : []).find((r) => r.id === Number(id)) || {}
+    loadScope(listMeta.value.otu_id, nodes.value, myGen)
     loadCompleteness(listMeta.value.otu_id, nodes.value, myGen)
   } catch {
     if (myGen === loadGen) error.value = true
@@ -163,6 +194,64 @@ async function loadCitations(leadIds, myGen) {
     citations.value = map
   } catch {
     if (myGen === loadGen) citations.value = {}
+  }
+}
+
+// Terminal-OTU → taxon-name resolution + the key's scope taxon, shared by loadScope()
+// (header, fast) and loadCompleteness() (slow pipeline). Both previously ran the
+// terminal `/otus` batch and the up-to-15-request ancestor walk independently (F1).
+// Memoised per load generation; a fresh load() (++loadGen) invalidates it.
+// Returns { scopeTnId, scopeOtuId, otuIdToTnId }.
+let scopeResolve = { gen: -1, promise: null }
+function resolveScope(scopeOtuId, nodeMap, myGen) {
+  if (scopeResolve.gen === myGen && scopeResolve.promise) return scopeResolve.promise
+  const promise = (async () => {
+    const otuIdToTnId = new Map()
+    const terminals = terminalOtus(nodeMap)
+    if (terminals.length) {
+      const oq = new URLSearchParams()
+      terminals.forEach((t) => oq.append('otu_id[]', t.id))
+      oq.set('per', '1000')
+      const { data: otuRaw } = await makeAPIRequest.get(`/otus?${oq.toString()}`)
+      for (const o of Array.isArray(otuRaw) ? otuRaw : []) {
+        if (o.taxon_name_id != null) otuIdToTnId.set(o.id, o.taxon_name_id)
+      }
+    }
+    const rawTnIds = [...new Set([...otuIdToTnId.values()])]
+
+    let scopeTnId = null
+    let resolvedOtuId = scopeOtuId || null
+    if (scopeOtuId) {
+      // public key: scope OTU is known, one lookup for its taxon-name id
+      const { data: o } = await makeAPIRequest.get(`/otus/${scopeOtuId}`)
+      scopeTnId = o?.taxon_name_id || null
+    } else if (rawTnIds.length) {
+      // otherwise: lowest common ancestor of the key's terminals (A13 Step 2)
+      scopeTnId = await resolveScopeFromTerminals(rawTnIds)
+      if (scopeTnId) {
+        const { data: sOtu } = await makeAPIRequest.get(`/otus?taxon_name_id[]=${scopeTnId}&per=1`)
+        resolvedOtuId = Array.isArray(sOtu) ? sOtu[0]?.id ?? null : null
+      }
+    }
+    return { scopeTnId, scopeOtuId: resolvedOtuId, otuIdToTnId }
+  })()
+  scopeResolve = { gen: myGen, promise }
+  return promise
+}
+
+// Scope taxon for the header — its OTU id (route target) and `full_name_tag` (display).
+// Standalone so it isn't blocked behind the completeness pipeline.
+async function loadScope(scopeOtuId, nodeMap, myGen) {
+  try {
+    const { scopeTnId, scopeOtuId: otuId } = await resolveScope(scopeOtuId, nodeMap, myGen)
+    if (!scopeTnId || myGen !== loadGen) return
+
+    const { data: sum } = await makeAPIRequest.get(`/taxon_names/${scopeTnId}/inventory/summary`)
+    if (myGen !== loadGen) return
+    if (otuId != null) resolvedScopeOtuId.value = otuId
+    if (sum?.full_name_tag) scopeTaxonName.value = { html: sum.full_name_tag }
+  } catch {
+    // leave nulls — the header keeps showing the plain metadata.taxonomic_scope string
   }
 }
 
@@ -211,29 +300,13 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     const terminals = terminalOtus(nodeMap).map((t) => ({ otuId: t.id, label: t.label }))
     if (!terminals.length) return
 
-    // terminal OTUs -> their taxon-name ids (resolved early: the non-public-key
-    // branch derives the scope taxon from these)
-    const oq = new URLSearchParams()
-    terminals.forEach((t) => oq.append('otu_id[]', t.otuId))
-    oq.set('per', '1000')
-    const { data: otuRaw } = await makeAPIRequest.get(`/otus?${oq.toString()}`)
-    const otuIdToTnId = new Map()
-    for (const o of Array.isArray(otuRaw) ? otuRaw : []) {
-      if (o.taxon_name_id != null) otuIdToTnId.set(o.id, o.taxon_name_id)
-    }
+    // terminal OTU→taxon-name map + scope taxon-name id — resolved once per load
+    // generation and shared with loadScope() (F1: the /otus batch and the ancestor
+    // walk previously ran in both pipelines).
+    const { scopeTnId, otuIdToTnId } = await resolveScope(scopeOtuId, nodeMap, myGen)
+    if (myGen !== loadGen) return
     const rawTnIds = [...new Set([...otuIdToTnId.values()])]
-    if (!rawTnIds.length) return
-
-    // scope taxon-name id: fast path from the public /leads row's scope OTU;
-    // otherwise the lowest common ancestor of the key's own terminals (A13 Step 2)
-    let scopeTnId = null
-    if (scopeOtuId) {
-      const { data: scopeOtu } = await makeAPIRequest.get(`/otus/${scopeOtuId}`)
-      scopeTnId = scopeOtu?.taxon_name_id || null
-    } else {
-      scopeTnId = await resolveScopeFromTerminals(rawTnIds)
-    }
-    if (!scopeTnId) return
+    if (!scopeTnId || !rawTnIds.length) return
 
     // resolve the terminal taxon-names (validity + valid target) BEFORE the descendants
     // fetch — their ranks drive a rank-scoped descendants query so a large tribe/family
@@ -244,16 +317,17 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     const { data: tnRaw } = await makeAPIRequest.get(`/taxon_names?${tq.toString()}`)
     const tnRowById = new Map((Array.isArray(tnRaw) ? tnRaw : []).map((t) => [t.id, t]))
 
-    // distinct terminal ranks as bare words (finestRank([raw]) normalises a single rank);
-    // targetRank is the finest of them, the rest are coarser ranks the key also keys out.
+    // Distinct terminal ranks as bare words (finestRank([raw]) normalises a single
+    // rank). Every one gets its own rank-scoped descendants fetch below; the actual
+    // target rank is chosen inside buildCompletenessReport (modalRank — the rank the
+    // key mostly operates at). This is only a "any usable rank at all?" guard.
     const terminalRankWords = [...new Set(
       [...tnRowById.values()].map((t) => finestRank([t.rank])).filter(Boolean)
     )]
-    const targetRank = finestRank(terminalRankWords)
-    if (!targetRank) return
+    if (!terminalRankWords.length) return
 
-    // descendants of the scope taxon, rank-scoped to [targetRank, ...coarser terminal
-    // ranks], synonyms included (no validity filter — synonym folding still needs them)
+    // descendants of the scope taxon, one rank-scoped fetch per distinct terminal
+    // rank, synonyms included (no validity filter — synonym folding still needs them)
     const mapRow = (d) => ({
       id: d.id,
       parentId: d.parent_id,
@@ -363,7 +437,7 @@ watch(() => route.params.id, (id) => id && load(id), { immediate: true })
    rules are namespaced under `.tp-keys` so they don't leak app-wide once a key opens (F5). */
 @media print {
   .key-print-hide { display: none !important; }
-  .tp-keys.container { max-width: none !important; }
+  .tp-keys { max-width: none !important; }
   .tp-keys a { text-decoration: none !important; color: inherit !important; }
 }
 </style>

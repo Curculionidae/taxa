@@ -2,7 +2,11 @@
 
 Panel id: `panel:gallery-v2`  
 Entry point: `main.js` → registers `PanelGallery.vue`  
-Custom viewer: `GalleryViewer.vue` (fork of the vanilla `ImageViewer`)
+Lightbox: `panels/_shared/ImageLightbox.vue` — the shared fullscreen viewer (a fork of the
+vanilla `ImageViewer`, formerly this panel's local `GalleryViewer.vue`; moved to `_shared/`
+2026-08-30 and now used by PaneliNaturalist, PanelBiologicalAssociationsV2,
+PanelSpecimenOccurrences and the `DwcTable` media strip too). Its internals are documented in
+the sections below and in `panels/_shared/readme.md`.
 
 ---
 
@@ -12,7 +16,7 @@ Custom viewer: `GalleryViewer.vue` (fork of the vanilla `ImageViewer`)
 PanelGallery.vue
 ├── GalleryMainImage        (package, @/components/Gallery/GalleryMainImage.vue)
 ├── thumbnail strip         (inline <div> loop)
-└── GalleryViewer.vue       (local fork)
+└── ImageLightbox.vue     (panels/_shared/, shared fork)
     ├── ControlImagePrevious / ControlImageNext   (package)
     ├── DwcTable            (shared from panels/_shared/DwcTable.vue)
     └── VModal (Teleport)   (citation detail popup)
@@ -58,6 +62,46 @@ return inatImages
 
 ---
 
+## Data-depiction exclusion
+
+The gallery is OTU-scoped, so it must not surface **data depictions**
+(`is_metadata_depiction` — TW's own UI label: *"Is data depiction"*: a label
+photo, a shot of handwritten notes, a ledger page) that belong to a
+CollectionObject / FieldOccurrence. Those are viewable in the CO/FO detail modal
+(`DwcTable`, via DWC `associatedMedia`). A data depiction attached **directly to
+the OTU** is kept.
+
+`GET /otus/:id/inventory/images` does **not** serialize `is_metadata_depiction`,
+and `GET /images?metadata_depiction=false` is unusable (TW's filter does
+`where.not(is_metadata_depiction: true)`, which also drops the NULL-flag rows that
+are the overwhelming majority). So the flag is fetched separately:
+
+```mermaid
+flowchart TD
+    A[onMounted / onServerPrefetch] --> B["GET /depictions?otu_id[]=X\n&otu_scope[]=all&otu_scope[]=coordinate_otus&per=500"]
+    B --> C[dropIdsFromDepictions rows]
+    C --> D{"image has ANY depiction\nwith is_metadata_depiction === true ?"}
+    D -- no --> K[keep]
+    D -- yes --> E{"...and at least one\nof those is on an Otu ?"}
+    E -- yes --> K
+    E -- no --> X[add id to dataDepictionDropIds]
+    X --> F["twImages = store.images\n.map(normalizeImage)\n.filter(img ⇒ !dropIds.has(img.id))"]
+```
+
+An image counts as a data depiction if **any** of its depictions carries the
+flag — an unflagged `Otu` depiction on the same image does not rescue it (that
+happens routinely: a label photo gets attached to both the CollectionObject *and*
+the OTU, but only the CO depiction is ticked). It's shown only when the flag is
+on an `Otu` depiction.
+
+`otu_scope` matches what `useImageStore` sends, so the depiction rows cover the
+same image-id universe as the inventory endpoint (TW's Depiction and Image otu
+scope facets share code). On any failure the drop set stays empty → no filtering,
+same as before. The same `dropIdsFromDepictions()` is applied to the
+subordinate-taxa fallback (keyed by `image_id[]` of the sampled images).
+
+---
+
 ## Subordinate-taxa fallback — fetch strategy
 
 3 requests, 2 sequential round trips. Each data page fetches `ceil(subMaxImages / 2)` images (`perPage`):
@@ -67,7 +111,7 @@ flowchart TD
     P["Probe: GET /images per=1\n→ pagination-total header only"] --> C{totalPages > 1?}
     C -- No\none page exists --> D1["GET /images page=random, per=perPage"]
     C -- Yes --> D2["GET /images page=randomA, per=perPage\nGET /images page=randomB, per=perPage\n(parallel, distinct pages)"]
-    D1 --> E[Combine, slice to subMaxImages\nnormalizeImage each → subImages]
+    D1 --> E["Combine → GET /depictions?image_id[]=…\ndrop data depictions (see above)\nslice to subMaxImages\nnormalizeImage each → subImages"]
     D2 --> E
 ```
 
@@ -120,7 +164,7 @@ Each iNat image is normalized to the same shape as a TW image so the rest of the
 
 ---
 
-## Depiction type inference (`GalleryViewer.vue`)
+## Depiction type inference (`ImageLightbox.vue`)
 
 The `/inventory/images.json` endpoint does not always serialize `depiction_object_type`. `inferDepictionType` reconstructs it from the label string format:
 
@@ -209,7 +253,7 @@ Because `dwcCache` and `otuValidCache` are `reactive({})`, assigning a key trigg
 
 ## Image loading state
 
-`GalleryViewer` tracks whether the full-size image has finished loading:
+`ImageLightbox` tracks whether the full-size image has finished loading:
 
 - `isLoading` starts `true` and is reset to `true` on every index change (before the browser fetches the new src).
 - `onMounted` attaches native `load` and `error` listeners to the `<img>` element; either event sets `isLoading = false`.
@@ -278,7 +322,7 @@ All three sources (TaxonWorks, subordinate taxa, iNaturalist) produce the same s
 | `sort_order` | Array | `[]` | Forwarded to `store.loadImages` |
 | `subMaxImages` | Number | `10` | Max images returned by the subordinate-taxa fallback. Set via `bind:` in `taxa_page.yml`. |
 
-### `GalleryViewer.vue`
+### `ImageLightbox.vue`
 
 | Prop | Type | Purpose |
 |---|---|---|

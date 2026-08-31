@@ -114,6 +114,14 @@ export async function matchGbifKey(
   return usage?.key ?? null
 }
 
+// The cached raw match response for a name (for callers that need diagnostics
+// or rank, e.g. the concept-alignment rank gate). Shares the module cache.
+export async function matchGbifRaw(name) {
+  if (!name) return null
+  const { match } = await getOrFetch(name)
+  return match
+}
+
 export function useGbifMatch(scientificName) {
   const loading = ref(false)
   const error = ref(false)

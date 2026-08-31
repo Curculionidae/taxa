@@ -26,6 +26,27 @@ function buildCanon(keyLists) {
   return (k) => map.get(k) || k
 }
 
+// One row per distinct canonical key. N raw synonyms that canonicalise together
+// (the same name written in several genera) become a single survivor row; each
+// extra entry's full name string is collected onto survivor.otherCombinations,
+// which the panel renders as "Also written X, Y". First entry seen wins.
+function dedupeByCanon(entries, canonFn) {
+  const survivors = []
+  const byKey = new Map()
+  for (const e of entries) {
+    const k = canonFn(e.matchKey)
+    const seen = byKey.get(k)
+    if (seen) {
+      seen.otherCombinations.push(e.name)
+      continue
+    }
+    const survivor = { ...e, otherCombinations: [] }
+    byKey.set(k, survivor)
+    survivors.push(survivor)
+  }
+  return { survivors }
+}
+
 export function buildAlignmentModel(input) {
   const {
     twName,
@@ -133,26 +154,32 @@ export function buildAlignmentModel(input) {
     records: byCanon.has(canon(e.matchKey)) ? byCanon.get(canon(e.matchKey)) : null
   })
 
-  const consensus = nEntries
-    .filter((e) => e.colMatched && inG(e))
-    .map((e) => {
-      const g = gEntries.find((x) => canon(x.matchKey) === canon(e.matchKey))
-      return withRecords({ ...e, matchTier: g ? g.matchTier : 'weak' })
-    })
+  const consensus = dedupeByCanon(
+    nEntries.filter((e) => e.colMatched && inG(e)),
+    canon
+  ).survivors.map((e) => {
+    const g = gEntries.find((x) => canon(x.matchKey) === canon(e.matchKey))
+    return withRecords({ ...e, matchTier: g ? g.matchTier : 'weak' })
+  })
 
-  const twKeepsIn = nEntries
-    .filter((e) => e.colMatched && !inG(e))
-    .map((e) => withRecords({ ...e, colRole: 'colSeparateAccepted' }))
+  const twKeepsIn = dedupeByCanon(
+    nEntries.filter((e) => e.colMatched && !inG(e)),
+    canon
+  ).survivors.map((e) => withRecords({ ...e, colRole: 'colSeparateAccepted' }))
 
-  const colFoldsIn = gEntries
-    .filter((e) => e.colRole === 'colSynonym' && !inN(e))
-    .map((e) => withRecords({ ...e, twPlacement: null, otherCombinations: [] }))
+  const colFoldsIn = dedupeByCanon(
+    gEntries.filter((e) => e.colRole === 'colSynonym' && !inN(e)),
+    canon
+  ).survivors.map((e) => withRecords({ ...e, twPlacement: null }))
 
-  const misapplied = colMisapplied.map((m) => ({
-    name: m.name,
-    short: shortName(m.name),
-    matchKey: m.matchKey
-  }))
+  const misapplied = dedupeByCanon(
+    colMisapplied.map((m) => ({
+      name: m.name,
+      short: shortName(m.name),
+      matchKey: m.matchKey
+    })),
+    canon
+  ).survivors
 
   const notComparable = unmatched
 

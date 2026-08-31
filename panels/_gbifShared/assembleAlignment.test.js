@@ -68,8 +68,27 @@ test('Larinus latus assembles to an overlap with the expected zones', async () =
   assert.ok(keepsIn.includes('Larinus teretirostris'))
   assert.ok(!keepsIn.some((n) => n.includes('mutabilis')))
 
-  const cardui = model.zones.colFoldsIn.find((n) => n.short.toLowerCase().includes('cardui'))
+  // Curculio cardui, Lixus cardui and Rhinobatus cardui are one nomenclatural
+  // entity written in three genera. They must collapse to a single folded row
+  // carrying the summed GBIF tally once, not three rows of 931 each.
+  const carduiRows = model.zones.colFoldsIn.filter((n) =>
+    n.short.toLowerCase().includes('cardui')
+  )
+  assert.equal(carduiRows.length, 1)
+
+  const cardui = carduiRows[0]
   assert.equal(cardui.records, 931)
+
+  assert.ok(Array.isArray(cardui.otherCombinations))
+  assert.ok(cardui.otherCombinations.length > 0)
+  const carduiSpellings = [cardui.name, ...cardui.otherCombinations]
+  assert.ok(carduiSpellings.some((s) => s.includes('Curculio cardui')))
+  assert.ok(carduiSpellings.some((s) => s.includes('Lixus cardui')))
+  assert.ok(carduiSpellings.some((s) => s.includes('Rhinobatus cardui')))
+
+  // cardui, pollinosus and longirostris only: the genus recombinations of
+  // cardui no longer inflate the zone to 5+ rows.
+  assert.ok(model.zones.colFoldsIn.length <= 4)
 
   assert.ok(model.zones.inDataOnly.some((r) => r.name.startsWith('BOLD:')))
   assert.equal(model.relation.intAssessed, false)
@@ -198,7 +217,12 @@ test('Pseudeuparius centromaculatus assembles to an included concept', async () 
 
   // the two Catalogue of Life extras (ceroderes, targionii), each present as a
   // pair of genus recombinations, collapse to two folded names
+  assert.equal(model.zones.colFoldsIn.length, 2)
   const folded = model.zones.colFoldsIn.map((n) => n.short.toLowerCase())
   assert.ok(folded.some((n) => n.includes('ceroderes')))
   assert.ok(folded.some((n) => n.includes('targionii')))
+  assert.ok(
+    model.zones.colFoldsIn.every((n) => n.otherCombinations.length === 1),
+    'each folded name keeps its alternate genus spelling'
+  )
 })

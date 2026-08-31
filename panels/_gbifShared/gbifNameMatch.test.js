@@ -85,4 +85,5 @@ test('keysMatch: exact, within one year, missing year, and mismatches', () => {
   assert.equal(keysMatch('latus|herbst|', 'latus|herbst|1783'), true)
   assert.equal(keysMatch('cardui|rossi|1790', 'cardui|aurivillius|1921'), false)
   assert.equal(keysMatch('latus|herbst|1783', 'cardui|rossi|1790'), false)
+  assert.equal(keysMatch('|herbst|1783', '|herbst|1783'), false)
 })

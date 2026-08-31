@@ -79,11 +79,11 @@ export function matchTier(twKey, colKey, { twOriginalCombination, colNameStrings
 // epithet and surname must match exactly and be non-empty; year may differ by at
 // most one, and a missing year on either side is accepted.
 export function keysMatch(a, b) {
-  if (a === b) return true
   const pa = String(a).split('|')
   const pb = String(b).split('|')
   if (!pa[0] || pa[0] !== pb[0]) return false
   if (!pa[1] || pa[1] !== pb[1]) return false
+  if (a === b) return true
   const ya = pa[2] ? Number(pa[2]) : null
   const yb = pb[2] ? Number(pb[2]) : null
   if (ya == null || yb == null) return true

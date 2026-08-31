@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PanelGbifTaxon — chosen direction: zone table + Franz &amp; Peet relation icon</title>
+<style>
+  :root {
+    --pp-gbif: #4c9c2e;
+    --pp-tw: #a4681f;
+    --bg: #f4f2ee;
+    --fg: #ffffff;
+    --content: #1c1a17;
+    --soft: #6b6560;
+    --muted: #e2ddd5;
+    --border: #d6d0c6;
+    --link: #2563a8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --pp-gbif: #7cbe5a;
+      --pp-tw: #d29a56;
+      --bg: #17150f;
+      --fg: #23201a;
+      --content: #ece7de;
+      --soft: #9a9186;
+      --muted: #35302a;
+      --border: #3c362e;
+      --link: #7aa9dd;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--content);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 32px 20px 80px;
+  }
+  .page { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  h2 {
+    font-size: 12px; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--soft); margin: 34px 0 12px;
+  }
+  .lede { color: var(--soft); max-width: 74ch; margin: 0 0 8px; }
+  .lede code { background: var(--fg); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+
+  /* ---------- relation icon (Franz & Peet 2009, Fig. 2) ---------- */
+  .rel-ico { display: block; }
+  .rel-ico rect { fill-opacity: .22; stroke-width: 2; }
+  .rel-ico .tw { fill: var(--pp-tw); stroke: var(--pp-tw); }
+  .rel-ico .gb { fill: var(--pp-gbif); stroke: var(--pp-gbif); }
+
+  .iconstrip {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+    background: var(--fg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 14px;
+  }
+  .iconstrip .cell { text-align: center; }
+  .iconstrip svg { margin: 0 auto 6px; }
+  .iconstrip .sym {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; color: var(--content);
+  }
+  .iconstrip .nm { font-size: 11px; font-weight: 600; margin-top: 2px; }
+  .iconstrip .gl { font-size: 10.5px; color: var(--soft); margin-top: 2px; line-height: 1.35; }
+  @media (max-width: 720px) { .iconstrip { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---------- simulated panel ---------- */
+  .panel {
+    background: var(--fg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; max-width: 440px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05);
+  }
+  .panel-head {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--muted);
+  }
+  .panel-head .mark {
+    width: 22px; height: 22px; border-radius: 4px; background: var(--pp-gbif); color: #fff;
+    display: grid; place-items: center; font-weight: 700; font-size: 11px; flex: none;
+  }
+  .panel-head h3 { font-size: 14px; margin: 0; font-weight: 600; }
+
+  .matched { margin: 0 0 12px; }
+  .matched em { font-weight: 600; }
+  .matched .note { color: var(--soft); }
+
+  .verdict { display: flex; gap: 12px; align-items: flex-start; margin: 2px 0 4px; }
+  .verdict .txt { flex: 1; min-width: 0; }
+  .verdict .line1 { font-size: 14px; }
+  .verdict .line2 {
+    font-size: 11.5px; color: var(--soft); margin-top: 4px;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline;
+  }
+  .verdict .sym { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--content); }
+  .verdict .sym b { color: var(--pp-tw); font-weight: 600; }
+  .verdict .sym i { color: var(--pp-gbif); font-style: normal; }
+  .disclosure {
+    font-size: 11.5px; color: var(--link); background: none; border: 0; padding: 0;
+    cursor: pointer; text-decoration: underline;
+  }
+  .explainer {
+    font-size: 11.5px; color: var(--soft);
+    border-top: 1px solid var(--muted); margin-top: 8px; padding-top: 8px;
+  }
+
+  .ztable { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  .ztable caption {
+    caption-side: top; text-align: left; font-size: 11px; color: var(--soft); padding: 10px 0 4px;
+  }
+  .ztable th, .ztable td { text-align: left; padding: 5px 6px; vertical-align: top; border-bottom: 1px solid var(--muted); }
+  .ztable thead th {
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); font-weight: 600;
+  }
+  .ztable td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ztable td.num.zero { color: var(--soft); }
+  .zgroup td {
+    background: color-mix(in srgb, var(--content) 4%, transparent);
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft);
+    font-weight: 700; padding-top: 8px;
+  }
+  .zgroup.tw td { box-shadow: inset 3px 0 0 var(--pp-tw); }
+  .zgroup.gb td { box-shadow: inset 3px 0 0 var(--pp-gbif); }
+  .zgroup.cons td { box-shadow: inset 3px 0 0 var(--soft); }
+  .ztable .nm { font-style: italic; }
+  .ztable .auth { font-style: normal; color: var(--soft); }
+  .ztable .tier {
+    font-style: normal; font-size: 9px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--soft); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 4px;
+    white-space: nowrap;
+  }
+  details.row-x > summary { cursor: pointer; list-style: none; }
+  details.row-x > summary::-webkit-details-marker { display: none; }
+  details.row-x .expand { font-size: 11px; color: var(--soft); padding: 4px 6px 6px 16px; }
+
+  .summary-line {
+    font-size: 11.5px; color: var(--soft);
+    border-top: 1px solid var(--muted); margin-top: 12px; padding-top: 8px;
+  }
+  .summary-line b { color: var(--content); font-variant-numeric: tabular-nums; }
+  .entrypoints { margin-top: 10px; font-size: 11px; }
+  .entrypoints .ep { display: block; color: var(--link); padding: 2px 0; text-decoration: none; }
+  .entrypoints .ep small { color: var(--soft); }
+
+  .note-box {
+    font-size: 12px; color: var(--soft); max-width: 74ch;
+    border-left: 3px solid var(--pp-gbif); padding: 4px 0 4px 12px; margin: 10px 0;
+  }
+  details.considered { margin-top: 12px; }
+  details.considered summary { cursor: pointer; color: var(--link); font-size: 12px; }
+  details.considered .body { font-size: 12px; color: var(--soft); padding: 8px 0 0 12px; max-width: 74ch; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Chosen direction: zone table, with the Franz &amp; Peet relation icon as its header</h1>
+  <p class="lede">
+    Real data. TaxonWorks page for <em>Larinus latus</em> (Herbst, 1783), name <code>834447</code>,
+    against Catalogue of Life usage <code>6NXFP</code>. Live occurrence facet counts (<code>total 1593</code>).
+    The relation is an <strong>overlap</strong>: each source folds in names the other places elsewhere.
+  </p>
+
+  <h2>The relation icon, all five states</h2>
+  <p class="lede">
+    Franz &amp; Peet 2009, Fig. 2. C1 = TaxonWorks (<span style="color:var(--pp-tw)">amber</span>),
+    C2 = GBIF / Catalogue of Life (<span style="color:var(--pp-gbif)">green</span>). One small glyph next to
+    the verdict sentence. The panel only ever renders the first four; the fifth is shown as a match failure, not as a result.
+  </p>
+  <div class="iconstrip">
+    <div class="cell">
+      <svg class="rel-ico" width="52" height="30" viewBox="0 0 52 30" aria-hidden="true">
+        <rect class="tw" x="7" y="6" width="36" height="18" rx="2"/>
+        <rect class="gb" x="10" y="8" width="36" height="18" rx="2"/>
+      </svg>
+      <div class="sym">≡</div>
+      <div class="nm">congruent</div>
+      <div class="gl">same set of names</div>
+    </div>
+    <div class="cell">
+      <svg class="rel-ico" width="52" height="30" viewBox="0 0 52 30" aria-hidden="true">
+        <rect class="gb" x="4" y="4" width="44" height="22" rx="2"/>
+        <rect class="tw" x="14" y="10" width="18" height="10" rx="2"/>
+      </svg>
+      <div class="sym">TW ⊂ GBIF</div>
+      <div class="nm">GBIF broader</div>
+      <div class="gl">GBIF lumps names TW keeps separate</div>
+    </div>
+    <div class="cell">
+      <svg class="rel-ico" width="52" height="30" viewBox="0 0 52 30" aria-hidden="true">
+        <rect class="tw" x="4" y="4" width="44" height="22" rx="2"/>
+        <rect class="gb" x="20" y="10" width="18" height="10" rx="2"/>
+      </svg>
+      <div class="sym">TW ⊃ GBIF</div>
+      <div class="nm">GBIF narrower</div>
+      <div class="gl">GBIF splits names TW keeps together</div>
+    </div>
+    <div class="cell">
+      <svg class="rel-ico" width="52" height="30" viewBox="0 0 52 30" aria-hidden="true">
+        <rect class="tw" x="4" y="6" width="28" height="18" rx="2"/>
+        <rect class="gb" x="22" y="6" width="26" height="18" rx="2"/>
+      </svg>
+      <div class="sym">TW &gt;&lt; GBIF</div>
+      <div class="nm">overlap</div>
+      <div class="gl">shared core, each folds in others</div>
+    </div>
+    <div class="cell">
+      <svg class="rel-ico" width="52" height="30" viewBox="0 0 52 30" aria-hidden="true">
+        <rect class="tw" x="4" y="7" width="19" height="16" rx="2"/>
+        <rect class="gb" x="30" y="7" width="19" height="16" rx="2"/>
+      </svg>
+      <div class="sym">|</div>
+      <div class="nm">no overlap</div>
+      <div class="gl">no shared name → shown as match failure</div>
+    </div>
+  </div>
+
+  <h2>In context</h2>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="mark">GB</span>
+      <h3><em>Larinus latus</em> in GBIF</h3>
+    </div>
+
+    <p class="matched">
+      <em>Larinus latus</em> (Herbst, 1783)
+      <span class="note">· accepted in Catalogue of Life.</span>
+    </p>
+
+    <div class="verdict">
+      <svg class="rel-ico" width="60" height="34" viewBox="0 0 52 30" aria-hidden="true" style="flex:none;margin-top:2px">
+        <rect class="tw" x="4" y="6" width="28" height="18" rx="2"/>
+        <rect class="gb" x="22" y="6" width="26" height="18" rx="2"/>
+      </svg>
+      <div class="txt">
+        <div class="line1">
+          TaxonWorks and Catalogue of Life share a core of 4 names for <em>Larinus latus</em>,
+          but each also files names under it that the other does not.
+        </div>
+        <div class="line2">
+          <span class="sym"><b>TaxonWorks</b> &gt;&lt; <i>Catalogue of Life</i></span>
+          <span>·</span>
+          <span>by name overlap</span>
+          <span>·</span>
+          <button class="disclosure" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">how this is measured</button>
+          <div class="explainer" hidden>
+            This compares the names TaxonWorks treats as <em>Larinus latus</em> with the names
+            Catalogue of Life groups under its own <em>Larinus latus</em>. It does not compare
+            written diagnoses or the specimen records behind either. GBIF here is an aggregated
+            checklist, not an authored revision, so read the result as a starting point for a person to judge.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table class="ztable">
+      <caption>Every name TaxonWorks or Catalogue of Life files under <em>Larinus latus</em>, and what the other source does with it.</caption>
+      <thead>
+        <tr><th>Name</th><th>TaxonWorks:<br><em>Larinus latus</em></th><th>Catalogue of Life:<br><em>Larinus latus</em></th><th class="num">GBIF<br>records</th></tr>
+      </thead>
+      <tbody>
+        <tr class="zgroup cons"><td colspan="4">In both circumscriptions of <em>Larinus latus</em></td></tr>
+        <tr><td class="nm">Larinus latus <span class="auth">(Herbst, 1783)</span><span class="tier" title="TaxonWorks original combination Curculio latus found verbatim in Catalogue of Life's synonym set">homotypic</span></td><td>valid name</td><td>accepted name</td><td class="num">653</td></tr>
+        <tr><td class="nm">Larinus mutabilis <span class="auth">Host, 1789</span><span class="tier" title="epithet and author match; Catalogue of Life has year 1790">probable</span></td><td>synonym</td><td>synonym</td><td class="num zero">0</td></tr>
+        <tr><td class="nm">Larinus cynarae <span class="auth">(Herbst, 1795)</span><span class="tier">probable</span></td><td>synonym</td><td>synonym</td><td class="num zero">0</td></tr>
+        <tr><td class="nm">Larinus cirsii <span class="auth">Gyllenhal, 1835</span><span class="tier">probable</span></td><td>synonym</td><td>synonym</td><td class="num zero">0</td></tr>
+
+        <tr class="zgroup tw"><td colspan="4">TaxonWorks files under <em>Larinus latus</em>; Catalogue of Life keeps separate</td></tr>
+        <tr><td class="nm">Larinus subcostatus <span class="auth">Brullé, 1832</span></td><td>synonym</td><td>separate accepted species <span class="auth">(provisional)</span></td><td class="num zero">0</td></tr>
+        <tr><td class="nm">Larinus costirostris <span class="auth">Gyllenhal, 1835</span></td><td>synonym</td><td>separate accepted species <span class="auth">(provisional)</span></td><td class="num zero">0</td></tr>
+        <tr><td class="nm">Larinus teretirostris <span class="auth">Gyllenhal, 1835</span></td><td>synonym</td><td>separate accepted species <span class="auth">(provisional)</span></td><td class="num zero">0</td></tr>
+
+        <tr class="zgroup gb"><td colspan="4">Catalogue of Life files under <em>Larinus latus</em>; TaxonWorks places elsewhere</td></tr>
+        <tr>
+          <td class="nm">
+            <details class="row-x"><summary>Lixus cardui <span class="auth">(Rossi, 1790)</span> ▸</summary>
+            <div class="expand">
+              Same name also written <em>Curculio cardui</em>, <em>Rhinobatus cardui</em> in Catalogue of Life.
+              TaxonWorks lists <em>Larinus cardui</em> Rossi, 1790 as a synonym of
+              <em>Larinus cynarae</em> (Fabricius, 1787).
+            </div></details>
+          </td>
+          <td>synonym of <span class="nm">Larinus cynarae</span> <span class="auth">(Fabricius, 1787)</span></td>
+          <td>synonym</td>
+          <td class="num">931</td>
+        </tr>
+        <tr>
+          <td class="nm">Curculio pollinosus <span class="auth">Germar, 1817</span><span class="tier" title="TaxonWorks has this name as Lixus pollinosus Germar, 1817; same original combination">homotypic</span></td>
+          <td>synonym of <span class="nm">Lixus cardui</span> <span class="auth">(Olivier, 1807)</span></td>
+          <td>synonym</td>
+          <td class="num zero">0</td>
+        </tr>
+        <tr>
+          <td class="nm">Lixus longirostris <span class="tier">probable</span></td>
+          <td>valid species, as <span class="nm">Larinus longirostris</span> <span class="auth">Gyllenhal, 1835</span></td>
+          <td>synonym</td>
+          <td class="num zero">0</td>
+        </tr>
+
+        <tr class="zgroup gb"><td colspan="4">Misapplied to <em>Larinus latus</em> in Catalogue of Life</td></tr>
+        <tr><td class="nm">Lixus cynarae <span class="auth">Olivier, 1807, auct. non Olivier</span></td><td>—</td><td>misapplied, excluded</td><td class="num zero">0</td></tr>
+
+        <tr class="zgroup"><td colspan="4">In the occurrence records, in neither circumscription of <em>Larinus latus</em></td></tr>
+        <tr><td class="nm">BOLD:ADP3844, BOLD:AEF1827</td><td>—</td><td>BIN placeholders</td><td class="num">9</td></tr>
+      </tbody>
+    </table>
+
+    <p class="summary-line">
+      GBIF holds <b>1,593</b> occurrence records that Catalogue of Life files under <em>Larinus latus</em>:
+      <b>766</b> with images, <b>1,187</b> georeferenced. <b>931</b> of them (58%) are identified as
+      <em>Lixus cardui</em>, which TaxonWorks assigns to <em>Larinus cynarae</em> (Fabricius, 1787).
+    </p>
+
+    <div class="entrypoints">
+      <a class="ep" href="#"><em>Larinus latus</em> in Catalogue of Life <small>· the taxonomy the panels here use</small></a>
+      <a class="ep" href="#"><em>Larinus latus</em> in the GBIF backbone <small>· GBIF's default view</small></a>
+      <a class="ep" href="#">All GBIF occurrences under the name <em>Larinus latus</em> <small>· unfiltered</small></a>
+    </div>
+  </div>
+
+  <div class="note-box">
+    The <strong>homotypic / probable</strong> tags in the Name column are the match tier: <em>homotypic</em>
+    means the original combination lines up on both sides (proven same name), <em>probable</em> means epithet,
+    author and year agree but the type could not be confirmed, so a secondary homonym is not fully ruled out.
+    Shown here as a small inline tag; could also be a column, or hidden behind the "how this is measured" toggle.
+  </div>
+
+  <details class="considered">
+    <summary>Bar layouts considered, not chosen</summary>
+    <div class="body">
+      Two-track alignment bars (Franz &amp; Peet Fig. 3), with and without chip-size-by-record-count.
+      Rejected: the shared core is usually one name so everything sits in the overhangs, the size
+      encoding needs a three-sentence disclaimer, the overhang layout is the same fragile absolute
+      positioning that made the old Venn hard to maintain, and long names clip in a narrow column.
+      The earlier version of this file has the full renders in git history.
+    </div>
+  </details>
+</div>
+</body>
+</html>

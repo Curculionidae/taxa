@@ -16,6 +16,7 @@ import { resolveGbifTaxonScope } from './gbifTaxonScope'
 import { fetchChecklistConcept } from './gbifChecklistConcept'
 import { buildAlignmentModel } from './assembleAlignment'
 import { matchKey } from './gbifNameMatch'
+import { shortName } from './gbifNameFilter'
 
 const OCC = 'https://api.gbif.org/v1/occurrence/search'
 const V1_MATCH = 'https://api.gbif.org/v1/species/match'
@@ -38,11 +39,18 @@ async function resolve(primaryName, taxonId, opts) {
     const raw = await matchGbifRaw(primaryName)
     if (!raw) return { matched: false }
 
+    // Bare, case-preserving canonical for the name-based lookups that need one.
+    // GBIF's species name param and the /taxon_names name_exact refine both miss
+    // when the string carries parenthetical authorship, so primaryName stays for
+    // display and the cache key only. raw.usage.canonicalName is GBIF's own
+    // properly-cased canonical, shortName(primaryName) is the local fallback.
+    const lookupName = raw?.usage?.canonicalName || shortName(primaryName)
+
     // 1. TaxonWorks name set, with author-year and original combinations, then
     //    the section 4.4 match key on every node. fetchChecklistConcept grades
     //    each Catalogue of Life name against these keys, so they must be set
     //    before it runs.
-    const baseNodes = await fetchTwNodes(primaryName, taxonId)
+    const baseNodes = await fetchTwNodes(primaryName, taxonId, lookupName)
     if (primaryName !== forName) return { matched: false }
     const twNodes = baseNodes.map((n) => ({
       ...n,
@@ -63,7 +71,7 @@ async function resolve(primaryName, taxonId, opts) {
     const rankEligible = isSpeciesGroupMatch(raw)
 
     // 3. Catalogue of Life synonymy.
-    const colConcept = await fetchChecklistConcept(primaryName, twNodes, {
+    const colConcept = await fetchChecklistConcept(lookupName, twNodes, {
       checklistKey: CHECKLIST_KEY
     })
     const colAcceptedName = colConcept ? colConcept.accepted.name : primaryName
@@ -133,8 +141,8 @@ async function resolve(primaryName, taxonId, opts) {
 // relationships whose object is this name), but the full rows are kept for
 // cached_original_combination and cached_author_year, both present on the list
 // response (verified against the live API on 2026-08-31).
-async function fetchTwNodes(primaryName, taxonId) {
-  const nodes = [nodeFromTw({ cached: primaryName }, 'accepted')]
+async function fetchTwNodes(primaryName, taxonId, lookupName) {
+  const nodes = [nodeFromTw({ cached: lookupName || primaryName }, 'accepted')]
 
   let synIds = []
   try {
@@ -168,7 +176,7 @@ async function fetchTwNodes(primaryName, taxonId) {
   // Fill the accepted node's author-year and original combination.
   try {
     const { data } = await makeAPIRequest.get('/taxon_names', {
-      params: { name: primaryName, name_exact: true, per: 1 }
+      params: { name: lookupName || primaryName, name_exact: true, per: 1 }
     })
     if (data && data[0]) nodes[0] = nodeFromTw(data[0], 'accepted')
   } catch {

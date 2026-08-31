@@ -205,7 +205,13 @@
                     class="border-b border-base-muted"
                   >
                     <td>
-                      <span class="nm">{{ e.name }}</span>
+                      <a
+                        class="lnk-gbif"
+                        target="_blank"
+                        rel="noopener"
+                        :href="gbifSpeciesUrl(e.name)"
+                        ><span class="nm">{{ e.name }}</span></a
+                      >
                       <span
                         v-if="e.matchTier && e.matchTier !== 'none'"
                         class="tier"
@@ -220,9 +226,14 @@
                       class="rec"
                       :class="{ 'is-zero': e.records === 0 }"
                     >
-                      <template v-if="e.records != null">{{
-                        fmt(e.records)
-                      }}</template>
+                      <a
+                        v-if="e.records != null"
+                        class="lnk-gbif"
+                        target="_blank"
+                        rel="noopener"
+                        :href="gbifOccUrl(e.name)"
+                        >{{ fmt(e.records) }}</a
+                      >
                     </td>
                   </tr>
                 </template>
@@ -243,16 +254,29 @@
                     :key="`keep-${e.name}`"
                     class="border-b border-base-muted"
                   >
-                    <td><span class="nm">{{ e.name }}</span></td>
+                    <td>
+                      <a
+                        class="lnk-gbif"
+                        target="_blank"
+                        rel="noopener"
+                        :href="gbifSpeciesUrl(e.name)"
+                        ><span class="nm">{{ e.name }}</span></a
+                      >
+                    </td>
                     <td>{{ twRoleLabel(e) }}</td>
                     <td>separate accepted species</td>
                     <td
                       class="rec"
                       :class="{ 'is-zero': e.records === 0 }"
                     >
-                      <template v-if="e.records != null">{{
-                        fmt(e.records)
-                      }}</template>
+                      <a
+                        v-if="e.records != null"
+                        class="lnk-gbif"
+                        target="_blank"
+                        rel="noopener"
+                        :href="gbifOccUrl(e.name)"
+                        >{{ fmt(e.records) }}</a
+                      >
                     </td>
                   </tr>
                 </template>
@@ -279,7 +303,13 @@
                         @toggle="onFoldToggle($event, row)"
                       >
                         <summary>
-                          <span class="nm">{{ row.name }}</span>
+                          <a
+                            class="lnk-gbif"
+                            target="_blank"
+                            rel="noopener"
+                            :href="gbifSpeciesUrl(row.name)"
+                            ><span class="nm">{{ row.name }}</span></a
+                          >
                           <span
                             v-if="row.matchTier && row.matchTier !== 'none'"
                             class="tier"
@@ -298,24 +328,42 @@
                             logo-class="w-3 h-3"
                             legend=""
                           />
-                          <p
-                            v-else-if="row.twPlacement"
-                            v-html="`TaxonWorks: ${placementHtml(row.twPlacement)}`"
-                          />
+                          <p v-else-if="row.twPlacementParts">
+                            <span
+                              v-html="`TaxonWorks: ${row.twPlacementParts.html}`"
+                            /><RouterLink
+                              v-if="row.twPlacementParts.otuId"
+                              class="lnk-tw"
+                              :to="{ name: 'otus-id', params: { id: row.twPlacementParts.otuId } }"
+                              ><em>{{ row.twPlacementParts.name }}</em></RouterLink
+                            >
+                          </p>
                         </div>
                       </details>
                     </td>
-                    <td
-                      v-html="row.twPlacement ? placementHtml(row.twPlacement) : ''"
-                    />
+                    <td>
+                      <template v-if="row.twPlacementParts">
+                        <span v-html="row.twPlacementParts.html" /><RouterLink
+                          v-if="row.twPlacementParts.otuId"
+                          class="lnk-tw"
+                          :to="{ name: 'otus-id', params: { id: row.twPlacementParts.otuId } }"
+                          ><em>{{ row.twPlacementParts.name }}</em></RouterLink
+                        >
+                      </template>
+                    </td>
                     <td>synonym</td>
                     <td
                       class="rec"
                       :class="{ 'is-zero': row.records === 0 }"
                     >
-                      <template v-if="row.records != null">{{
-                        fmt(row.records)
-                      }}</template>
+                      <a
+                        v-if="row.records != null"
+                        class="lnk-gbif"
+                        target="_blank"
+                        rel="noopener"
+                        :href="gbifOccUrl(row.name)"
+                        >{{ fmt(row.records) }}</a
+                      >
                     </td>
                   </tr>
                 </template>
@@ -336,7 +384,15 @@
                     :key="`mis-${e.name}`"
                     class="border-b border-base-muted"
                   >
-                    <td><span class="nm">{{ e.name }}</span></td>
+                    <td>
+                      <a
+                        class="lnk-gbif"
+                        target="_blank"
+                        rel="noopener"
+                        :href="gbifSpeciesUrl(e.name)"
+                        ><span class="nm">{{ e.name }}</span></a
+                      >
+                    </td>
                     <td />
                     <td>misapplied, excluded</td>
                     <td class="rec" />
@@ -408,24 +464,11 @@
           </p>
         </div>
 
-        <div
-          v-if="entryPoints.length"
+        <p
+          v-if="openInGbifHtml"
           class="text-xs"
-        >
-          <div class="mb-1 text-base-soft">Open in GBIF</div>
-          <a
-            v-for="(e, i) in entryPoints"
-            :key="i"
-            :href="e.href"
-            target="_blank"
-            rel="noopener"
-            class="block py-0.5 text-secondary"
-          >
-            <span v-html="e.html" /><span class="ml-1 text-base-soft">{{
-              e.note
-            }}</span>
-          </a>
-        </div>
+          v-html="openInGbifHtml"
+        />
 
         <p
           v-if="model.rankEligible === false"
@@ -482,6 +525,12 @@ function esc(s) {
 }
 const em = (s) => `<em>${esc(s)}</em>`
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : '')
+
+// ---- GBIF destination URLs for the in-table links ----
+const gbifSpeciesUrl = (n) =>
+  `https://www.gbif.org/species/search?q=${encodeURIComponent(canonicalName(n))}`
+const gbifOccUrl = (n) =>
+  `https://www.gbif.org/occurrence/search?q=${encodeURIComponent(n)}`
 
 // ---- relation icon (Franz and Peet 2009, Fig. 2). Coordinates copied from
 //      docs/gbif-viz-options.html, viewBox 0 0 52 30 ----
@@ -572,9 +621,16 @@ const captionHtml = computed(
     )}, and what the other source does with it.`
 )
 const colHeadTw = computed(() => `TaxonWorks:<br>${em(model.value?.twName)}`)
-const colHeadCol = computed(
-  () => `Catalogue of Life:<br>${em(model.value?.colAcceptedName)}`
-)
+const colHeadCol = computed(() => {
+  const name = model.value?.colAcceptedName
+  const url = model.value?.urls?.colTaxon
+  const inner = url
+    ? `<a class="lnk-gbif" target="_blank" rel="noopener" href="${esc(
+        url
+      )}">${em(name)}</a>`
+    : em(name)
+  return `Catalogue of Life:<br>${inner}`
+})
 
 function accentStyle(which) {
   if (which === 'tw') return { '--pp-accent': 'var(--pp-tw)' }
@@ -591,15 +647,22 @@ function colSideLabel(e) {
   return canonicalName(e.name) === canonicalName(acc) ? 'accepted name' : 'synonym'
 }
 
-function placementHtml(p) {
-  if (!p || !p.known) return 'not in TaxonWorks'
-  if (p.ambiguous) return 'more than one match in TaxonWorks'
-  if (p.valid) {
-    return p.validName
-      ? `valid species, as ${em(p.validName)}`
-      : 'valid species in TaxonWorks'
+// Split a TaxonWorks placement into a lead HTML fragment and, when the OTU id
+// is known, the target name for a RouterLink. `html` carries a trailing space
+// when a linked name follows it: the space lives inside the v-html string, not
+// in a template text node, so Vue whitespace-condense leaves it alone.
+function placementParts(p) {
+  if (!p || !p.known) return { html: 'not in TaxonWorks' }
+  if (p.ambiguous) return { html: 'more than one match in TaxonWorks' }
+  const target = p.valid ? p.validName : p.synonymOf
+  if (!target) {
+    return {
+      html: p.valid ? 'valid species in TaxonWorks' : 'synonym in TaxonWorks'
+    }
   }
-  return p.synonymOf ? `synonym of ${em(p.synonymOf)}` : 'synonym in TaxonWorks'
+  const prefix = p.valid ? 'valid species, as ' : 'synonym of '
+  if (p.otuId) return { html: esc(prefix), name: target, otuId: p.otuId }
+  return { html: `${esc(prefix)}${em(target)}` }
 }
 
 function tierTitle(t) {
@@ -634,21 +697,20 @@ const summaryHtml = computed(() => {
   const m = model.value
   if (!m?.counts || m.counts.total == null) return ''
   const href = esc(m.urls?.scopedOccurrence || '')
-  const total = `<a href="${href}" target="_blank" rel="noopener" class="text-secondary underline"><strong>${fmt(
+  const total = `<a href="${href}" target="_blank" rel="noopener" class="lnk-gbif">${fmt(
     m.counts.total
-  )}</strong></a>`
-  let s = `GBIF holds ${total} occurrence records that Catalogue of Life files under ${em(
-    m.colAcceptedName
-  )}`
+  )}</a>`
   const { withImage, withCoordinate } = m.counts
-  if (typeof withImage === 'number' && typeof withCoordinate === 'number') {
-    s += `: ${fmt(withImage)} with images, ${fmt(withCoordinate)} georeferenced.`
-  } else {
-    s += '.'
-  }
-  return s
+  const detail =
+    typeof withImage === 'number' && typeof withCoordinate === 'number'
+      ? ` (${fmt(withImage)} imaged, ${fmt(withCoordinate)} mapped)`
+      : ''
+  return `GBIF holds ${total} records${detail}.`
 })
 
+// The busiest fold-in name, but only when its TaxonWorks placement is resolved
+// (known, with a synonym target or a valid name). A top fold-in that never
+// resolved (a bare protonym, say) yields no dominant-name sentence.
 const dominantFoldRow = computed(() => {
   const folds = model.value?.zones?.colFoldsIn || []
   let top = null
@@ -656,12 +718,9 @@ const dominantFoldRow = computed(() => {
     if (f.records != null && (top === null || f.records > top.records)) top = f
   }
   if (!top || !top.records) return null
-  const cons = model.value?.zones?.consensus || []
-  const maxCons = cons.reduce(
-    (mx, c) => (c.records && c.records > mx ? c.records : mx),
-    0
-  )
-  return top.records >= maxCons ? top : null
+  const p = top.twPlacement
+  const z = p && p.known && (p.synonymOf || (p.valid ? p.validName : null))
+  return z ? top : null
 })
 
 const dominantHtml = computed(() => {
@@ -669,13 +728,12 @@ const dominantHtml = computed(() => {
   const top = dominantFoldRow.value
   if (!m || !top || !m.counts?.total) return ''
   const pct = Math.round((top.records / m.counts.total) * 100)
-  let s = `<strong>${fmt(top.records)}</strong> of them (${pct} percent) are identified as ${em(
-    top.short
-  )}`
   const p = top.twPlacement
-  const z = p && (p.synonymOf || (p.valid ? p.validName : null))
-  if (z) s += `, which TaxonWorks assigns to ${em(z)}`
-  return `${s}.`
+  const z = p.synonymOf || (p.valid ? p.validName : null)
+  return (
+    `<strong>${fmt(top.records)}</strong> of them (${pct} percent) carry the ` +
+    `name ${em(top.name)}, which TaxonWorks files under ${em(z)}.`
+  )
 })
 
 const inDataOnlySumN = computed(() =>
@@ -683,36 +741,39 @@ const inDataOnlySumN = computed(() =>
 )
 
 // ---- 8.7 open in GBIF ----
-const entryPoints = computed(() => {
-  const m = model.value
-  if (!m?.urls) return []
-  const u = m.urls
-  const out = []
-  if (u.colTaxon)
-    out.push({
-      href: u.colTaxon,
-      html: `${em(m.colAcceptedName)} in Catalogue of Life`,
-      note: 'The taxonomy the panels here use.'
-    })
-  if (u.backboneTaxon)
-    out.push({
-      href: u.backboneTaxon,
-      html: `${em(m.twName)} in the GBIF backbone`,
-      note: "GBIF's default view, which may group the names differently."
-    })
-  if (u.backboneOccurrence)
-    out.push({
-      href: u.backboneOccurrence,
-      html: `All GBIF occurrences under the name ${em(m.twName)}`,
-      note: "Everything GBIF has, grouped GBIF's default way, not filtered by this project."
-    })
-  if (u.scopedOccurrence)
-    out.push({
-      href: u.scopedOccurrence,
-      html: 'Occurrences used in the panels here',
-      note: 'The filtered set behind Images, Map and Type specimens.'
-    })
-  return out
+const openInGbifHtml = computed(() => {
+  const u = model.value?.urls
+  if (!u) return ''
+  const items = [
+    [u.colTaxon, 'Catalogue of Life', 'The taxonomy the panels here use'],
+    [
+      u.backboneTaxon,
+      'backbone',
+      "GBIF's default view, which may group the names differently"
+    ],
+    [
+      u.backboneOccurrence,
+      'all occurrences',
+      "Everything GBIF has, grouped GBIF's default way, not filtered by this project"
+    ],
+    [
+      u.scopedOccurrence,
+      'panel set',
+      'The filtered set behind Images, Map and Type specimens'
+    ]
+  ]
+  const links = items
+    .filter(([href]) => href)
+    .map(
+      ([href, label, title]) =>
+        `<a class="lnk-gbif" target="_blank" rel="noopener" href="${esc(
+          href
+        )}" title="${esc(title)}">${esc(label)}</a>`
+    )
+  if (!links.length) return ''
+  return `<span class="text-base-soft">Open in GBIF:</span> ${links.join(
+    ' &middot; '
+  )}`
 })
 
 // ---- lazy TaxonWorks placement for the colFoldsIn rows ----
@@ -721,6 +782,7 @@ async function expandFoldsIn(row) {
   row.pending = true
   try {
     row.twPlacement = await fetchTwPlacement(row.name)
+    row.twPlacementParts = placementParts(row.twPlacement)
   } finally {
     row.pending = false
   }
@@ -747,6 +809,15 @@ async function load() {
     })
     if (scientificName.value !== forName) return
     model.value = result
+    // Resolve the busiest fold-in's TaxonWorks placement up front so the
+    // dominant-name summary line can render without a manual expand.
+    const folds = result?.zones?.colFoldsIn || []
+    const busiest = folds.reduce(
+      (top, f) =>
+        f.records != null && (top === null || f.records > top.records) ? f : top,
+      null
+    )
+    if (busiest && busiest.records) expandFoldsIn(busiest)
     if (result?.urls?.scopedOccurrence) {
       recordRequest(requestStore, 'panel:gbif-taxon', {
         url: result.urls.scopedOccurrence,
@@ -784,6 +855,17 @@ watch(scientificName, load, { immediate: true })
 .rel-ico .gb {
   fill: var(--pp-gbif);
   stroke: var(--pp-gbif);
+}
+
+/* Link colour encodes the destination: green for gbif.org, site blue for a
+   TaxonWorks page. */
+.lnk-gbif {
+  color: var(--pp-gbif);
+  text-decoration: underline;
+}
+.lnk-tw {
+  color: var(--pp-tw);
+  text-decoration: underline;
 }
 
 .shorthand {

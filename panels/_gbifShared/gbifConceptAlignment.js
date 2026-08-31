@@ -39,18 +39,17 @@ async function resolve(primaryName, taxonId, opts) {
     const raw = await matchGbifRaw(primaryName)
     if (!raw) return { matched: false }
 
-    // Bare, case-preserving canonical for the name-based lookups that need one.
-    // GBIF's species name param and the /taxon_names name_exact refine both miss
-    // when the string carries parenthetical authorship, so primaryName stays for
-    // display and the cache key only. raw.usage.canonicalName is GBIF's own
-    // properly-cased canonical, shortName(primaryName) is the local fallback.
+    // Bare, case-preserving canonical for the Catalogue of Life concept lookup,
+    // which misses when the string carries parenthetical authorship. primaryName
+    // stays for display and the cache key only. raw.usage.canonicalName is
+    // GBIF's own properly-cased canonical, shortName(primaryName) the fallback.
     const lookupName = raw?.usage?.canonicalName || shortName(primaryName)
 
     // 1. TaxonWorks name set, with author-year and original combinations, then
     //    the section 4.4 match key on every node. fetchChecklistConcept grades
     //    each Catalogue of Life name against these keys, so they must be set
     //    before it runs.
-    const baseNodes = await fetchTwNodes(primaryName, taxonId, lookupName)
+    const baseNodes = await fetchTwNodes(primaryName, taxonId)
     if (primaryName !== forName) return { matched: false }
     const twNodes = baseNodes.map((n) => ({
       ...n,
@@ -136,13 +135,15 @@ async function resolve(primaryName, taxonId, opts) {
   }
 }
 
-// The valid name node plus one node per TaxonWorks synonym. The synonym rows
-// come from the same two-step twSynonymNames.js uses (invalidating
-// relationships whose object is this name), but the full rows are kept for
-// cached_original_combination and cached_author_year, both present on the list
-// response (verified against the live API on 2026-08-31).
-async function fetchTwNodes(primaryName, taxonId, lookupName) {
-  const nodes = [nodeFromTw({ cached: lookupName || primaryName }, 'accepted')]
+// The valid name node plus one node per TaxonWorks synonym. Node 0 is fetched
+// by id from GET /taxon_names/{taxonId} so a subgenus in the stored name string
+// cannot make a name lookup miss. The synonym rows come from the same two-step
+// twSynonymNames.js uses (invalidating relationships whose object is this name);
+// the full rows are kept for cached_original_combination and cached_author_year,
+// both present on the list response (verified against the live API on
+// 2026-08-31).
+async function fetchTwNodes(primaryName, taxonId) {
+  const nodes = [nodeFromTw({ cached: primaryName }, 'accepted')]
 
   let synIds = []
   try {
@@ -173,12 +174,12 @@ async function fetchTwNodes(primaryName, taxonId, lookupName) {
     }
   }
 
-  // Fill the accepted node's author-year and original combination.
+  // Refine the accepted node from its own TaxonWorks record. Fetched by id, not
+  // by name, so a stored subgenus (Otiorhynchus (Podoropelmus) fullo) cannot
+  // drop the author-year and original combination the grader needs.
   try {
-    const { data } = await makeAPIRequest.get('/taxon_names', {
-      params: { name: lookupName || primaryName, name_exact: true, per: 1 }
-    })
-    if (data && data[0]) nodes[0] = nodeFromTw(data[0], 'accepted')
+    const { data } = await makeAPIRequest.get(`/taxon_names/${taxonId}`)
+    if (data && data.id) nodes[0] = nodeFromTw(data, 'accepted')
   } catch {
     // Keep the bare accepted node.
   }
@@ -327,10 +328,13 @@ async function resolvePlacement(nameString) {
       return { known: true, ambiguous: true }
     }
     const row = hits.find((h) => h.cached_is_valid) || hits[0]
+    const validId = row.cached_is_valid
+      ? row.id
+      : row.cached_valid_taxon_name_id
+    const otuId = await resolveOtuId(validId)
     if (row.cached_is_valid) {
-      return { known: true, valid: true, validName: row.cached, otuId: null }
+      return { known: true, valid: true, validName: row.cached, otuId }
     }
-    const validId = row.cached_valid_taxon_name_id
     let validName = null
     if (validId) {
       try {
@@ -340,8 +344,24 @@ async function resolvePlacement(nameString) {
         // Leave validName null.
       }
     }
-    return { known: true, valid: false, synonymOf: validName, otuId: null }
+    return { known: true, valid: false, synonymOf: validName, otuId }
   } catch {
     return { known: false, error: true }
+  }
+}
+
+// The OTU carrying a given valid taxon-name id, if one exists. /otus returns a
+// bare array (the shape PanelGallery and ImageLightbox also consume). Null on
+// any miss, so the panel just renders the placement name without a link.
+async function resolveOtuId(taxonNameId) {
+  if (!taxonNameId) return null
+  try {
+    const { data } = await makeAPIRequest.get('/otus', {
+      params: { 'taxon_name_id[]': taxonNameId, per: 1 }
+    })
+    const rows = Array.isArray(data) ? data : data?.results
+    return rows?.[0]?.id ?? null
+  } catch {
+    return null
   }
 }

@@ -279,7 +279,7 @@
                         @toggle="onFoldToggle($event, row)"
                       >
                         <summary>
-                          <span class="nm">{{ row.short }}</span>
+                          <span class="nm">{{ row.name }}</span>
                           <span
                             v-if="row.matchTier && row.matchTier !== 'none'"
                             class="tier"

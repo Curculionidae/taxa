@@ -9,7 +9,8 @@
     "build:ssr": "taxonpages build:ssr",
     "serve": "taxonpages serve",
     "preview": "taxonpages preview",
-    "setup": "taxonpages setup"
+    "setup": "taxonpages setup",
+    "test": "node --test 'panels/_gbifShared/**/*.test.js'"
   },
   "dependencies": {
     "@sfgrp/taxonpages": "^0.6.7"

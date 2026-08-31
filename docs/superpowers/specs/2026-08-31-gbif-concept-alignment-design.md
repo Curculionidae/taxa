@@ -66,6 +66,37 @@ names. Two names sharing a protonym share a type and are the same nomenclatural
 entity. This redesign uses that idea in a limited form for name matching
 (section 4.4).
 
+### Citations and attribution
+
+The work is not based on one source alone. Which source underpins which part:
+
+- **Name matching engine** (`gbifNameMatch.js`: the protonym based match keys,
+  the `homotypic` / `probable` / `weak` tiers, section 4.4): cite
+  **Rees, T., Franz, N.M. and Sterner, B. (2026). A scalable exemplar based
+  method for aligning biological taxonomies. Biodiversity Data Journal 14:
+  e191754. https://doi.org/10.3897/BDJ.14.e191754**. The `homotypic` tier is a
+  lightweight application of their exemplar method: the type implied by each
+  name is the tie point, in place of harvested occurrence level type material.
+- **The two layer split and why `probable` is weaker than `homotypic`**:
+  **Franz, N.M. and Thau, D. (2010). Biological taxonomy and ontology
+  development: scope and limitations. Biodiversity Informatics 7: 45 to 66.**
+  Nomenclatural identity is fixed by type specimen identity and must be
+  modelled separately from taxonomic concept relations.
+- **The concept relation side** (`conceptRelation.js`, the `≡ ⊂ ⊃ ><` verdict,
+  the Figure 2 icon, the OST framing, the plus and minus reconciliation):
+  **Franz, N.M. and Peet, R.K. (2009). Perspectives: Towards a language for
+  mapping relationships among taxonomic concepts. Systematics and Biodiversity
+  7 (1): 5 to 20.**
+- **The secondary homonym point** (why the original combination, not just
+  epithet plus author plus year, is required to prove name identity):
+  standard nomenclatural theory from the International Code of Zoological
+  Nomenclature (primary versus secondary homonymy, Arts. 53 to 60), which
+  Franz and Peet 2009 Appendix 1 itself draws on via Hawksworth 1994 and
+  Berendsohn et al. 2003.
+
+If a single citation is needed for the matching engine, it is Rees, Franz and
+Sterner 2026.
+
 ### What the panel can and cannot assert
 
 The panel assembles two name sets:

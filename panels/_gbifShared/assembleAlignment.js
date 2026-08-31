@@ -3,7 +3,7 @@
 // sections 4 and 7.
 import { deriveRelation, relationLabel } from './conceptRelation.js'
 import { matchKey, keysMatch } from './gbifNameMatch.js'
-import { canonicalName } from './gbifNameFilter.js'
+import { canonicalName, shortName } from './gbifNameFilter.js'
 
 const BOLD_OR_BLANK = /^(BOLD:|incertae|\s*$)/i
 
@@ -177,14 +177,4 @@ export function buildAlignmentModel(input) {
     },
     urls
   }
-}
-
-function shortName(name) {
-  const t = String(name || '').trim().split(/\s+/)
-  const out = [t[0]]
-  for (let i = 1; i < t.length; i++) {
-    if (/^[a-z][a-z-]+$/.test(t[i]) || /^\([A-Z][a-z-]+\)$/.test(t[i])) out.push(t[i])
-    else break
-  }
-  return out.join(' ')
 }

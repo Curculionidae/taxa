@@ -66,10 +66,39 @@ test('Larinus latus assembles to an overlap with the expected zones', async () =
   assert.ok(keepsIn.includes('Larinus subcostatus'))
   assert.ok(keepsIn.includes('Larinus costirostris'))
   assert.ok(keepsIn.includes('Larinus teretirostris'))
+  assert.ok(!keepsIn.some((n) => n.includes('mutabilis')))
 
   const cardui = model.zones.colFoldsIn.find((n) => n.short.toLowerCase().includes('cardui'))
   assert.equal(cardui.records, 931)
 
   assert.ok(model.zones.inDataOnly.some((r) => r.name.startsWith('BOLD:')))
   assert.equal(model.relation.intAssessed, false)
+})
+
+test('colConcept null yields a none relation and null gbif, no throw', () => {
+  const twNodes = [
+    {
+      name: 'Foo bar (Smith, 1900)',
+      short: 'Foo bar',
+      authorYear: '(Smith, 1900)',
+      originalCombination: null,
+      role: 'accepted',
+      colMatched: false,
+      matchKey: matchKey('Foo bar', { author: '(Smith, 1900)' })
+    }
+  ]
+  const model = buildAlignmentModel({
+    twName: 'Foo bar',
+    colAcceptedName: 'Foo bar',
+    twAcceptedIsColSynonym: false,
+    twNodes,
+    colConcept: null,
+    facetCounts: [],
+    summaryCounts: {},
+    matchDiagnostics: {},
+    urls: {}
+  })
+  assert.equal(model.relation.kind, 'none')
+  assert.equal(model.gbif, null)
+  assert.equal(model.zones.consensus.length, 0)
 })

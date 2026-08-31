@@ -109,7 +109,50 @@
             </div>
           </div>
 
-          <template v-if="showCalmLine">
+          <template v-if="isNoComparison">
+            <div
+              v-if="model.zones.notComparable.length"
+              class="text-xs"
+            >
+              <div
+                class="mb-1 text-base-soft"
+                v-html="`Names TaxonWorks files under ${em(model.twName)} that Catalogue of Life does not contain`"
+              />
+              <ul class="space-y-0.5">
+                <li
+                  v-for="n in model.zones.notComparable"
+                  :key="`nc-${n}`"
+                  class="italic"
+                >
+                  {{ n }}
+                </li>
+              </ul>
+            </div>
+            <div
+              v-if="model.zones.inDataOnly.length"
+              class="mt-2 text-xs"
+            >
+              <div
+                class="mb-1 text-base-soft"
+                v-html="`In the occurrence records, in neither circumscription of ${em(model.twName)}`"
+              />
+              <ul class="space-y-0.5">
+                <li
+                  v-for="e in model.zones.inDataOnly"
+                  :key="`data-${e.name}`"
+                >
+                  <span class="italic">{{ e.name }}</span
+                  ><span
+                    v-if="e.count != null"
+                    class="ml-1 text-base-soft"
+                    >{{ fmt(e.count) }}</span
+                  >
+                </li>
+              </ul>
+            </div>
+          </template>
+
+          <template v-else-if="showCalmLine">
             <ul
               v-if="model.zones.consensus.length > 1"
               class="flex flex-wrap gap-1.5 text-xs"
@@ -250,9 +293,11 @@
                             v-if="row.otherCombinations && row.otherCombinations.length"
                             v-html="`Also written ${row.otherCombinations.map(em).join(', ')} in Catalogue of Life.`"
                           />
-                          <p v-if="row.pending">
-                            Looking up the TaxonWorks placement.
-                          </p>
+                          <VSpinner
+                            v-if="row.pending"
+                            logo-class="w-3 h-3"
+                            legend=""
+                          />
                           <p
                             v-else-if="row.twPlacement"
                             v-html="`TaxonWorks: ${placementHtml(row.twPlacement)}`"
@@ -343,7 +388,7 @@
 
         <div
           v-if="model.counts"
-          class="border-t border-base-muted pt-2 text-xs text-base-soft leading-relaxed"
+          class="border-t border-base-muted pt-2 text-xs text-base-content leading-relaxed"
         >
           <p
             v-if="model.counts.total != null"
@@ -356,7 +401,7 @@
           />
           <p
             v-if="inDataOnlySumN"
-            class="mt-1"
+            class="mt-1 text-base-soft"
           >
             {{ fmt(inDataOnlySumN) }} further records carry names not resolved
             into the comparison above (for example BIN placeholders).
@@ -467,11 +512,10 @@ const relIconRects = computed(
 )
 
 // ---- title ----
-const titleHtml = computed(() =>
-  model.value?.twName
-    ? `${em(model.value.twName)} in GBIF`
-    : 'This taxon in GBIF'
-)
+const titleHtml = computed(() => {
+  const name = model.value?.twName || scientificName.value
+  return name ? `${em(name)} in GBIF` : 'This taxon in GBIF'
+})
 
 // ---- 8.1 matched-name line ----
 const matchedLineHtml = computed(() => {
@@ -567,6 +611,10 @@ function tierTitle(t) {
     return 'Only the epithet matches, or the year is missing or differs by more than one. This lowers confidence where the relation depends on it.'
   return ''
 }
+
+// No match key shared between the two name sets: the relation is "cannot be
+// compared". Show line 1 and the leftover name lists only, never the table.
+const isNoComparison = computed(() => model.value?.relation?.icon === 'none')
 
 const showCalmLine = computed(() => {
   const m = model.value
@@ -682,21 +730,14 @@ function onFoldToggle(ev, row) {
   if (ev.target.open) expandFoldsIn(row)
 }
 
-// Resolve the dominant folded name up front so the 8.6 sentence can name the
-// TaxonWorks placement without waiting for a manual expand.
-function primeDominantPlacement() {
-  const top = dominantFoldRow.value
-  if (top) expandFoldsIn(top)
-}
-
 // ---- load ----
 async function load() {
   if (typeof window === 'undefined') return
   const name = scientificName.value
-  if (!name) {
-    model.value = null
-    return
-  }
+  // Drop the previous taxon's model on every navigation so the spinner shows
+  // during the fetch instead of the stale relation row / table / <h2> name.
+  model.value = null
+  if (!name) return
   const forName = name
   loading.value = true
   showExplainer.value = false
@@ -712,7 +753,6 @@ async function load() {
         data: result
       })
     }
-    if (result?.matched && result.rankEligible !== false) primeDominantPlacement()
   } catch (e) {
     if (scientificName.value === forName)
       model.value = { matched: false, error: true }

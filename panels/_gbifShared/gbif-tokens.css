@@ -11,8 +11,11 @@
  */
 :root {
   --pp-gbif: #4c9c2e;
+  /* "TaxonWorks side" accent, for the GBIF/TW overlap diagram in PanelGbifTaxon */
+  --pp-tw: #a4681f;
 }
 
 .dark {
   --pp-gbif: #7cbe5a;
+  --pp-tw: #d29a56;
 }

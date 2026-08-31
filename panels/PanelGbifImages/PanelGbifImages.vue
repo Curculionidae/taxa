@@ -101,6 +101,13 @@
         </a>
       </span>
     </p>
+
+    <p
+      v-if="scopeNote"
+      class="px-5 pb-2 text-xs opacity-55"
+    >
+      {{ scopeNote }}
+    </p>
   </VCard>
 </template>
 
@@ -116,11 +123,16 @@ import {
   GBIF_OCCURRENCE_DETAIL
 } from '../_gbifShared/useGbifMatch'
 import gbifMark from '../_gbifShared/gbif-mark.svg'
+import {
+  partitionByName,
+  scopeCaption
+} from '../_gbifShared/gbifNameFilter'
+import { resolveGbifTaxonScope } from '../_gbifShared/gbifTaxonScope'
 import PanelDropdown from '@/modules/otus/components/Panel/PanelDropdown.vue'
 import { useOtuPageRequestStore } from '@/modules/otus/store/request'
 
-const GBIF_MULTIMEDIA_BASE =
-  'https://api.gbif.org/v1/occurrence/experimental/multimedia/species'
+const GBIF_OCCURRENCE_SEARCH = 'https://api.gbif.org/v1/occurrence/search'
+const FETCH_LIMIT = 100 // pool before name-filter + slice to IMAGE_LIMIT
 const IMAGE_LIMIT = 20
 const IMAGE_RANKS = new Set([
   'FAMILY',
@@ -172,14 +184,41 @@ const props = defineProps({
 })
 
 const scientificName = computed(() => deriveScientificName(props.taxon, props.otu))
-const { targetUsage, gbifKey } = useGbifMatch(scientificName)
+const { match, targetUsage, gbifKey } = useGbifMatch(scientificName)
+
+// Clean "Genus species" for the caption; falls back to the TaxonWorks name.
+const taxonDisplayName = computed(
+  () => match.value?.usage?.canonicalName || scientificName.value
+)
 
 const images = ref([])
 const imageIndex = ref(0)
 const imageLoading = ref(false)
 const imageError = ref(false)
 
+// Scope note: shown vs GBIF's broader (lumped) concept — only when they diverge.
+const scopeShown = ref(null)
+const scopeTotal = ref(null)
+const lumpedNames = ref([])
+const hasSynonyms = ref(false)
+// Only when GBIF is actually folding another taxon in — not for a plain paging
+// cap (would read as false "broader concept").
+const scopeNote = computed(() => {
+  if (scopeShown.value == null || !lumpedNames.value.length) return ''
+  return scopeCaption({
+    shown: scopeShown.value,
+    total: scopeTotal.value,
+    lumpedNames: lumpedNames.value,
+    noun: `imaged occurrence${scopeShown.value === 1 ? '' : 's'}`,
+    taxonName: taxonDisplayName.value,
+    includesSynonyms: hasSynonyms.value
+  })
+})
+
 const shouldFetchImages = computed(() => {
+  // HIGHERRANK = name absent from CoL, silently resolved to its genus — the
+  // genus key would return other species' images, all dropped by the filter.
+  if (match.value?.diagnostics?.matchType === 'HIGHERRANK') return false
   const rank = targetUsage.value?.rank
   return rank ? IMAGE_RANKS.has(rank) : false
 })
@@ -217,14 +256,31 @@ function formatLicense(url) {
 
 const requestStore = useOtuPageRequestStore()
 
-async function fetchImages(taxonKey) {
+async function fetchImages() {
+  const forName = scientificName.value // guard against stale OTU navigation
   images.value = []
   imageIndex.value = 0
+  scopeShown.value = null
+  scopeTotal.value = null
+  lumpedNames.value = []
+  hasSynonyms.value = false
 
-  const url = new URL(`${GBIF_MULTIMEDIA_BASE}/${CHECKLIST_KEY}/${taxonKey}`)
-  url.searchParams.set('mediaType', 'stillImage')
-  url.searchParams.set('limit', String(IMAGE_LIMIT))
-  url.searchParams.set('offset', '0')
+  const { names, keys } = await resolveGbifTaxonScope(
+    scientificName.value,
+    props.taxonId,
+    { rejectHigherRank: true }
+  )
+  hasSynonyms.value = names.length > 1
+  if (!keys.length) {
+    recordRequest(requestStore, 'panel:gbif-images', { url: '', data: null })
+    return
+  }
+
+  const url = new URL(GBIF_OCCURRENCE_SEARCH)
+  url.searchParams.set('checklistKey', CHECKLIST_KEY)
+  keys.forEach((k) => url.searchParams.append('taxonKey', k))
+  url.searchParams.set('mediaType', 'StillImage')
+  url.searchParams.set('limit', String(FETCH_LIMIT))
   const requestUrl = url.toString()
 
   try {
@@ -232,10 +288,43 @@ async function fetchImages(taxonKey) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
     const data = await res.json()
-    images.value = (data?.results || []).filter((item) => item.identifier)
+    if (scientificName.value !== forName) return // navigated away mid-flight
+    // GBIF/CoL may lump a neighbour under a key (and a TW synonym may add its
+    // own key) — keep only occurrences identified as this taxon or a TW synonym.
+    const { kept, lumpedNames: lumped } = partitionByName(
+      data?.results || [],
+      names,
+      CHECKLIST_KEY
+    )
+    lumpedNames.value = lumped
+    const withImg = kept.filter((r) =>
+      (r.media || []).some((m) => !m.type || m.type === 'StillImage')
+    )
+    scopeShown.value = withImg.length
+    scopeTotal.value = typeof data?.count === 'number' ? data.count : null
+
+    const seen = new Set()
+    const flat = []
+    for (const rec of withImg) {
+      for (const m of rec.media || []) {
+        if (m?.type && m.type !== 'StillImage') continue
+        const id = m?.identifier
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        flat.push({
+          identifier: id.replace(/^http:\/\//i, 'https://'),
+          occurrenceKey: rec.key,
+          rightsHolder: m.rightsHolder || rec.rightsHolder || m.creator || '',
+          license: m.license || rec.license || ''
+        })
+        if (flat.length >= IMAGE_LIMIT) break
+      }
+      if (flat.length >= IMAGE_LIMIT) break
+    }
+    images.value = flat
     recordRequest(requestStore, 'panel:gbif-images', { url: requestUrl, data })
   } catch (e) {
-    images.value = []
+    if (scientificName.value === forName) images.value = []
     recordRequest(requestStore, 'panel:gbif-images', { url: requestUrl, data: null })
   }
 }
@@ -265,7 +354,7 @@ watch(
   [gbifKey, shouldFetchImages],
   ([key, eligible]) => {
     if (key && eligible) {
-      fetchImages(key)
+      fetchImages()
     } else {
       images.value = []
       imageIndex.value = 0

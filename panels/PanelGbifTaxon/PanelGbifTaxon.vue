@@ -184,6 +184,10 @@
                     v-html="colHeadTw"
                   />
                   <th
+                    class="ic text-base-soft"
+                    aria-label="relation between the two placements"
+                  />
+                  <th
                     class="text-base-soft"
                     v-html="colHeadCol"
                   />
@@ -195,7 +199,7 @@
                 <template v-if="model.zones.consensus.length">
                   <tr class="zheading bg-base-muted text-base-soft">
                     <td
-                      colspan="4"
+                      colspan="5"
                       v-html="`In both circumscriptions of ${em(model.twName)}`"
                     />
                   </tr>
@@ -205,13 +209,7 @@
                     class="border-b border-base-muted"
                   >
                     <td>
-                      <a
-                        class="lnk-gbif"
-                        target="_blank"
-                        rel="noopener"
-                        :href="gbifSpeciesUrl(e.name)"
-                        ><span class="nm">{{ e.name }}</span></a
-                      >
+                      <span class="nm">{{ e.name }}</span>
                       <span
                         v-if="e.matchTier && e.matchTier !== 'none'"
                         class="tier"
@@ -221,19 +219,17 @@
                       >
                     </td>
                     <td>{{ twRoleLabel(e) }}</td>
+                    <td class="ic">
+                      <RelIcon kind="congruent" />
+                    </td>
                     <td>{{ colSideLabel(e) }}</td>
                     <td
                       class="rec"
                       :class="{ 'is-zero': e.records === 0 }"
                     >
-                      <a
-                        v-if="e.records != null"
-                        class="lnk-gbif"
-                        target="_blank"
-                        rel="noopener"
-                        :href="gbifOccUrl(e.name)"
-                        >{{ fmt(e.records) }}</a
-                      >
+                      <template v-if="e.records != null">{{
+                        fmt(e.records)
+                      }}</template>
                     </td>
                   </tr>
                 </template>
@@ -245,7 +241,7 @@
                     :style="accentStyle('tw')"
                   >
                     <td
-                      colspan="4"
+                      colspan="5"
                       v-html="`TaxonWorks files under ${em(model.twName)}; Catalogue of Life keeps separate`"
                     />
                   </tr>
@@ -255,28 +251,20 @@
                     class="border-b border-base-muted"
                   >
                     <td>
-                      <a
-                        class="lnk-gbif"
-                        target="_blank"
-                        rel="noopener"
-                        :href="gbifSpeciesUrl(e.name)"
-                        ><span class="nm">{{ e.name }}</span></a
-                      >
+                      <span class="nm">{{ e.name }}</span>
                     </td>
                     <td>{{ twRoleLabel(e) }}</td>
+                    <td class="ic">
+                      <RelIcon kind="includes" />
+                    </td>
                     <td>separate accepted species</td>
                     <td
                       class="rec"
                       :class="{ 'is-zero': e.records === 0 }"
                     >
-                      <a
-                        v-if="e.records != null"
-                        class="lnk-gbif"
-                        target="_blank"
-                        rel="noopener"
-                        :href="gbifOccUrl(e.name)"
-                        >{{ fmt(e.records) }}</a
-                      >
+                      <template v-if="e.records != null">{{
+                        fmt(e.records)
+                      }}</template>
                     </td>
                   </tr>
                 </template>
@@ -288,7 +276,7 @@
                     :style="accentStyle('gb')"
                   >
                     <td
-                      colspan="4"
+                      colspan="5"
                       v-html="`Catalogue of Life files under ${em(model.twName)}; TaxonWorks places elsewhere`"
                     />
                   </tr>
@@ -298,72 +286,53 @@
                     class="border-b border-base-muted"
                   >
                     <td>
-                      <details
-                        class="fold"
-                        @toggle="onFoldToggle($event, row)"
+                      <span class="nm">{{ row.name }}</span>
+                      <span
+                        v-if="row.matchTier && row.matchTier !== 'none'"
+                        class="tier"
+                        :class="{ weak: row.matchTier === 'weak' }"
+                        :title="tierTitle(row.matchTier)"
+                        >{{ row.matchTier }}</span
                       >
-                        <summary>
-                          <a
-                            class="lnk-gbif"
-                            target="_blank"
-                            rel="noopener"
-                            :href="gbifSpeciesUrl(row.name)"
-                            ><span class="nm">{{ row.name }}</span></a
-                          >
-                          <span
-                            v-if="row.matchTier && row.matchTier !== 'none'"
-                            class="tier"
-                            :class="{ weak: row.matchTier === 'weak' }"
-                            :title="tierTitle(row.matchTier)"
-                            >{{ row.matchTier }}</span
-                          >
-                        </summary>
-                        <div class="expand text-base-soft">
-                          <p
-                            v-if="row.otherCombinations && row.otherCombinations.length"
-                            v-html="`Also written ${row.otherCombinations.map(em).join(', ')} in Catalogue of Life.`"
-                          />
-                          <VSpinner
-                            v-if="row.pending"
-                            logo-class="w-3 h-3"
-                            legend=""
-                          />
-                          <p v-else-if="row.twPlacementParts">
-                            <span
-                              v-html="`TaxonWorks: ${row.twPlacementParts.html}`"
-                            /><RouterLink
-                              v-if="row.twPlacementParts.otuId"
-                              class="lnk-tw"
-                              :to="{ name: 'otus-id', params: { id: row.twPlacementParts.otuId } }"
-                              ><em>{{ row.twPlacementParts.name }}</em></RouterLink
-                            >
-                          </p>
-                        </div>
-                      </details>
+                      <div
+                        v-if="row.otherCombinations && row.otherCombinations.length"
+                        class="also"
+                        v-html="`also written ${row.otherCombinations.map(em).join(', ')} in Catalogue of Life`"
+                      />
                     </td>
                     <td>
-                      <template v-if="row.twPlacementParts">
-                        <span v-html="row.twPlacementParts.html" /><RouterLink
+                      <VSpinner
+                        v-if="row.pending && !row.twPlacementParts"
+                        logo-class="w-3 h-3"
+                        legend=""
+                      />
+                      <template v-else-if="row.twPlacementParts"
+                        ><span
+                          v-html="row.twPlacementParts.html"
+                        /><RouterLink
                           v-if="row.twPlacementParts.otuId"
                           class="lnk-tw"
-                          :to="{ name: 'otus-id', params: { id: row.twPlacementParts.otuId } }"
+                          :to="{
+                            name: 'otus-id',
+                            params: { id: row.twPlacementParts.otuId }
+                          }"
                           ><em>{{ row.twPlacementParts.name }}</em></RouterLink
-                        >
-                      </template>
+                        ><span
+                          v-if="row.twPlacementParts.tail"
+                          v-html="row.twPlacementParts.tail"
+                      /></template>
+                    </td>
+                    <td class="ic">
+                      <RelIcon :kind="rowIconKey('colFoldsIn', row)" />
                     </td>
                     <td>synonym</td>
                     <td
                       class="rec"
                       :class="{ 'is-zero': row.records === 0 }"
                     >
-                      <a
-                        v-if="row.records != null"
-                        class="lnk-gbif"
-                        target="_blank"
-                        rel="noopener"
-                        :href="gbifOccUrl(row.name)"
-                        >{{ fmt(row.records) }}</a
-                      >
+                      <template v-if="row.records != null">{{
+                        fmt(row.records)
+                      }}</template>
                     </td>
                   </tr>
                 </template>
@@ -375,7 +344,7 @@
                     :style="accentStyle('gb')"
                   >
                     <td
-                      colspan="4"
+                      colspan="5"
                       v-html="`Misapplied to ${em(model.twName)} in Catalogue of Life`"
                     />
                   </tr>
@@ -385,15 +354,12 @@
                     class="border-b border-base-muted"
                   >
                     <td>
-                      <a
-                        class="lnk-gbif"
-                        target="_blank"
-                        rel="noopener"
-                        :href="gbifSpeciesUrl(e.name)"
-                        ><span class="nm">{{ e.name }}</span></a
-                      >
+                      <span class="nm">{{ e.name }}</span>
                     </td>
                     <td />
+                    <td class="ic">
+                      <RelIcon kind="none" />
+                    </td>
                     <td>misapplied, excluded</td>
                     <td class="rec" />
                   </tr>
@@ -403,7 +369,7 @@
                 <template v-if="model.zones.inDataOnly.length">
                   <tr class="zheading bg-base-muted text-base-soft">
                     <td
-                      colspan="4"
+                      colspan="5"
                       v-html="`In the occurrence records, in neither circumscription of ${em(model.twName)}`"
                     />
                   </tr>
@@ -414,6 +380,7 @@
                   >
                     <td class="nm">{{ e.name }}</td>
                     <td />
+                    <td class="ic" />
                     <td class="text-base-soft">not resolved</td>
                     <td class="rec">
                       <template v-if="e.count != null">{{ fmt(e.count) }}</template>
@@ -424,7 +391,7 @@
                 <!-- Not comparable -->
                 <template v-if="model.zones.notComparable.length">
                   <tr class="zheading bg-base-muted text-base-soft">
-                    <td colspan="4">Not comparable</td>
+                    <td colspan="5">Not comparable</td>
                   </tr>
                   <tr
                     v-for="n in model.zones.notComparable"
@@ -433,6 +400,7 @@
                   >
                     <td class="nm">{{ n }}</td>
                     <td />
+                    <td class="ic" />
                     <td class="text-base-soft">not in Catalogue of Life</td>
                     <td class="rec" />
                   </tr>
@@ -451,10 +419,6 @@
             v-html="summaryHtml"
           />
           <p v-else>Record counts are not available.</p>
-          <p
-            v-if="dominantHtml"
-            v-html="dominantHtml"
-          />
           <p
             v-if="inDataOnlySumN"
             class="mt-1 text-base-soft"
@@ -482,7 +446,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, h } from 'vue'
 import {
   resolveConceptAlignment,
   fetchTwPlacement
@@ -526,12 +490,6 @@ function esc(s) {
 const em = (s) => `<em>${esc(s)}</em>`
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : '')
 
-// ---- GBIF destination URLs for the in-table links ----
-const gbifSpeciesUrl = (n) =>
-  `https://www.gbif.org/species/search?q=${encodeURIComponent(canonicalName(n))}`
-const gbifOccUrl = (n) =>
-  `https://www.gbif.org/occurrence/search?q=${encodeURIComponent(n)}`
-
 // ---- relation icon (Franz and Peet 2009, Fig. 2). Coordinates copied from
 //      docs/gbif-viz-options.html, viewBox 0 0 52 30 ----
 const ICONS = {
@@ -559,6 +517,56 @@ const ICONS = {
 const relIconRects = computed(
   () => ICONS[model.value?.relation?.icon] || ICONS.overlap
 )
+
+// Small inline relation icon for a single zone-table row. `kind` is one of the
+// ICONS keys, or null (a colFoldsIn row whose TaxonWorks placement has not
+// resolved yet) in which case nothing renders.
+const RelIcon = (props) => {
+  const rects = ICONS[props.kind]
+  return rects
+    ? h(
+        'svg',
+        {
+          class: 'rel-ico-sm',
+          width: 34,
+          height: 20,
+          viewBox: '0 0 52 30',
+          'aria-hidden': 'true'
+        },
+        rects.map((r, i) =>
+          h('rect', {
+            key: i,
+            class: r.cls,
+            x: r.x,
+            y: r.y,
+            width: r.w,
+            height: r.h,
+            rx: 2
+          })
+        )
+      )
+    : null
+}
+RelIcon.props = ['kind']
+
+// The per-row relation between a name's TaxonWorks placement and its Catalogue
+// of Life placement. consensus and twKeepsIn are fixed by the zone; colFoldsIn
+// depends on the reverse lookup (row.twPlacement), so it returns null until that
+// lands.
+function rowIconKey(zone, row) {
+  if (zone === 'consensus') return 'congruent'
+  if (zone === 'twKeepsIn') return 'includes'
+  if (zone === 'misapplied') return 'none'
+  if (zone === 'colFoldsIn') {
+    const p = row?.twPlacement
+    if (!p) return null
+    if (!p.known) return 'none'
+    if (p.valid) return 'included'
+    if (p.synonymOf) return 'overlap'
+    return null
+  }
+  return null
+}
 
 // ---- title ----
 const titleHtml = computed(() => {
@@ -621,16 +629,11 @@ const captionHtml = computed(
     )}, and what the other source does with it.`
 )
 const colHeadTw = computed(() => `TaxonWorks:<br>${em(model.value?.twName)}`)
-const colHeadCol = computed(() => {
-  const name = model.value?.colAcceptedName
-  const url = model.value?.urls?.colTaxon
-  const inner = url
-    ? `<a class="lnk-gbif" target="_blank" rel="noopener" href="${esc(
-        url
-      )}">${em(name)}</a>`
-    : em(name)
-  return `Catalogue of Life:<br>${inner}`
-})
+// Plain name, no link: the table's names are not links (the Catalogue of Life
+// accepted taxon has its own link in the "Open in GBIF" line below).
+const colHeadCol = computed(
+  () => `Catalogue of Life:<br>${em(model.value?.colAcceptedName)}`
+)
 
 function accentStyle(which) {
   if (which === 'tw') return { '--pp-accent': 'var(--pp-tw)' }
@@ -647,10 +650,12 @@ function colSideLabel(e) {
   return canonicalName(e.name) === canonicalName(acc) ? 'accepted name' : 'synonym'
 }
 
-// Split a TaxonWorks placement into a lead HTML fragment and, when the OTU id
-// is known, the target name for a RouterLink. `html` carries a trailing space
-// when a linked name follows it: the space lives inside the v-html string, not
-// in a template text node, so Vue whitespace-condense leaves it alone.
+// Split a TaxonWorks placement into up to three template-safe pieces:
+//   html  a v-html lead fragment (may be '')
+//   name  the linked target name, rendered inside a RouterLink when otuId is set
+//   tail  a v-html fragment after the link (starts with a non-space char)
+// Any whitespace that must sit next to the link lives inside html/tail, never in
+// a template text node, so Vue whitespace-condense leaves it alone.
 function placementParts(p) {
   if (!p || !p.known) return { html: 'not in TaxonWorks' }
   if (p.ambiguous) return { html: 'more than one match in TaxonWorks' }
@@ -660,9 +665,15 @@ function placementParts(p) {
       html: p.valid ? 'valid species in TaxonWorks' : 'synonym in TaxonWorks'
     }
   }
-  const prefix = p.valid ? 'valid species, as ' : 'synonym of '
-  if (p.otuId) return { html: esc(prefix), name: target, otuId: p.otuId }
-  return { html: `${esc(prefix)}${em(target)}` }
+  const named = p.targetAuthor ? `${target} ${p.targetAuthor}` : target
+  if (p.valid) {
+    return p.otuId
+      ? { html: '', name: named, otuId: p.otuId, tail: ', valid species' }
+      : { html: `${em(named)}, valid species` }
+  }
+  return p.otuId
+    ? { html: 'synonym of ', name: named, otuId: p.otuId }
+    : { html: `synonym of ${em(named)}` }
 }
 
 function tierTitle(t) {
@@ -708,34 +719,6 @@ const summaryHtml = computed(() => {
   return `GBIF holds ${total} records${detail}.`
 })
 
-// The busiest fold-in name, but only when its TaxonWorks placement is resolved
-// (known, with a synonym target or a valid name). A top fold-in that never
-// resolved (a bare protonym, say) yields no dominant-name sentence.
-const dominantFoldRow = computed(() => {
-  const folds = model.value?.zones?.colFoldsIn || []
-  let top = null
-  for (const f of folds) {
-    if (f.records != null && (top === null || f.records > top.records)) top = f
-  }
-  if (!top || !top.records) return null
-  const p = top.twPlacement
-  const z = p && p.known && (p.synonymOf || (p.valid ? p.validName : null))
-  return z ? top : null
-})
-
-const dominantHtml = computed(() => {
-  const m = model.value
-  const top = dominantFoldRow.value
-  if (!m || !top || !m.counts?.total) return ''
-  const pct = Math.round((top.records / m.counts.total) * 100)
-  const p = top.twPlacement
-  const z = p.synonymOf || (p.valid ? p.validName : null)
-  return (
-    `<strong>${fmt(top.records)}</strong> of them (${pct} percent) carry the ` +
-    `name ${em(top.name)}, which TaxonWorks files under ${em(z)}.`
-  )
-})
-
 const inDataOnlySumN = computed(() =>
   (model.value?.zones?.inDataOnly || []).reduce((s, r) => s + (r.count || 0), 0)
 )
@@ -776,8 +759,10 @@ const openInGbifHtml = computed(() => {
   )}`
 })
 
-// ---- lazy TaxonWorks placement for the colFoldsIn rows ----
-async function expandFoldsIn(row) {
+// ---- TaxonWorks placement for a colFoldsIn row ----
+// `row` must be the reactive element from model.value.zones.colFoldsIn, so the
+// per-row icon and the placement link update when the lookup lands.
+async function resolvePlacementRow(row) {
   if (row.twPlacement || row.pending) return
   row.pending = true
   try {
@@ -786,10 +771,6 @@ async function expandFoldsIn(row) {
   } finally {
     row.pending = false
   }
-}
-
-function onFoldToggle(ev, row) {
-  if (ev.target.open) expandFoldsIn(row)
 }
 
 // ---- load ----
@@ -809,15 +790,14 @@ async function load() {
     })
     if (scientificName.value !== forName) return
     model.value = result
-    // Resolve the busiest fold-in's TaxonWorks placement up front so the
-    // dominant-name summary line can render without a manual expand.
-    const folds = result?.zones?.colFoldsIn || []
-    const busiest = folds.reduce(
-      (top, f) =>
-        f.records != null && (top === null || f.records > top.records) ? f : top,
-      null
-    )
-    if (busiest && busiest.records) expandFoldsIn(busiest)
+    // Each colFoldsIn row needs one reverse lookup for its relation icon and
+    // its "TaxonWorks places it under X" link. Resolve them in parallel through
+    // the reactive model (not `result`) so the cells fill in as each returns.
+    // This is a deliberate deviation from spec 5.4 ("0 reverse lookups on
+    // load"); the row count is small (typically one to five).
+    for (const row of model.value?.zones?.colFoldsIn || []) {
+      resolvePlacementRow(row)
+    }
     if (result?.urls?.scopedOccurrence) {
       recordRequest(requestStore, 'panel:gbif-taxon', {
         url: result.urls.scopedOccurrence,
@@ -895,6 +875,33 @@ watch(scientificName, load, { immediate: true })
 .ztable .nm {
   font-style: italic;
 }
+.ztable .also {
+  font-style: normal;
+  font-size: 0.65rem;
+  opacity: 0.55;
+  margin-top: 0.1rem;
+}
+.ztable .ic {
+  width: 2.6rem;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+  text-align: center;
+}
+.rel-ico-sm {
+  vertical-align: middle;
+}
+.rel-ico-sm rect {
+  fill-opacity: 0.22;
+  stroke-width: 2;
+}
+.rel-ico-sm .tw {
+  fill: var(--pp-tw);
+  stroke: var(--pp-tw);
+}
+.rel-ico-sm .gb {
+  fill: var(--pp-gbif);
+  stroke: var(--pp-gbif);
+}
 .ztable .rec {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -929,16 +936,5 @@ watch(scientificName, load, { immediate: true })
 .tier.weak {
   font-weight: 700;
   opacity: 1;
-}
-
-details.fold > summary {
-  cursor: pointer;
-  list-style: none;
-}
-details.fold > summary::-webkit-details-marker {
-  display: none;
-}
-details.fold .expand {
-  padding: 0.3rem 0 0.2rem 0.8rem;
 }
 </style>

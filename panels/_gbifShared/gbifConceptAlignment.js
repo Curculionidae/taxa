@@ -143,7 +143,9 @@ async function resolve(primaryName, taxonId, opts) {
 // both present on the list response (verified against the live API on
 // 2026-08-31).
 async function fetchTwNodes(primaryName, taxonId) {
-  const nodes = [nodeFromTw({ cached: primaryName }, 'accepted')]
+  // Seed with the subgenus-stripped short name so a stored subgenus in
+  // primaryName cannot leak into the bare node if the by-id refine below fails.
+  const nodes = [nodeFromTw({ cached: shortName(primaryName) }, 'accepted')]
 
   let synIds = []
   try {
@@ -333,18 +335,26 @@ async function resolvePlacement(nameString) {
       : row.cached_valid_taxon_name_id
     const otuId = await resolveOtuId(validId)
     if (row.cached_is_valid) {
-      return { known: true, valid: true, validName: row.cached, otuId }
+      return {
+        known: true,
+        valid: true,
+        validName: row.cached,
+        targetAuthor: row.cached_author_year || '',
+        otuId
+      }
     }
     let validName = null
+    let targetAuthor = ''
     if (validId) {
       try {
         const { data: v } = await makeAPIRequest.get(`/taxon_names/${validId}`)
         validName = v?.cached || null
+        targetAuthor = v?.cached_author_year || ''
       } catch {
         // Leave validName null.
       }
     }
-    return { known: true, valid: false, synonymOf: validName, otuId }
+    return { known: true, valid: false, synonymOf: validName, targetAuthor, otuId }
   } catch {
     return { known: false, error: true }
   }

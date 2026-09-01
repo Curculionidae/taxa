@@ -520,32 +520,43 @@ const relIconRects = computed(
 
 // Small inline relation icon for a single zone-table row. `kind` is one of the
 // ICONS keys, or null (a colFoldsIn row whose TaxonWorks placement has not
-// resolved yet) in which case nothing renders.
+// resolved yet) in which case nothing renders. Carries an accessible label and
+// a native tooltip since the glyph is the point of the column.
+const REL_ICON_LABEL = {
+  congruent: 'the two concepts are congruent',
+  includes: 'the TaxonWorks concept is the broader one',
+  included: 'the Catalogue of Life concept is the broader one',
+  overlap: 'the two concepts overlap',
+  none: 'the two concepts are disjoint'
+}
 const RelIcon = (props) => {
   const rects = ICONS[props.kind]
-  return rects
-    ? h(
-        'svg',
-        {
-          class: 'rel-ico-sm',
-          width: 34,
-          height: 20,
-          viewBox: '0 0 52 30',
-          'aria-hidden': 'true'
-        },
-        rects.map((r, i) =>
-          h('rect', {
-            key: i,
-            class: r.cls,
-            x: r.x,
-            y: r.y,
-            width: r.w,
-            height: r.h,
-            rx: 2
-          })
-        )
+  if (!rects) return null
+  const label = REL_ICON_LABEL[props.kind] || ''
+  return h(
+    'svg',
+    {
+      class: 'rel-ico-sm',
+      width: 34,
+      height: 20,
+      viewBox: '0 0 52 30',
+      role: 'img',
+      'aria-label': label
+    },
+    [
+      h('title', label),
+      ...rects.map((r) =>
+        h('rect', {
+          class: r.cls,
+          x: r.x,
+          y: r.y,
+          width: r.w,
+          height: r.h,
+          rx: 2
+        })
       )
-    : null
+    ]
+  )
 }
 RelIcon.props = ['kind']
 
@@ -559,11 +570,13 @@ function rowIconKey(zone, row) {
   if (zone === 'misapplied') return 'none'
   if (zone === 'colFoldsIn') {
     const p = row?.twPlacement
-    if (!p) return null
-    if (!p.known) return 'none'
-    if (p.valid) return 'included'
-    if (p.synonymOf) return 'overlap'
-    return null
+    if (!p) return null // reverse lookup not back yet
+    if (!p.known) return 'none' // not in TaxonWorks
+    if (p.valid) return 'included' // TaxonWorks keeps it as its own narrower species
+    // synonym of a third concept, ambiguous, or a target name that did not
+    // resolve: the placement cell still states a verdict, so never leave the
+    // icon blank next to it.
+    return 'overlap'
   }
   return null
 }
@@ -875,10 +888,12 @@ watch(scientificName, load, { immediate: true })
 .ztable .nm {
   font-style: italic;
 }
+/* Supplementary provenance, not a value cell: the faint treatment is
+   deliberate (same intent as the .tier tag), not a contrast regression. */
 .ztable .also {
   font-style: normal;
   font-size: 0.65rem;
-  opacity: 0.55;
+  opacity: 0.6;
   margin-top: 0.1rem;
 }
 .ztable .ic {

@@ -11,6 +11,7 @@
             :groupings="geoCategories"
             :territories="geoTerritories"
             :loading="geoLoading"
+            @open="geo.ensureLoaded()"
           />
           <FormatToggle v-model="format" />
         </div>
@@ -107,7 +108,12 @@ const geo = useKeyGeography(terminalOtuList)
 const geoTerritories = geo.allTerritories
 const geoLoading = geo.loading
 const geoSelection = ref({ groupings: [], territories: [] })
-onMounted(() => { geoSelection.value = readGeoPrefs() })
+onMounted(() => {
+  geoSelection.value = readGeoPrefs()
+  // A restored non-empty selection needs the distribution data straight away;
+  // a fresh visit fetches nothing until the picker is opened.
+  if (geoEffective.value.size) geo.ensureLoaded()
+})
 watch(geoSelection, (v) => writeGeoPrefs(v), { deep: true })
 const geoEffective = computed(() => effectiveKeys(geoSelection.value, geoCategories))
 const geoSelectionLabel = computed(() => {
@@ -122,8 +128,10 @@ const geoSelectionLabel = computed(() => {
   return labels.length ? labels.join(', ') : 'the selected area'
 })
 // Terminal OTU ids reachable from each lead node, for the path roll-up dimming.
+// Only built while a filter is active (it is O(nodes x subtree) per key load).
 const reachableTerminalsByNode = computed(() => {
   const map = new Map()
+  if (!geoEffective.value.size) return map
   const n = nodes.value || {}
   for (const id of Object.keys(n)) {
     map.set(
@@ -498,37 +506,45 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     }
 
     // Distributions of the expected (descendant) taxa, for the geographic
-    // completeness pass. One call. Each AD row inlines its OTU as
-    // asserted_distribution_object with a taxon_name_id; key the territory map by
-    // that. Failure just leaves the geographic measure without data.
-    territoriesByExpectedId.value = await buildExpectedTerritories(scopeTnId, myGen)
+    // completeness pass. `.catch` guards the just-set base report: a failure
+    // here must not null completenessInput. Each AD row inlines its OTU as
+    // asserted_distribution_object with a taxon_name_id; key the map by that.
+    territoriesByExpectedId.value = await buildExpectedTerritories(
+      scopeTnId,
+      myGen
+    ).catch(() => new Map())
   } catch {
     if (myGen === loadGen) completenessInput.value = null
   }
 }
 
 async function buildExpectedTerritories(scopeTnId, myGen) {
+  const map = new Map()
   try {
-    const q = new URLSearchParams()
-    q.append('taxon_name_id[]', scopeTnId)
-    q.set('descendants', 'true')
-    q.set('per', '1000')
-    const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
-    if (myGen !== loadGen) return new Map()
-    const map = new Map()
-    for (const row of Array.isArray(data) ? data : []) {
-      if (row?.is_absent) continue
-      if (row.asserted_distribution_object_type !== 'Otu') continue
-      const tnId = row.asserted_distribution_object?.taxon_name_id
-      if (tnId == null) continue
-      const terr = normalizeShape(row.asserted_distribution_shape)
-      if (!terr) continue
-      if (!map.has(tnId)) map.set(tnId, new Set())
-      map.get(tnId).add(terr.key)
+    for (let page = 1; page <= 25; page++) {
+      const q = new URLSearchParams()
+      q.append('taxon_name_id[]', scopeTnId)
+      q.set('descendants', 'true')
+      q.set('per', '1000')
+      q.set('page', String(page))
+      const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
+      if (myGen !== loadGen) return new Map()
+      const rows = Array.isArray(data) ? data : []
+      for (const row of rows) {
+        if (row?.is_absent) continue
+        if (row.asserted_distribution_object_type !== 'Otu') continue
+        const tnId = row.asserted_distribution_object?.taxon_name_id
+        if (tnId == null) continue
+        const terr = normalizeShape(row.asserted_distribution_shape)
+        if (!terr) continue
+        if (!map.has(tnId)) map.set(tnId, new Set())
+        map.get(tnId).add(terr.key)
+      }
+      if (rows.length < 1000) break
     }
     return map
   } catch {
-    return new Map()
+    return map
   }
 }
 

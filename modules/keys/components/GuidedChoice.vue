@@ -28,11 +28,12 @@
 </template>
 
 <script setup>
+import { toRef, provide } from 'vue'
 import LeadText from './LeadText.vue'
 import LeadFigures from './LeadFigures.vue'
 import ReachableTaxa from './ReachableTaxa.vue'
 
-defineProps({
+const props = defineProps({
   keyId: { type: [String, Number], required: true },
   choice: { type: Object, required: true },
   nodes: { type: Object, required: true },
@@ -44,4 +45,8 @@ defineProps({
   dimmedLabel: { type: String, default: 'the selected area' }
 })
 defineEmits(['open-citation'])
+
+// When the whole card is already dimmed, the TaxonLinks in ReachableTaxa must
+// not dim themselves too, or the opacities compound.
+provide('geoDimSuppressed', toRef(props, 'dimmed'))
 </script>

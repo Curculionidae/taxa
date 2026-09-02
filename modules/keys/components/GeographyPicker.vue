@@ -1,19 +1,12 @@
 <template>
-  <div
-    v-if="loading || territories.length"
-    class="relative inline-block text-xs"
-  >
+  <div class="relative inline-block text-xs">
     <button
       type="button"
-      class="border border-base-muted rounded px-2 py-0.5 text-base-soft hover:text-base-content transition-colors"
-      :disabled="loading && !territories.length"
-      @click="open = !open"
+      class="relative z-50 border border-base-muted rounded px-2 py-0.5 text-base-soft hover:text-base-content transition-colors"
+      @click="toggle"
     >
       <span aria-hidden="true">◍ </span>{{ summaryLabel }}
-      <span
-        v-if="!loading"
-        aria-hidden="true"
-      >▾</span>
+      <span aria-hidden="true">▾</span>
     </button>
 
     <template v-if="open">
@@ -32,8 +25,14 @@
         >
           Loading distributions…
         </p>
+        <p
+          v-else-if="!territories.length"
+          class="px-1 py-0.5 text-base-soft"
+        >
+          No distribution data for this key's taxa.
+        </p>
 
-        <template v-if="groupings.length">
+        <template v-if="groupings.length && (loading || territories.length)">
           <label
             v-for="g in groupings"
             :key="g.id"
@@ -95,9 +94,15 @@ const props = defineProps({
   territories: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:modelValue'])
+// `open` fires the first time the menu is opened, so the parent can lazily start
+// fetching the distribution data.
+const emit = defineEmits(['update:modelValue', 'open'])
 
 const open = ref(false)
+function toggle() {
+  open.value = !open.value
+  if (open.value) emit('open')
+}
 
 const hasSelection = computed(
   () =>

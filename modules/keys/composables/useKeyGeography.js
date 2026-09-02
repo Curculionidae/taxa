@@ -1,13 +1,16 @@
 // Distribution data for the key geography filter (design spec section 6).
 //
-// Given the key's terminal OTU ids, it fetches:
-//   1. one batched GET /asserted_distributions?otu_id[]=... (curated statements)
-//   2. GET /otus/:id/inventory/dwc.json per terminal, bounded concurrency
-//      (specimen-derived country strings)
-// and normalises every shape / country string with lib/geoNormalize.js.
+// Given the key's terminal OTU ids it resolves, on first demand (ensureLoaded):
+//   0. terminal OTU -> taxon-name id + rank
+//   1. asserted distributions stated directly on the terminal OTUs (paged)
+//   2. for terminals above species rank, descendant asserted distributions (paged)
+//   3. GET /otus/:id/inventory/dwc.json per terminal for specimen countries
+// normalising every shape / country string with lib/geoNormalize.js.
 //
-// Instantiated once in KeyView, provided as `keyGeo`. KeyView is reused across
-// /key/:id navigations, so KeyView.load() must call reset().
+// Nothing is fetched until ensureLoaded() is called (the picker opening, or a
+// restored non-empty selection), so a key page the reader never filters pays
+// nothing. Instantiated once in KeyView, provided as `keyGeo`. KeyView is reused
+// across /key/:id navigations, so KeyView.load() must call reset().
 
 import { ref, computed, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
@@ -15,7 +18,10 @@ import { normalizeShape, normalizeCountryString } from '../lib/geoNormalize.js'
 import { rankIndex, RANK_ORDER } from '../lib/completeness.js'
 
 const DWC_CONCURRENCY = 6
+const AD_PER = 1000
+const AD_MAX_PAGES = 25
 const SPECIES_IDX = RANK_ORDER.indexOf('species')
+const SPECIMEN_TYPES = new Set(['CollectionObject', 'FieldOccurrence'])
 
 // An asserted_distributions row links to its OTU via
 // asserted_distribution_object_{type,id}; the top-level `otu_id` is null.
@@ -26,40 +32,72 @@ function adOtuId(row) {
 }
 
 // A key terminal above species rank (a genus, tribe, ...) rarely carries an
-// asserted distribution of its own; its species do. For those we also pull the
-// descendant distributions and union them onto the terminal.
+// asserted distribution of its own; its species do.
 function isHigherRank(rank) {
   const i = rankIndex(rank)
   return i >= 0 && i < SPECIES_IDX
 }
 
-async function mapPool(items, limit, fn) {
+// GET /asserted_distributions, following pages until a short one. The endpoint
+// has no rank filter to split on, so a big scope really can exceed one page.
+async function fetchAllAD(baseParams) {
   const out = []
-  let i = 0
-  const worker = async () => {
-    while (i < items.length) {
-      const idx = i++
-      out[idx] = await fn(items[idx], idx)
-    }
+  for (let page = 1; page <= AD_MAX_PAGES; page++) {
+    const q = new URLSearchParams(baseParams)
+    q.set('per', String(AD_PER))
+    q.set('page', String(page))
+    const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
+    const rows = Array.isArray(data) ? data : []
+    out.push(...rows)
+    if (rows.length < AD_PER) break
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
   return out
 }
 
+async function mapPool(items, limit, fn) {
+  let i = 0
+  const worker = async () => {
+    while (i < items.length) await fn(items[i++])
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
+
 export function useKeyGeography(terminalListRef) {
-  // otuId -> Set<territoryKey>
-  const territoriesByOtu = ref(new Map())
-  // territoryKey -> label (accumulated as territories are seen)
-  const labelByKey = ref(new Map())
+  const territoriesByOtu = ref(new Map()) // otuId -> Set<territoryKey>
+  const labelByKey = ref(new Map()) // territoryKey -> label
   const loading = ref(false)
   let gen = 0
+  let started = false // ensureLoaded has been called at least once
+  let loadedFor = null // JSON of the otu id list the current data is for
 
   function reset() {
     gen++
     territoriesByOtu.value = new Map()
     labelByKey.value = new Map()
     loading.value = false
+    loadedFor = null
+    // The re-fetch for the new key is driven by the terminalListRef watch once
+    // the new key's nodes populate (calling reset here would race stale nodes).
   }
+
+  function currentOtuIds() {
+    return [
+      ...new Set((terminalListRef.value || []).map((t) => t.id).filter(Boolean))
+    ]
+  }
+
+  // Fetch on first demand (picker opened, or a restored non-empty selection),
+  // and re-fetch whenever the key's terminals change after that.
+  function ensureLoaded() {
+    started = true
+    const ids = currentOtuIds()
+    const sig = JSON.stringify(ids)
+    if (sig === loadedFor) return
+    load(ids, sig)
+  }
+  watch(terminalListRef, () => {
+    if (started) ensureLoaded()
+  })
 
   function add(otuId, territory) {
     if (!territory) return
@@ -70,23 +108,24 @@ export function useKeyGeography(terminalListRef) {
       labelByKey.value.set(territory.key, territory.label || territory.key)
     }
   }
+  // One reactive replacement per pass, not per pooled task.
+  function bump() {
+    territoriesByOtu.value = new Map(territoriesByOtu.value)
+    labelByKey.value = new Map(labelByKey.value)
+  }
 
-  async function load(otuIds) {
+  async function load(otuIds, sig) {
     const myGen = ++gen
     territoriesByOtu.value = new Map()
     labelByKey.value = new Map()
+    loadedFor = sig
     if (!otuIds.length) {
       loading.value = false
       return
     }
     loading.value = true
-    const bump = () => {
-      territoriesByOtu.value = new Map(territoriesByOtu.value)
-      labelByKey.value = new Map(labelByKey.value)
-    }
 
-    // 0. terminal OTU -> taxon-name id + rank (one call each), so a higher-rank
-    //    terminal can be resolved through its descendants.
+    // 0. terminal OTU -> taxon-name id + rank
     const otuToTn = new Map()
     const higherRankOtus = []
     try {
@@ -116,44 +155,45 @@ export function useKeyGeography(terminalListRef) {
       /* fall back to the otu_id[] AD call only */
     }
 
-    // 1. asserted distributions stated directly on the terminal OTUs, one call.
+    // 1. asserted distributions stated directly on the terminal OTUs.
     try {
-      const q = new URLSearchParams()
-      otuIds.forEach((id) => q.append('otu_id[]', id))
-      q.set('per', '1000')
-      const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
+      const base = new URLSearchParams()
+      otuIds.forEach((id) => base.append('otu_id[]', id))
+      const rows = await fetchAllAD(base)
       if (myGen !== gen) return
-      for (const row of Array.isArray(data) ? data : []) {
+      for (const row of rows) {
         if (row?.is_absent) continue
         add(adOtuId(row), normalizeShape(row.asserted_distribution_shape))
       }
       bump()
     } catch {
-      /* no AD layer; the descendant / specimen passes may still populate it */
+      /* the descendant / specimen passes may still populate it */
     }
 
-    // 2. descendant distributions for the higher-rank terminals (one call each).
+    // 2. descendant distributions for the higher-rank terminals.
     await mapPool(higherRankOtus, DWC_CONCURRENCY, async (otuId) => {
       const tnId = otuToTn.get(otuId)
       if (!tnId) return
       try {
-        const q = new URLSearchParams()
-        q.append('taxon_name_id[]', tnId)
-        q.set('descendants', 'true')
-        q.set('per', '1000')
-        const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
+        const base = new URLSearchParams()
+        base.append('taxon_name_id[]', tnId)
+        base.set('descendants', 'true')
+        const rows = await fetchAllAD(base)
         if (myGen !== gen) return
-        for (const row of Array.isArray(data) ? data : []) {
+        for (const row of rows) {
           if (row?.is_absent) continue
           add(otuId, normalizeShape(row.asserted_distribution_shape))
         }
-        bump()
       } catch {
         /* tolerate */
       }
     })
+    if (myGen !== gen) return
+    bump()
 
-    // 3. specimen countries, per terminal, bounded concurrency.
+    // 3. specimen countries, per terminal. dwc.json also returns
+    //    AssertedDistribution rows (individualCount null) — allow-list the two
+    //    specimen types so this pass really is specimen-only.
     await mapPool(otuIds, DWC_CONCURRENCY, async (otuId) => {
       try {
         const { data } = await makeAPIRequest.get(
@@ -163,18 +203,20 @@ export function useKeyGeography(terminalListRef) {
         const rows = data?.data || data?.rows || (Array.isArray(data) ? data : [])
         const seen = new Set()
         for (const r of rows) {
+          if (!SPECIMEN_TYPES.has(r?.dwc_occurrence_object_type)) continue
           const c = r?.country
           if (!c || seen.has(c)) continue
           seen.add(c)
           add(otuId, normalizeCountryString(c))
         }
-        bump()
       } catch {
         /* one terminal short on data is tolerable */
       }
     })
+    if (myGen !== gen) return
+    bump()
 
-    if (myGen === gen) loading.value = false
+    loading.value = false
   }
 
   // Picker options: every territory at least one terminal is recorded from.
@@ -201,11 +243,12 @@ export function useKeyGeography(terminalListRef) {
     return s
   })
 
-  watch(
-    terminalListRef,
-    (list) => load([...new Set((list || []).map((t) => t.id).filter(Boolean))]),
-    { immediate: true }
-  )
-
-  return { territoriesByOtu, allTerritories, unknownOtuIds, loading, reset }
+  return {
+    territoriesByOtu,
+    allTerritories,
+    unknownOtuIds,
+    loading,
+    reset,
+    ensureLoaded
+  }
 }

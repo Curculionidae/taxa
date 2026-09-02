@@ -38,8 +38,11 @@ const validName = computed(() => synonymy.value?.[props.id]?.validName || '')
 // territories are all outside the selection. Unknown (no distribution data) and
 // in-area terminals are left alone. `props.id` is the target OTU id.
 const geo = inject('keyGeo', null)
+// A dimmed GuidedChoice card sets this so its inner taxa don't double-dim.
+const geoDimSuppressed = inject('geoDimSuppressed', null)
 const geoLabel = computed(() => geo?.selectionLabel?.value || 'the selected area')
 const outOfArea = computed(() => {
+  if (geoDimSuppressed?.value) return false
   const eff = geo?.effective?.value
   if (!eff || eff.size === 0) return false
   const set = geo.territoriesByOtu.value.get(Number(props.id))

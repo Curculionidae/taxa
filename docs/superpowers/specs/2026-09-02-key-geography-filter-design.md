@@ -11,33 +11,33 @@ recorded from the selected area are de-emphasised (never removed). Completeness
 is then reported twice: the existing taxonomic measure, and a geographic measure
 scoped to the selection.
 
-## 2. Background: the reference vocabulary
+## 2. Background: the distribution data
 
-The weevil project's distribution data follows the **Cooperative Catalogue of
-Palearctic Curculionoidea, 2nd edition, Appendix I** (pp. 570 to 571): a code
-system grouped into "E Europe", "N North Africa", "A Asia", China subdivisions,
-and world zoogeographic regions.
+The Palearctic Catalogue's regional code system (Appendix I: "E Europe", "N North
+Africa", "A Asia", ...) is **deferred**; v1 works purely from what the API
+returns. It stays a candidate later for a richer set of groupings.
 
-The "Europe" grouping in this feature is Appendix I's "E" list. Appendix I treats
-Russia in Europe as three territories, defined at oblast level in its footnotes
-7, 8 and 9:
+The TaxonWorks distribution shapes are a mix of ISO countries, TDWG WGSRPD units
+at Levels 2 to 4, subdivision shapes, and gazetteers. Confirmed field shapes
+(OTU 732686, live):
 
-- **Central European Territory (CT):** Bryansk, Ivanovo, Kaliningrad, Kaluga,
-  Kirov, Kostroma, Lipetsk, Moscow, Nizhni Novgorod, Novgorod, Oryol, Penza,
-  Pskov, Ryazan, Samara, Smolensk, Tambov, Tula, Tver, Ulyanovsk, Vladimir and
-  Yaroslavl Oblasts, the city of Moscow, Perm Krai, and the Republics of
-  Bashkortostan, Chuvashia, Mari El, Mordovia, Tatarstan and Udmurtia.
-- **Northern European Territory (NT):** Arkhangelsk, Leningrad, Murmansk and
-  Vologda Oblasts, the city of St Petersburg, the Republics of Karelia and Komi,
-  and the Nenets Autonomous Okrug.
-- **Southern European Territory (ST):** Astrakhan, Belgorod, Kursk, Orenburg,
-  Rostov, Saratov, Volgograd and Voronezh Oblasts, Krasnodar and Stavropol
-  Krais, and the Republics of Adygeya, Chechnya, Dagestan, Ingushetia,
-  Kabardino-Balkaria, Kalmykia, Karachay-Cherkessia and North Ossetia-Alania.
+- `"Ukraine"` — `type: GeographicArea`, `geographic_area_type.name: "Country"`,
+  `iso_3166_a2: "UA"`.
+- `"Caucasus"` — `TDWG Level 2`, no ISO, `parent.name: "Asia Temperate"`.
+- `"European Russia"` — `type: "Gazetteer"`, **`iso_3166_a2: "RU"`**,
+  `geographic_area_type: null`, `parent: null`.
+- `"Austria"` — `TDWG Level 4`, no ISO, `parent.name: "Austria"`,
+  `level0_id: null`.
+- `"Baden-Württemberg"` — `geographic_area_type.name: "Unknown"`,
+  `parent.name: "Germany"`, `level0_id: 84`.
+- `"Italy"` — `TDWG Level 3`, no ISO, `parent.name: "Southeastern Europe"` (the
+  name itself resolves to a country).
 
-Appendix I also puts Turkey (TR) and Kazakhstan west of the Ural River in "E".
-The TaxonWorks data is not granular enough to act on the oblast lists or the
-Ural split; section 4 says how each ambiguous case is resolved.
+So: `iso_3166_a2` is present on true countries and on some gazetteers but absent
+on most TDWG and subdivision shapes; those resolve by their own name or their
+`parent.name`. `level0_id` is unreliable (null even on a country-scoped TDWG L4
+row). The `"Europe"` grouping is a plain geographic-Europe country list (section
+5), not a catalogue construct.
 
 ## 3. What the API gives us (confirmed against the live API)
 
@@ -62,45 +62,46 @@ Ural split; section 4 says how each ambiguous case is resolved.
 
 ## 4. Normalization: `modules/keys/lib/geoNormalize.js` (pure, Node-tested)
 
-Turns one distribution shape or one specimen country string into a **territory**
-`{ key, label }`, or `null` when it cannot be resolved to a specific territory.
+`normalizeShape(shape)` and `normalizeCountryString(str)` each return a
+**territory** `{ key, label }`, or `null` when it cannot be pinned to one
+territory. `key` is an ISO 3166-1 alpha-2 code where one applies, otherwise a
+lowercase slug (`russia-european`, `west-siberia`).
 
-`key` is the ISO 3166-1 alpha-2 code where one exists, otherwise a lowercase
-slug (`russia-european`, `west-siberia`).
+`normalizeShape` algorithm, in order:
 
-| Input | Result |
-|---|---|
-| Country shape with `iso_3166_a2` | `{ key: ISO2, label: name }` |
-| Country shape without ISO, name in the alias table (`"Russia"`) | table entry |
-| Country shape without ISO, unknown name | `null` |
-| TDWG Level 4 (`"11AUT-AU"`) | resolve `parent.name` as a country → its ISO2 |
-| TDWG Level 3, name matches `/European Russia$/` (Central, East, North, South, Northwest) | `{ key: 'russia-european', label: 'European Russia' }` |
-| TDWG Level 3, Asian Russia (`"West Siberia"`, `"East Siberia"`, `"Russian Far East"`, ...) | own slug key, own label |
-| TDWG Level 3, other | resolve `parent.name` as a country, else `null` |
-| TDWG Level 2 (`"Caucasus"`, `"Eastern Europe"`) | `null` (region level, per the decision that region ADs are not implementable) |
-| Gazetteer with `iso_3166_a2` | `{ key: ISO2, label: name }` |
-| Gazetteer without ISO (`"Illyria"`) | `null` |
-| Specimen `country` string | match against a name and alias table → ISO2, else `null` |
+1. **Russia special-case:** if `iso_3166_a2 === 'RU'` or the name contains
+   "Russia" / "Siberia", branch by name: `/(^|\s)(central|east|north|south|
+   northwest)?\s*european russia$/i` or name `"European Russia"` →
+   `{ key: 'russia-european', label: 'European Russia' }`; `"West Siberia"`,
+   `"East Siberia"`, `"Russian Far East"`, `"Altai"`, `"Amur"`, `"Buryatiya"`,
+   `"Chita"`, `"Irkutsk"`, `"Kamchatka"`, `"Khabarovsk"`, `"Krasnoyarsk"`,
+   `"Kurile Is."`, `"Magadan"`, `"Primorye"`, `"Sakhalin"`, `"Tuva"`,
+   `"Yakutiya"` (WGSRPD Siberia + Russian Far East units) → `{ key: slug(name),
+   label: name }`; bare `"Russia"` → `{ key: 'RU', label: 'Russia' }`.
+2. `geographic_area_type.name === 'TDWG Level 2'` → `null` (region level; the
+   decision stands that region ADs are not resolvable).
+3. `iso_3166_a2` present → `{ key: ISO2, label: countryName(ISO2) ?? name }`.
+4. name resolves in the country-name map (`nameToIso`) → that ISO2 (handles
+   `"Italy"` as a TDWG L3 name, `"Ukraine"` when ISO is missing, ISO-bearing
+   gazetteers named for a country).
+5. `parent.name` resolves in the country-name map → that ISO2 (handles TDWG L4
+   `"Austria"` / parent `"Austria"`, `"Baden-Württemberg"` / parent `"Germany"`).
+6. otherwise `null` (`"Caucasus"`, `"Illyria"`, `"Eastern Europe"`).
 
-Alias table (module constant, small): `"Russia" -> russia-european`,
-`"USA" / "United States" / "U.S.A." -> US`, `"Great Britain" / "England" /
-"Scotland" / "Wales" -> GB`, `"Czech Republic" / "Czechia" -> CZ`,
-`"Macedonia" / "North Macedonia" -> MK`, and the handful of others the live data
-turns up. The table is data in the file, easy to extend.
+`normalizeCountryString(str)` (specimen DwC `country`): trim, run an alias table
+(`"USA" / "United States" / "U.S.A." -> US`, `"Great Britain" / "England" /
+"Scotland" / "Wales" / "U.K." -> GB`, `"Czechia" -> CZ`, `"Macedonia" ->
+MK`, `"Russia" -> RU`, ...), then `nameToIso`, else `null`.
 
-**Resolved decisions:**
-
-- Bare `"Russia"` → `russia-european`. Appendix I's `[RU]` is `CT + NT + ST`
-  (all European); in a Palearctic weevil key a bare "Russia" statement is
-  overwhelmingly European Russia. Asian Russia is only ever stated as an explicit
-  Siberian or Far East subregion, which keeps its own key.
-- `Kazakhstan` → `KZ`, and `KZ` is **not** a member of the "Europe" grouping. The
-  west-of-Ural split in Appendix I cannot be recovered from a shape that just
-  says "Kazakhstan".
-- `Turkey` → `TR`, and `TR` **is** a member of the "Europe" grouping, following
-  Appendix I.
+`nameToIso` / `countryName` are backed by a compact embedded ISO 3166-1 name map
+(~250 entries, all countries, ~6 KB) in the module. Unmapped names fall through
+to `null` rather than a guess.
 
 `is_absent` rows are filtered before normalization, in the composable.
+
+**Grouping-membership calls (see section 5):** `RU` (bare Russia) is **not** in
+`"Europe"`; `russia-european` **is**. `TR` **is** in `"Europe"`. `KZ` is **not**.
+All three are one-line edits in the grouping data file.
 
 ## 5. Grouping config: `panels/PanelKeys/geographyCategories.js` (pure data)
 
@@ -119,13 +120,12 @@ export default [
 ]
 ```
 
-`members` are **territory keys as `geoNormalize` emits them** (ISO 3166-1
-alpha-2, plus the `russia-european` slug), not the Cooperative Catalogue's
-Appendix I letter codes (those clash with ISO: the catalogue's `AZ` is the
-Azores, `MA` is Malta, `MC` is Macedonia). Appendix I "E" is the conceptual
-authority for which territories belong in "Europe"; the list above is its ISO
-translation. Kosovo is omitted (no stable ISO 3166-1 code); Azores, Madeira and
-the Canaries fall under `PT` / `ES` already.
+`members` are **territory keys as `geoNormalize` emits them**: ISO 3166-1
+alpha-2, plus the `russia-european` slug. It is a plain geographic-Europe list
+(EU, rest of the continent, `TR`, `russia-european`; not `RU`, not `KZ`). Kosovo
+is omitted (no stable ISO 3166-1 code); Azores, Madeira and the Canaries fall
+under `PT` / `ES`. Editing which territories count as "Europe" is editing this
+one array.
 
 `modules/keys/` imports it with a relative path
 (`../../panels/PanelKeys/geographyCategories.js`). This cross-folder import is

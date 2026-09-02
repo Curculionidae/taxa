@@ -136,7 +136,8 @@ const store = useDistributionStore()
 const popupElement = ref(null)
 const { popupItem, geojsonOptions } = useGeojsonOptions({
   popupElement,
-  adventiveAdIds: computed(() => store.adventiveAdIds)
+  adventiveAdIds: computed(() => store.adventiveAdIds),
+  typeStatusByCoId: computed(() => store.typeStatusByCoId)
 })
 
 // A second SVG hatch pattern (the package's addPatternToMap only makes the
@@ -199,9 +200,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style>
-/* Adventive-tagged asserted-distribution polygons: hatched instead of solid.
-   Unscoped: the target is a Leaflet-generated <path>. */
+/* Unscoped: the targets are Leaflet-generated <path> / marker elements. */
 .leaflet-adventive-hatch {
   fill: url(#adventive-hatch) !important;
+}
+.pp-map-other-type-marker {
+  background: var(--pp-map-other-type);
 }
 </style>

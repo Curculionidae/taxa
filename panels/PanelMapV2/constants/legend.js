@@ -30,6 +30,11 @@ export const LEGEND = {
     label: 'Primary type',
     background: 'bg-map-type-material'
   },
+  OtherTypeMaterial: {
+    label: 'Other type material',
+    background: '',
+    style: 'background: var(--pp-map-other-type);'
+  },
   FieldOccurrence: {
     label: 'Field occurrence',
     background: 'bg-map-field-occurrence'

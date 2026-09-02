@@ -73,6 +73,49 @@ function assertedDistributionIds(features) {
   return out
 }
 
+function collectionObjectIds(features) {
+  const out = []
+  for (const f of features || []) {
+    const base = f?.properties?.base
+    for (const b of Array.isArray(base) ? base : [base]) {
+      if (b?.type === 'CollectionObject' && b.id != null) out.push(b.id)
+    }
+  }
+  return out
+}
+
+// Classify a free-text DwC typeStatus ("2 syntypes of Bothynoderes crotchi ...",
+// "Paralectotype", ...): 'primary' for a name-bearing type, 'other' for any
+// other kind of type material, null when it is not a type at all. The para-/iso-
+// forms are checked first so "paralectotype" is not read as "lectotype".
+function classifyTypeStatus(ts) {
+  const s = String(ts || '').toLowerCase()
+  if (!s) return null
+  if (/\b(para|iso|topo|allo|co)-?[a-z]*type/.test(s)) return 'other'
+  if (/\b(holo|lecto|neo|syn)-?type/.test(s)) return 'primary'
+  return 'other'
+}
+
+// Map<collectionObjectId, 'primary'|'other'> from the OTU's DwC inventory.
+async function fetchTypeStatusByCoId(otuId, signal) {
+  try {
+    const { data } = await makeAPIRequest.get(
+      `/otus/${otuId}/inventory/dwc.json`,
+      { signal }
+    )
+    const rows = data?.data || data?.rows || (Array.isArray(data) ? data : [])
+    const byId = new Map()
+    for (const r of rows) {
+      if (r?.dwc_occurrence_object_type !== 'CollectionObject') continue
+      const kind = classifyTypeStatus(r.typeStatus)
+      if (kind) byId.set(r.dwc_occurrence_object_id, kind)
+    }
+    return byId
+  } catch {
+    return new Map()
+  }
+}
+
 export const useDistributionStore = defineStore('distributionStoreMapV2', {
   state: () => {
     return {
@@ -84,6 +127,8 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       },
       tagsByAdId: new Map(),
       adventiveAdIds: new Set(),
+      // Map<collectionObjectId, 'primary' | 'other'> for type-material styling
+      typeStatusByCoId: new Map(),
       controller: null
     }
   },
@@ -128,6 +173,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     async loadDistribution({ otuId, rankString }) {
       this.tagsByAdId = new Map()
       this.adventiveAdIds = new Set()
+      this.typeStatusByCoId = new Map()
       const isSpeciesGroup =
         rankString &&
         (isRankGroup('SpeciesGroup', rankString) ||
@@ -157,31 +203,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
                 features
               }
 
-              fetchAdTags(
-                assertedDistributionIds(features),
-                this.controller.signal
-              ).then((byId) => {
-                if (!byId.size) return
-                this.tagsByAdId = byId
-                const adventive = new Set()
-                for (const [id, kws] of byId) {
-                  if (kws.some((k) => k.toLowerCase() === 'adventive')) adventive.add(id)
-                }
-                this.adventiveAdIds = adventive
-                if (
-                  adventive.size &&
-                  !this.distribution.currentShapeTypes.includes('Adventive')
-                ) {
-                  this.distribution.currentShapeTypes = [
-                    ...this.distribution.currentShapeTypes,
-                    'Adventive'
-                  ]
-                }
-                // new object ref so VMap re-runs L.geoJSON with the hatch style
-                this.distribution.geojson = {
-                  features: [...this.distribution.geojson.features]
-                }
-              })
+              this.enrichFeatures(features, otuId, this.controller.signal)
             }
           })
           .catch((e) => {
@@ -191,6 +213,46 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
           })
       } else {
         this.getAggregateShape(otuId)
+      }
+    },
+
+    // Second-pass metadata that the geojson does not carry: AssertedDistribution
+    // tags (Adventive -> hatched) and CollectionObject type status (primary vs
+    // other type material -> colour). Re-emits the geojson once so VMap restyles.
+    async enrichFeatures(features, otuId, signal) {
+      const [tagsByAd, typeByCo] = await Promise.all([
+        fetchAdTags(assertedDistributionIds(features), signal),
+        fetchTypeStatusByCoId(otuId, signal)
+      ])
+      if (signal?.aborted) return
+
+      const extraTypes = []
+
+      if (tagsByAd.size) {
+        this.tagsByAdId = tagsByAd
+        const adventive = new Set()
+        for (const [id, kws] of tagsByAd) {
+          if (kws.some((k) => k.toLowerCase() === 'adventive')) adventive.add(id)
+        }
+        this.adventiveAdIds = adventive
+        if (adventive.size) extraTypes.push('Adventive')
+      }
+
+      if (typeByCo.size) {
+        this.typeStatusByCoId = typeByCo
+        const kinds = new Set(typeByCo.values())
+        if (kinds.has('primary')) extraTypes.push('TypeMaterial')
+        if (kinds.has('other')) extraTypes.push('OtherTypeMaterial')
+      }
+
+      if (!extraTypes.length) return
+
+      this.distribution.currentShapeTypes = [
+        ...new Set([...this.distribution.currentShapeTypes, ...extraTypes])
+      ]
+      // new object ref so VMap re-runs L.geoJSON with the enriched styling
+      this.distribution.geojson = {
+        features: [...this.distribution.geojson.features]
       }
     }
   }

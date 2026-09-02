@@ -43,7 +43,7 @@
         @click="showCompleteness = 'taxonomy'"
         @keydown.enter="showCompleteness = 'taxonomy'"
         @keydown.space.prevent="showCompleteness = 'taxonomy'"
-      >taxonomy: {{ completeness.isComplete
+      >Taxonomy: {{ completeness.isComplete
         ? `complete (${completeness.expectedCount} ${completeness.targetRank})`
         : `${completeness.coveredCount} / ${completeness.expectedCount} ${completeness.targetRank}` }}</button>
 
@@ -57,7 +57,7 @@
         @click="showCompleteness = 'geography'"
         @keydown.enter="showCompleteness = 'geography'"
         @keydown.space.prevent="showCompleteness = 'geography'"
-      >{{ completeness.geographic.label.toLowerCase() }}: {{ completeness.geographic.isComplete
+      >{{ completeness.geographic.label }}: {{ completeness.geographic.isComplete
         ? `complete (${completeness.geographic.expectedCount} ${completeness.targetRank})`
         : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount} ${completeness.targetRank}` }}</button>
 

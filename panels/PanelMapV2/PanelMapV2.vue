@@ -34,6 +34,7 @@
             :items="popupItem.base"
             :targets="popupItem.target"
             :tags-by-ad-id="store.tagsByAdId"
+            :type-status-by-co-id="store.typeStatusByCoId"
             @selected="dwcTableRef.show"
             @citation-selected="activeCitation = $event"
           />

@@ -96,7 +96,9 @@ function classifyTypeStatus(ts) {
   return 'other'
 }
 
-// Map<collectionObjectId, 'primary'|'other'> from the OTU's DwC inventory.
+// Map<collectionObjectId, { kind: 'primary'|'other', statuses: string[] }> from
+// the OTU's DwC inventory. A specimen can be a type of more than one name, so
+// statuses accumulate; kind is 'primary' if any of them is name-bearing.
 async function fetchTypeStatusByCoId(otuId, signal) {
   try {
     const { data } = await makeAPIRequest.get(
@@ -108,7 +110,14 @@ async function fetchTypeStatusByCoId(otuId, signal) {
     for (const r of rows) {
       if (r?.dwc_occurrence_object_type !== 'CollectionObject') continue
       const kind = classifyTypeStatus(r.typeStatus)
-      if (kind) byId.set(r.dwc_occurrence_object_id, kind)
+      if (!kind) continue
+      const id = r.dwc_occurrence_object_id
+      const cur = byId.get(id) || { kind: 'other', statuses: [] }
+      if (r.typeStatus && !cur.statuses.includes(r.typeStatus)) {
+        cur.statuses.push(r.typeStatus)
+      }
+      if (kind === 'primary') cur.kind = 'primary'
+      byId.set(id, cur)
     }
     return byId
   } catch {
@@ -240,7 +249,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
 
       if (typeByCo.size) {
         this.typeStatusByCoId = typeByCo
-        const kinds = new Set(typeByCo.values())
+        const kinds = new Set([...typeByCo.values()].map((v) => v.kind))
         if (kinds.has('primary')) extraTypes.push('TypeMaterial')
         if (kinds.has('other')) extraTypes.push('OtherTypeMaterial')
       }

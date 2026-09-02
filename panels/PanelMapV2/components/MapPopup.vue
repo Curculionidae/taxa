@@ -17,6 +17,12 @@
               {{ ' ' + splitName(targets?.[i]?.label ?? item.label).author }}
             </span>
           </div>
+          <div
+            v-for="status in typeStatusList(item.id)"
+            :key="status"
+            class="text-xs text-base-content mt-0.5 [&_i]:italic"
+            v-html="formatTypeStatus(status)"
+          />
         </template>
 
         <!-- AssertedDistribution / AssertedAbsent — BA-linked variant -->
@@ -94,21 +100,28 @@
           </div>
         </template>
 
-        <!-- Other / fallback -->
-        <span v-else class="truncate">{{ item.label }}</span>
+        <!-- TypeMaterial and other bare types. Skip a TypeMaterial entry when a
+             sibling CollectionObject in the same popup already carries its
+             DwC type status, to avoid showing "holotype of ..." twice. -->
+        <span
+          v-else-if="!(item.type === TYPE_MATERIAL && siblingHasTypeStatus)"
+          class="truncate [&_i]:italic"
+          v-html="item.type === TYPE_MATERIAL ? formatTypeStatus(item.label) : escapeHtml(item.label)"
+        />
       </li>
     </ul>
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import {
   COLLECTION_OBJECT,
   FIELD_OCCURRENCE,
   ASSERTED_DISTRIBUTION,
-  ASSERTED_ABSENT
+  ASSERTED_ABSENT,
+  TYPE_MATERIAL
 } from '@/constants/objectTypes.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
@@ -132,12 +145,51 @@ const props = defineProps({
   tagsByAdId: {
     type: Object,
     default: () => new Map()
+  },
+  // Map<collectionObjectId, { kind, statuses: string[] }>
+  typeStatusByCoId: {
+    type: Object,
+    default: () => new Map()
   }
 })
 
 // keyword names tagged on this AssertedDistribution, rendered as yellow pills
 function tagList(adId) {
   return props.tagsByAdId?.get?.(adId) || []
+}
+
+// verbatim DwC type-status strings for a CollectionObject ("holotype of X",
+// "paratype of X", ...). A specimen can carry more than one.
+function typeStatusList(coId) {
+  return props.typeStatusByCoId?.get?.(coId)?.statuses || []
+}
+const siblingHasTypeStatus = computed(() =>
+  props.items.some(
+    (it) => CLICKABLE_TYPES.includes(it.type) && typeStatusList(it.id).length
+  )
+)
+
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+// "holotype of Parexophthalmus vitiensis Marshall, 1941" ->
+// "holotype of <i>Parexophthalmus vitiensis</i> Marshall, 1941"
+function formatTypeStatus(s) {
+  const str = String(s || '')
+  const m = str.match(/^(.*? of )(.+)$/)
+  if (!m) return escapeHtml(str)
+  const { name, author } = splitName(m[2])
+  return (
+    escapeHtml(m[1]) +
+    '<i>' +
+    escapeHtml(name) +
+    '</i>' +
+    (author ? ' ' + escapeHtml(author) : '')
+  )
 }
 
 const emit = defineEmits(['selected', 'citation-selected'])

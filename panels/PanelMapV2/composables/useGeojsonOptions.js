@@ -15,13 +15,14 @@ function isAdventiveFeature(feature, adventiveAdIds) {
 }
 
 // 'primary' | 'other' | null — the strongest type-material status among the
-// feature's CollectionObject bases, from the store's DwC-derived map.
+// feature's CollectionObject bases, from the store's DwC-derived map
+// (Map<coId, { kind, statuses }>).
 function typeMaterialKind(feature, typeStatusByCoId) {
   if (!typeStatusByCoId || !typeStatusByCoId.size) return null
   let kind = null
   for (const b of asArray(feature?.properties?.base)) {
     if (b?.type !== 'CollectionObject') continue
-    const k = typeStatusByCoId.get(b.id)
+    const k = typeStatusByCoId.get(b.id)?.kind
     if (k === 'primary') return 'primary'
     if (k === 'other') kind = 'other'
   }

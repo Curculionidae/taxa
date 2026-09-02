@@ -199,8 +199,20 @@ them and, when the effective set is non-empty:
 - terminal territory set is empty (unknown) → rendered normally, no note
 - terminal intersects the selection → rendered normally
 
-Couplet structure, numbering and navigation are untouched. Print view ignores
-the de-emphasis.
+Numbering and navigation are untouched. Print view ignores the de-emphasis.
+
+**Path roll-up (added after first review).** A couplet (branch) lead is also
+dimmed when its whole reachable subtree is out of area, so a decision that leads
+nowhere useful for the selection is visible. Per lead: gather its reachable
+terminal OTU ids (`descendantOtus`), then `leadGeoStatus` in
+`modules/keys/lib/geoMatch.js` returns `in` if any reachable terminal is in
+area, `unknown` if any is unknown, else `out`. Only `out` couplet leads dim;
+terminal leads keep dimming through `TaxonLink` so the two never compound.
+
+For this to mean anything on a genus / tribe key, `useKeyGeography` resolves
+each terminal OTU to its taxon-name and rank, and for terminals above species
+rank also fetches `?taxon_name_id[]=<tn>&descendants=true` (one call each),
+unioning the descendant territories onto the terminal.
 
 ## 9. Two-measure completeness
 

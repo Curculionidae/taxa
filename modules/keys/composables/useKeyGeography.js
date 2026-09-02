@@ -65,6 +65,7 @@ async function mapPool(items, limit, fn) {
 export function useKeyGeography(terminalListRef) {
   const territoriesByOtu = ref(new Map()) // otuId -> Set<territoryKey>
   const labelByKey = ref(new Map()) // territoryKey -> label
+  const otuToTnRef = ref(new Map()) // terminal otuId -> taxon-name id
   const loading = ref(false)
   let gen = 0
   let started = false // ensureLoaded has been called at least once
@@ -74,6 +75,7 @@ export function useKeyGeography(terminalListRef) {
     gen++
     territoriesByOtu.value = new Map()
     labelByKey.value = new Map()
+    otuToTnRef.value = new Map()
     loading.value = false
     loadedFor = null
     // The re-fetch for the new key is driven by the terminalListRef watch once
@@ -130,6 +132,7 @@ export function useKeyGeography(terminalListRef) {
 
     // 0. terminal OTU -> taxon-name id + rank
     const otuToTn = new Map()
+    otuToTnRef.value = new Map()
     const higherRankOtus = []
     try {
       const q = new URLSearchParams()
@@ -140,6 +143,7 @@ export function useKeyGeography(terminalListRef) {
       for (const o of Array.isArray(data) ? data : []) {
         if (o?.id && o.taxon_name_id) otuToTn.set(o.id, o.taxon_name_id)
       }
+      otuToTnRef.value = new Map(otuToTn)
       const tnIds = [...new Set(otuToTn.values())]
       if (tnIds.length) {
         const tq = new URLSearchParams()
@@ -185,6 +189,7 @@ export function useKeyGeography(terminalListRef) {
         if (myGen !== gen) return
         for (const row of rows) {
           if (row?.is_absent) continue
+          if (row.asserted_distribution_object_type !== 'Otu') continue
           add(otuId, normalizeShape(row.asserted_distribution_shape))
         }
       } catch {
@@ -246,8 +251,24 @@ export function useKeyGeography(terminalListRef) {
     return s
   })
 
+  // Same data as territoriesByOtu, keyed by the terminal's taxon-name id, so the
+  // completeness pass can reuse it for the taxa that are in the key (no second
+  // fetch).
+  const territoriesByTn = computed(() => {
+    const out = new Map()
+    const o2t = otuToTnRef.value
+    for (const [otuId, set] of territoriesByOtu.value) {
+      const tn = o2t.get(otuId)
+      if (tn == null) continue
+      if (!out.has(tn)) out.set(tn, new Set())
+      for (const k of set) out.get(tn).add(k)
+    }
+    return out
+  })
+
   return {
     territoriesByOtu,
+    territoriesByTn,
     allTerritories,
     unknownOtuIds,
     loading,

@@ -153,26 +153,91 @@ provide('keyGeo', {
 
 const citations = ref({})
 const activeCitation = ref(null)
-// Base inputs for buildCompletenessReport, assembled once per load; the report
-// itself is a computed so the geographic pass re-runs when the selection changes.
+// Base inputs for buildCompletenessReport, assembled once per load.
 const completenessInput = ref(null)
+// { targetTaxonNameId -> Set<territoryKey> } for the geographic completeness
+// pass. Assembled lazily: reuse the picker's per-terminal data for the taxa that
+// are in the key, fetch only the gaps (missing taxa, usually a handful).
 const territoriesByExpectedId = ref(new Map())
-// The expected-taxa distribution fetch is deferred until a filter is active
-// (like the picker's own data). scopeTnForGeo is stashed by loadCompleteness;
-// geoTerrGen tracks which load generation it has been fetched for.
-const scopeTnForGeo = ref(null)
 let geoTerrGen = -1
+
+// The report without the geographic pass — the source of the target-rank taxa
+// the geographic pass needs distributions for.
+const baseReport = computed(() =>
+  completenessInput.value
+    ? buildCompletenessReport(completenessInput.value)
+    : null
+)
+const targetTaxa = computed(() => {
+  const r = baseReport.value
+  if (!r) return []
+  return [
+    ...r.groups.flatMap((g) => g.members),
+    ...r.ungrouped
+  ].map((m) => ({ id: m.taxon.id, otuId: m.taxon.otuId }))
+})
+
 watch(
-  () => geoEffective.value.size > 0 && scopeTnForGeo.value,
-  async (tn) => {
-    if (!tn || geoTerrGen === loadGen) return
+  () => geoEffective.value.size > 0 && targetTaxa.value.length > 0,
+  (active) => {
+    if (!active || geoTerrGen === loadGen) return
     const myGen = loadGen
     geoTerrGen = myGen
-    const map = await buildExpectedTerritories(tn, myGen).catch(() => new Map())
-    if (myGen === loadGen) territoriesByExpectedId.value = map
+    assembleExpectedTerritories(targetTaxa.value, myGen)
   },
   { immediate: true }
 )
+
+async function assembleExpectedTerritories(targets, myGen) {
+  const byTn = geo.territoriesByTn.value
+  const map = new Map()
+  const need = []
+  for (const t of targets) {
+    const s = byTn.get(t.id)
+    if (s && s.size) map.set(t.id, new Set(s))
+    else need.push(t.id)
+  }
+  territoriesByExpectedId.value = new Map(map) // show the in-key data immediately
+  // Fetch the gap taxa (missing from the key), scoped to each one's own subtree.
+  let i = 0
+  const worker = async () => {
+    while (i < need.length) {
+      const tnId = need[i++]
+      const set = await fetchTaxonTerritories(tnId, myGen)
+      if (myGen !== loadGen) return
+      if (set.size) map.set(tnId, set)
+    }
+  }
+  await Promise.all([worker(), worker(), worker(), worker()])
+  if (myGen === loadGen) territoriesByExpectedId.value = new Map(map)
+}
+
+async function fetchTaxonTerritories(tnId, myGen) {
+  const set = new Set()
+  try {
+    for (let page = 1; page <= 15; page++) {
+      const q = new URLSearchParams()
+      q.append('taxon_name_id[]', tnId)
+      q.set('descendants', 'true')
+      q.set('per', '1000')
+      q.set('page', String(page))
+      const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
+      if (myGen !== loadGen) return new Set()
+      const rows = Array.isArray(data) ? data : []
+      for (const row of rows) {
+        if (row?.is_absent) continue
+        if (row.asserted_distribution_object_type !== 'Otu') continue
+        const terr = normalizeShape(row.asserted_distribution_shape)
+        if (terr) set.add(terr.key)
+      }
+      if (rows.length < 1000) break
+    }
+  } catch {
+    /* partial is fine */
+  }
+  return set
+}
+
 const completeness = computed(() => {
   const input = completenessInput.value
   if (!input) return null
@@ -252,7 +317,6 @@ async function load(id) {
   geo.reset()
   completenessInput.value = null
   territoriesByExpectedId.value = new Map()
-  scopeTnForGeo.value = null
   geoTerrGen = -1
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
@@ -525,101 +589,8 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
       tnIdToOtuId,
       outOfScopeTerminals
     }
-
-    // Hand the scope taxon-name to the deferred geographic pass; the watcher on
-    // geoEffective fetches the expected-taxa distributions only once a filter is
-    // actually active.
-    scopeTnForGeo.value = scopeTnId
   } catch {
     if (myGen === loadGen) completenessInput.value = null
-  }
-}
-
-// Batch-walk parent_id upward from the given taxon-name ids until every chain
-// reaches `stopId` (the key's scope) or a depth cap. Returns a Map<tnId,
-// ancestorId[]> (the ancestor list is closest-parent first, excludes stopId).
-async function ancestorChains(tnIds, stopId, myGen) {
-  const parentOf = new Map()
-  let frontier = [...new Set(tnIds)].filter((id) => id != null)
-  for (let depth = 0; depth < 8 && frontier.length; depth++) {
-    const rows = []
-    for (let i = 0; i < frontier.length; i += 200) {
-      const q = new URLSearchParams()
-      frontier.slice(i, i + 200).forEach((id) => q.append('taxon_name_id[]', id))
-      q.set('per', '1000')
-      const { data } = await makeAPIRequest.get(`/taxon_names?${q}`)
-      if (myGen !== loadGen) return new Map()
-      if (Array.isArray(data)) rows.push(...data)
-    }
-    const next = []
-    for (const r of rows) {
-      if (parentOf.has(r.id)) continue
-      parentOf.set(r.id, r.parent_id ?? null)
-      if (r.parent_id != null && r.parent_id !== stopId && !parentOf.has(r.parent_id)) {
-        next.push(r.parent_id)
-      }
-    }
-    frontier = [...new Set(next)]
-  }
-  const chains = new Map()
-  for (const start of new Set(tnIds)) {
-    const out = []
-    const seen = new Set()
-    let cur = parentOf.get(start)
-    while (cur != null && cur !== stopId && !seen.has(cur) && out.length < 10) {
-      seen.add(cur)
-      out.push(cur)
-      cur = parentOf.get(cur)
-    }
-    chains.set(start, out)
-  }
-  return chains
-}
-
-async function buildExpectedTerritories(scopeTnId, myGen) {
-  // territory key set per AD taxon-name id, before roll-up
-  const perTn = new Map()
-  try {
-    for (let page = 1; page <= 25; page++) {
-      const q = new URLSearchParams()
-      q.append('taxon_name_id[]', scopeTnId)
-      q.set('descendants', 'true')
-      q.set('per', '1000')
-      q.set('page', String(page))
-      const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
-      if (myGen !== loadGen) return new Map()
-      const rows = Array.isArray(data) ? data : []
-      for (const row of rows) {
-        if (row?.is_absent) continue
-        if (row.asserted_distribution_object_type !== 'Otu') continue
-        const tnId = row.asserted_distribution_object?.taxon_name_id
-        if (tnId == null) continue
-        const terr = normalizeShape(row.asserted_distribution_shape)
-        if (!terr) continue
-        if (!perTn.has(tnId)) perTn.set(tnId, new Set())
-        perTn.get(tnId).add(terr.key)
-      }
-      if (rows.length < 1000) break
-    }
-
-    // A distribution is stated on a species OTU, but the geographic completeness
-    // measure runs at the key's target rank (a genus, a tribe). Roll every
-    // species' territories up onto its ancestors so buildGeographic can look
-    // them up by the genus id it actually iterates.
-    const chains = await ancestorChains([...perTn.keys()], scopeTnId, myGen)
-    if (myGen !== loadGen) return new Map()
-    const map = new Map()
-    const addAll = (id, keys) => {
-      if (!map.has(id)) map.set(id, new Set())
-      for (const k of keys) map.get(id).add(k)
-    }
-    for (const [tnId, keys] of perTn) {
-      addAll(tnId, keys)
-      for (const anc of chains.get(tnId) || []) addAll(anc, keys)
-    }
-    return map
-  } catch {
-    return new Map()
   }
 }
 

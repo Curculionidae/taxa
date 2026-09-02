@@ -13,10 +13,10 @@ export const LEGEND = {
   },
   Adventive: {
     label: 'Adventive (introduced)',
-    background: 'bg-map-asserted',
-    // hatched swatch, mirrors the polygon rendering
+    background: '',
+    // purple hatch, mirrors the polygon rendering
     style:
-      'background-image: repeating-linear-gradient(45deg, var(--tp-map-asserted) 0 1.5px, transparent 1.5px 4px);'
+      'background: repeating-linear-gradient(45deg, var(--pp-map-adventive) 0 2px, color-mix(in srgb, var(--pp-map-adventive) 20%, transparent) 2px 5px);'
   },
   Georeference: {
     label: 'Georeference',

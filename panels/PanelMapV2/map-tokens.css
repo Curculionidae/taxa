@@ -1,0 +1,9 @@
+/* Project-panel colour tokens for PanelMapV2 that have no package --tp- token.
+   Prefix --pp- ("project panels"); a host repo can retint by redefining these
+   in its own :root. Consumed via var(), never a Tailwind colour utility. */
+:root {
+  --pp-map-adventive: rgb(147, 51, 234); /* purple-600 */
+}
+.dark {
+  --pp-map-adventive: rgb(192, 132, 252); /* purple-300, lighter for dark tiles */
+}

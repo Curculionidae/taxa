@@ -94,6 +94,7 @@ function linkify(html) {
     '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>'
   )
 }
+import './map-tokens.css'
 import { useDistributionStore } from './store/useDistributionStore.js'
 import { makeClusterIconFor } from './clusters'
 import { useGeojsonOptions } from './composables/useGeojsonOptions.js'
@@ -138,9 +139,11 @@ const { popupItem, geojsonOptions } = useGeojsonOptions({
 })
 
 // A second SVG hatch pattern (the package's addPatternToMap only makes the
-// "asserted absent" one). Adventive AD polygons carry `leaflet-adventive-hatch`,
-// styled to `fill: url(#adventive-hatch)` in the block below. `url(#id)` resolves
-// document-wide, so one definition on <body> serves every map on the page.
+// "asserted absent" one): purple diagonal lines over a faint purple wash, so an
+// adventive polygon stays legible over an overlapping solid native one. Adventive
+// AD polygons carry `leaflet-adventive-hatch`, styled to `fill: url(#adventive-hatch)`
+// below. `url(#id)` resolves document-wide, so one definition on <body> serves
+// every map on the page.
 function addAdventivePattern() {
   if (typeof document === 'undefined' || document.getElementById('adventive-hatch')) return
   const NS = 'http://www.w3.org/2000/svg'
@@ -154,13 +157,19 @@ function addAdventivePattern() {
   p.setAttribute('width', '8')
   p.setAttribute('height', '8')
   p.setAttribute('patternTransform', 'rotate(45)')
+  const bg = document.createElementNS(NS, 'rect')
+  bg.setAttribute('width', '8')
+  bg.setAttribute('height', '8')
+  bg.setAttribute('fill', 'var(--pp-map-adventive)')
+  bg.setAttribute('fill-opacity', '0.2')
   const line = document.createElementNS(NS, 'line')
   line.setAttribute('x1', '0')
   line.setAttribute('y1', '0')
   line.setAttribute('x2', '0')
   line.setAttribute('y2', '8')
-  line.setAttribute('stroke', 'var(--tp-map-asserted)')
+  line.setAttribute('stroke', 'var(--pp-map-adventive)')
   line.setAttribute('stroke-width', '3')
+  p.appendChild(bg)
   p.appendChild(line)
   const defs = document.createElementNS(NS, 'defs')
   defs.appendChild(p)

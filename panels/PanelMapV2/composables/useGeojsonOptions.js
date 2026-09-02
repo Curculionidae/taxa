@@ -23,6 +23,7 @@ export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds }) 
         if (!isAdventiveFeature(feature, unref(adventiveAdIds))) return base
         return {
           ...base,
+          color: 'var(--pp-map-adventive)',
           className: `${base.className || ''} leaflet-adventive-hatch`.trim(),
           fillOpacity: 1
         }

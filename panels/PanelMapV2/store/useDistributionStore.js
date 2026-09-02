@@ -37,6 +37,39 @@ function sortFeaturesByType(arr, reference) {
   })
 }
 
+// AssertedDistribution ids carrying an "Adventive" tag are drawn hatched instead
+// of solid (introduced / non-native occurrence). The other AD tags in this
+// project (Island, endemic) get no special treatment for now.
+async function fetchAdventiveAdIds(adIds, signal) {
+  const ids = [...new Set(adIds)].filter(Boolean)
+  if (!ids.length) return new Set()
+  try {
+    const params = new URLSearchParams()
+    params.set('tag_object_type', 'AssertedDistribution')
+    ids.forEach((id) => params.append('tag_object_id[]', id))
+    params.set('per', '500')
+    const { data } = await makeAPIRequest.get(`/tags?${params}`, { signal })
+    return new Set(
+      (Array.isArray(data) ? data : [])
+        .filter((t) => (t.keyword?.name || '').toLowerCase() === 'adventive')
+        .map((t) => t.tag_object_id)
+    )
+  } catch {
+    return new Set()
+  }
+}
+
+function assertedDistributionIds(features) {
+  const out = []
+  for (const f of features || []) {
+    const base = f?.properties?.base
+    for (const b of Array.isArray(base) ? base : [base]) {
+      if (b?.type === 'AssertedDistribution' && b.id != null) out.push(b.id)
+    }
+  }
+  return out
+}
+
 export const useDistributionStore = defineStore('distributionStoreMapV2', {
   state: () => {
     return {
@@ -46,6 +79,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
         currentShapeTypes: [],
         cachedMap: null
       },
+      adventiveAdIds: new Set(),
       controller: null
     }
   },
@@ -88,6 +122,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     },
 
     async loadDistribution({ otuId, rankString }) {
+      this.adventiveAdIds = new Set()
       const isSpeciesGroup =
         rankString &&
         (isRankGroup('SpeciesGroup', rankString) ||
@@ -116,6 +151,24 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
               this.distribution.geojson = {
                 features
               }
+
+              fetchAdventiveAdIds(
+                assertedDistributionIds(features),
+                this.controller.signal
+              ).then((ids) => {
+                if (!ids.size) return
+                this.adventiveAdIds = ids
+                if (!this.distribution.currentShapeTypes.includes('Adventive')) {
+                  this.distribution.currentShapeTypes = [
+                    ...this.distribution.currentShapeTypes,
+                    'Adventive'
+                  ]
+                }
+                // new object ref so VMap re-runs L.geoJSON with the hatch style
+                this.distribution.geojson = {
+                  features: [...this.distribution.geojson.features]
+                }
+              })
             }
           })
           .catch((e) => {

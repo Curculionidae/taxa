@@ -1,9 +1,33 @@
 import { DISABLE_LAYER_OPTIONS } from '@/components/Map/constants'
-import { computed, ref } from 'vue'
+import geojsonDefaultOptions from '@/components/Map/utils/geojsonOptions'
+import { computed, ref, unref } from 'vue'
 
-export function makeGeojsonOptions({ popupElement, popupItem }) {
-  return function () {
+// An AssertedDistribution polygon tagged "Adventive" is drawn with the SVG hatch
+// pattern injected by addAdventivePattern() (PanelMapV2.vue) instead of a solid
+// fill. Everything else keeps the package's default per-type styling.
+function isAdventiveFeature(feature, adventiveAdIds) {
+  if (!adventiveAdIds || !adventiveAdIds.size) return false
+  const base = feature?.properties?.base
+  return (Array.isArray(base) ? base : [base]).some(
+    (b) => b?.type === 'AssertedDistribution' && adventiveAdIds.has(b.id)
+  )
+}
+
+export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds }) {
+  return function (args) {
+    const defaults = geojsonDefaultOptions(args)
+
     return {
+      style: (feature) => {
+        const base = defaults.style(feature)
+        if (!isAdventiveFeature(feature, unref(adventiveAdIds))) return base
+        return {
+          ...base,
+          className: `${base.className || ''} leaflet-adventive-hatch`.trim(),
+          fillOpacity: 1
+        }
+      },
+
       onEachFeature: (feature, layer) => {
         layer.pm.setOptions(DISABLE_LAYER_OPTIONS)
         layer.pm.disable()
@@ -22,11 +46,11 @@ export function makeGeojsonOptions({ popupElement, popupItem }) {
   }
 }
 
-export function useGeojsonOptions({ popupElement }) {
+export function useGeojsonOptions({ popupElement, adventiveAdIds }) {
   const popupItem = ref(null)
 
   const geojsonOptions = computed(() =>
-    makeGeojsonOptions({ popupElement, popupItem })
+    makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds })
   )
 
   return {

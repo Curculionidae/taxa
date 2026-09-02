@@ -26,7 +26,7 @@
           :geojson="store.distribution.geojson"
           :cluster-icon-create-function="makeClusterIconFor"
           :geojson-options="geojsonOptions"
-          @geojson:ready="() => (isLoading = false)"
+          @geojson:ready="onGeojsonReady"
         />
         <div ref="popupElement">
           <MapPopup
@@ -75,6 +75,7 @@
       >
         <div
           :class="['w-3', 'h-3', 'm-1', 'rounded-sm', LEGEND[type].background]"
+          :style="LEGEND[type].style"
         />
         <span>{{ LEGEND[type].label }}</span>
       </div>
@@ -84,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 function linkify(html) {
   if (!html) return ''
@@ -131,7 +132,46 @@ const isOtuSearchVisible = ref(false)
 const dwcTableRef = ref(null)
 const store = useDistributionStore()
 const popupElement = ref(null)
-const { popupItem, geojsonOptions } = useGeojsonOptions({ popupElement })
+const { popupItem, geojsonOptions } = useGeojsonOptions({
+  popupElement,
+  adventiveAdIds: computed(() => store.adventiveAdIds)
+})
+
+// A second SVG hatch pattern (the package's addPatternToMap only makes the
+// "asserted absent" one). Adventive AD polygons carry `leaflet-adventive-hatch`,
+// styled to `fill: url(#adventive-hatch)` in the block below. `url(#id)` resolves
+// document-wide, so one definition on <body> serves every map on the page.
+function addAdventivePattern() {
+  if (typeof document === 'undefined' || document.getElementById('adventive-hatch')) return
+  const NS = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(NS, 'svg')
+  svg.setAttribute('width', '0')
+  svg.setAttribute('height', '0')
+  svg.style.position = 'absolute'
+  const p = document.createElementNS(NS, 'pattern')
+  p.setAttribute('id', 'adventive-hatch')
+  p.setAttribute('patternUnits', 'userSpaceOnUse')
+  p.setAttribute('width', '8')
+  p.setAttribute('height', '8')
+  p.setAttribute('patternTransform', 'rotate(45)')
+  const line = document.createElementNS(NS, 'line')
+  line.setAttribute('x1', '0')
+  line.setAttribute('y1', '0')
+  line.setAttribute('x2', '0')
+  line.setAttribute('y2', '8')
+  line.setAttribute('stroke', 'var(--tp-map-asserted)')
+  line.setAttribute('stroke-width', '3')
+  p.appendChild(line)
+  const defs = document.createElementNS(NS, 'defs')
+  defs.appendChild(p)
+  svg.appendChild(defs)
+  document.body.appendChild(svg)
+}
+
+function onGeojsonReady() {
+  isLoading.value = false
+  addAdventivePattern()
+}
 
 onMounted(() => {
   isLoading.value = true
@@ -147,3 +187,11 @@ onBeforeUnmount(() => {
   store.$reset()
 })
 </script>
+
+<style>
+/* Adventive-tagged asserted-distribution polygons: hatched instead of solid.
+   Unscoped: the target is a Leaflet-generated <path>. */
+.leaflet-adventive-hatch {
+  fill: url(#adventive-hatch) !important;
+}
+</style>

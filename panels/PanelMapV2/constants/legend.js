@@ -11,6 +11,13 @@ export const LEGEND = {
     label: 'Asserted distribution',
     background: 'bg-map-asserted'
   },
+  Adventive: {
+    label: 'Adventive (introduced)',
+    background: 'bg-map-asserted',
+    // hatched swatch, mirrors the polygon rendering
+    style:
+      'background-image: repeating-linear-gradient(45deg, var(--tp-map-asserted) 0 1.5px, transparent 1.5px 4px);'
+  },
   Georeference: {
     label: 'Georeference',
     background: 'bg-map-georeference'

@@ -3,7 +3,9 @@
        matching the KeyView wrapper it sits in. It is separated from siblings by the
        border alone — NOT by a distinct/recessed fill. bg-base-background here reads as
        white-on-near-black in dark mode (unreadable); do not reintroduce it. (A3) -->
-  <div class="rounded border border-base-muted bg-base-foreground p-4 flex flex-col gap-3"
+  <div class="rounded border border-base-muted bg-base-foreground p-4 flex flex-col gap-3 transition-opacity"
+       :class="dimmed ? 'opacity-40' : ''"
+       :title="dimmed ? `leads only outside ${dimmedLabel}` : undefined"
        :style="{ boxShadow: 'var(--tp-card-shadow) 0 2px 4px 0' }">
     <p class="[&_i]:italic leading-relaxed">
       <LeadText :node="choice" :citations="citations" @open-citation="$emit('open-citation', $event)" />
@@ -26,17 +28,25 @@
 </template>
 
 <script setup>
+import { toRef, provide } from 'vue'
 import LeadText from './LeadText.vue'
 import LeadFigures from './LeadFigures.vue'
 import ReachableTaxa from './ReachableTaxa.vue'
 
-defineProps({
+const props = defineProps({
   keyId: { type: [String, Number], required: true },
   choice: { type: Object, required: true },
   nodes: { type: Object, required: true },
   citations: { type: Object, default: () => ({}) },
   // null → normal behaviour; array → this lead's individual (non-shared) figures
-  ownFigures: { type: Array, default: null }
+  ownFigures: { type: Array, default: null },
+  // geography path roll-up: whole reachable subtree is outside the selection
+  dimmed: { type: Boolean, default: false },
+  dimmedLabel: { type: String, default: 'the selected area' }
 })
 defineEmits(['open-citation'])
+
+// When the whole card is already dimmed, the TaxonLinks in ReachableTaxa must
+// not dim themselves too, or the opacities compound.
+provide('geoDimSuppressed', toRef(props, 'dimmed'))
 </script>

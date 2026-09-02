@@ -33,19 +33,54 @@
       <span v-if="meta.updatedInWords" class="border border-base-muted rounded px-2 py-0.5">
         updated {{ meta.updatedInWords }} ago
       </span>
+
       <button
-        v-if="completeness"
+        v-if="completeness || completenessLoading"
         type="button"
-        class="border rounded px-2 py-0.5 cursor-pointer transition-colors"
-        :class="completeness.isComplete
-          ? 'border-success text-success bg-success/10 hover:bg-success/20'
-          : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
-        @click="showCompleteness = true"
-        @keydown.enter="showCompleteness = true"
-        @keydown.space.prevent="showCompleteness = true"
-      >{{ completeness.isComplete
-        ? `complete (${completeness.expectedCount} ${completeness.targetRank})`
-        : `${completeness.coveredCount} / ${completeness.expectedCount} ${completeness.targetRank}` }}</button>
+        :disabled="!completeness"
+        class="border rounded px-2 py-0.5 transition-colors"
+        :class="!completeness
+          ? 'border-warning text-warning bg-warning/10 cursor-default'
+          : completeness.isComplete
+            ? 'border-success text-success bg-success/10 hover:bg-success/20 cursor-pointer'
+            : 'border-danger text-danger bg-danger/10 hover:bg-danger/20 cursor-pointer'"
+        @click="completeness && (showCompleteness = 'taxonomy')"
+        @keydown.enter="completeness && (showCompleteness = 'taxonomy')"
+        @keydown.space.prevent="completeness && (showCompleteness = 'taxonomy')"
+      >Taxonomy: {{ !completeness
+        ? 'loading…'
+        : completeness.isComplete
+          ? `complete (${completeness.expectedCount})`
+          : `${completeness.coveredCount} / ${completeness.expectedCount}` }}</button>
+
+      <GeographyPicker
+        class="key-print-hide"
+        :model-value="geoSelection"
+        :groupings="geoGroupings"
+        :territories="geoTerritories"
+        :loading="geoLoading"
+        @update:model-value="$emit('update:geoSelection', $event)"
+        @open="$emit('geoOpen')"
+      />
+
+      <button
+        v-if="completeness && completeness.geographic"
+        type="button"
+        :disabled="geoLoading"
+        class="border rounded px-2 py-0.5 transition-colors"
+        :class="geoLoading
+          ? 'border-warning text-warning bg-warning/10 cursor-default'
+          : completeness.geographic.isComplete
+            ? 'border-success text-success bg-success/10 hover:bg-success/20 cursor-pointer'
+            : 'border-danger text-danger bg-danger/10 hover:bg-danger/20 cursor-pointer'"
+        @click="!geoLoading && (showCompleteness = 'geography')"
+        @keydown.enter="!geoLoading && (showCompleteness = 'geography')"
+        @keydown.space.prevent="!geoLoading && (showCompleteness = 'geography')"
+      >{{ completeness.geographic.label }}: {{ geoLoading
+        ? 'loading…'
+        : completeness.geographic.isComplete
+          ? `complete (${completeness.geographic.expectedCount})`
+          : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount}` }}</button>
 
       <button
         v-if="references.length > 1 || (references.length === 1 && !references[0].isPrimary)"
@@ -55,10 +90,14 @@
       >References cited ({{ references.length }})</button>
     </div>
 
-    <VModal v-if="showCompleteness && completeness" @close="showCompleteness = false">
-      <template #header><div class="text-sm font-medium">Completeness</div></template>
+    <VModal v-if="showCompleteness && completeness" @close="showCompleteness = null">
+      <template #header><div class="text-sm font-medium">{{
+        showCompleteness === 'geography'
+          ? `Completeness in ${completeness.geographic?.label || 'the selected area'}`
+          : 'Completeness'
+      }}</div></template>
       <div class="px-4 pb-4">
-        <CompletenessReport :report="completeness" />
+        <CompletenessReport :report="completeness" :mode="showCompleteness" />
       </div>
     </VModal>
 
@@ -77,15 +116,26 @@
 import { ref, computed } from 'vue'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import CompletenessReport from './CompletenessReport.vue'
+import GeographyPicker from './GeographyPicker.vue'
 
 const props = defineProps({
   meta: { type: Object, required: true },
   completeness: { type: Object, default: null },
+  completenessLoading: { type: Boolean, default: false },
   references: { type: Array, default: () => [] },
-  primaryCitation: { type: String, default: null }
+  primaryCitation: { type: String, default: null },
+  geoGroupings: { type: Array, default: () => [] },
+  geoTerritories: { type: Array, default: () => [] },
+  geoLoading: { type: Boolean, default: false },
+  geoSelection: {
+    type: Object,
+    default: () => ({ groupings: [], territories: [] })
+  }
 })
+defineEmits(['update:geoSelection', 'geoOpen'])
 
-const showCompleteness = ref(false)
+// null | 'taxonomy' | 'geography' — which completeness modal is open
+const showCompleteness = ref(null)
 const showReferences = ref(false)
 
 // attribution shape from TaxonWorks attribution_to_json is loosely specified; render a

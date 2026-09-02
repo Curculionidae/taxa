@@ -4,8 +4,8 @@
       <template v-for="(step, i) in trail" :key="step.id">
         <RouterLink
           :to="to(step.coupletNumber)"
-          class="hover:underline hover:text-secondary"
-          :class="i === trail.length - 1 ? 'text-base-content font-medium' : 'text-base-soft'"
+          class="hover:underline"
+          :class="i === trail.length - 1 ? 'text-base-content font-medium' : 'text-secondary'"
         >Couplet {{ step.coupletNumber }}</RouterLink>
         <span v-if="i < trail.length - 1" class="text-base-soft">›</span>
       </template>
@@ -16,7 +16,7 @@
       <RouterLink
         v-if="parentCouplet"
         :to="to(parentCouplet.coupletNumber)"
-        class="key-print-hide text-sm text-base-soft hover:underline hover:text-secondary"
+        class="key-print-hide text-sm text-secondary hover:underline"
       >↑ back</RouterLink>
     </div>
 
@@ -29,6 +29,8 @@
         :nodes="nodes"
         :citations="citations"
         :own-figures="coupletFigures.ownByLeadId ? (coupletFigures.ownByLeadId[choice.id] || []) : null"
+        :dimmed="leadStatus(choice.id) === 'out'"
+        :dimmed-label="geoLabel"
         @open-citation="$emit('open-citation', $event)"
       />
     </div>
@@ -45,8 +47,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { rootId, breadcrumb, childChoices, coupletByNumber } from '../lib/tree.js'
+import { leadGeoStatus } from '../lib/geoMatch.js'
 import { partitionCoupletFigures } from '../lib/images.js'
 import GuidedChoice from './GuidedChoice.vue'
 import LeadFigures from './LeadFigures.vue'
@@ -72,6 +75,19 @@ const parentCouplet = computed(() => {
 
 const trail = computed(() => (current.value.id ? breadcrumb(current.value.id, props.nodes) : []))
 const choices = computed(() => (current.value.id ? childChoices(current.value.id, props.nodes) : []))
+
+// Geography path roll-up (design spec follow-up): dim a choice whose whole
+// reachable subtree lies outside the selection.
+const geo = inject('keyGeo', null)
+const geoLabel = computed(() => geo?.selectionLabel?.value || 'the selected area')
+function leadStatus(nodeId) {
+  if (!geo) return 'in'
+  return leadGeoStatus(
+    geo.reachableTerminalsByNode.value.get(Number(nodeId)),
+    geo.territoriesByOtu.value,
+    geo.effective.value
+  )
+}
 
 // A figure attached to every lead of this couplet is shown once (below), not repeated
 // in each choice card. `ownByLeadId` is null when there is no shared figure — the signal

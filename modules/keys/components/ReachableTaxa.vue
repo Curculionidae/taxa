@@ -24,7 +24,7 @@
       :href="choice.targetLink"
       target="_blank"
       rel="noopener"
-      class="text-base-content hover:underline hover:text-secondary"
+      class="text-secondary hover:underline"
     >{{ choice.targetLabel }}</a>
     <span v-else class="text-base-content">{{ choice.targetLabel }}</span>
   </div>

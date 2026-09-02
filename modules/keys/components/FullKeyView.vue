@@ -25,14 +25,16 @@
           <p v-if="fromCouplet(couplet)" class="text-xs text-base-soft mb-1">
             <RouterLink
               :to="coupletTo(fromCouplet(couplet))"
-              class="text-base-content hover:underline hover:text-secondary"
+              class="text-secondary hover:underline"
             >from {{ fromCouplet(couplet) }}</RouterLink>
           </p>
 
           <div
             v-for="(choice, idx) in childrenOf(couplet.id)"
             :key="choice.id"
-            class="mb-3 last:mb-0"
+            class="mb-3 last:mb-0 transition-opacity"
+            :class="isDimmed(choice) ? 'opacity-40' : ''"
+            :title="isDimmed(choice) ? `leads only outside ${geoLabel}` : undefined"
           >
             <div class="flex gap-2">
               <span class="text-base-soft shrink-0 w-4 text-right">{{ idx === 0 ? '' : '—' }}</span>
@@ -58,6 +60,7 @@
                       :id="choice.targetId"
                       :label="String(choice.targetLabel)"
                       variant="pill"
+                      :suppress-geo-dim="isDimmed(choice)"
                     />
                     <a
                       v-else-if="choice.targetLink"
@@ -108,8 +111,9 @@
 </template>
 
 <script setup>
-import { watch, nextTick, computed } from 'vue'
+import { watch, nextTick, computed, inject } from 'vue'
 import { childChoices } from '../lib/tree.js'
+import { leadGeoStatus } from '../lib/geoMatch.js'
 import { partitionCoupletFigures } from '../lib/images.js'
 import LeadText from './LeadText.vue'
 import TaxonLink from './TaxonLink.vue'
@@ -125,6 +129,23 @@ const props = defineProps({
 defineEmits(['open-citation'])
 
 const childrenOf = (id) => childChoices(id, props.nodes)
+
+// Geography path roll-up: dim a lead whose whole reachable subtree is outside
+// the selection. 'unknown' and 'in' are left alone.
+const geo = inject('keyGeo', null)
+const geoLabel = computed(() => geo?.selectionLabel?.value || 'the selected area')
+function leadStatus(nodeId) {
+  if (!geo) return 'in'
+  return leadGeoStatus(
+    geo.reachableTerminalsByNode.value.get(Number(nodeId)),
+    geo.territoriesByOtu.value,
+    geo.effective.value
+  )
+}
+// Dim any lead whose reachable subtree is entirely out of area, taxon leads
+// included (the taxon pill is told to suppress its own dimming so opacities
+// don't compound).
+const isDimmed = (choice) => leadStatus(choice.id) === 'out'
 
 // Per couplet: figures shared by every lead (hoisted to a couplet-level row) vs.
 // the individual figures that stay under each lead. Keyed by couplet id.

@@ -207,4 +207,7 @@ onBeforeUnmount(() => {
 .pp-map-other-type-marker {
   background: var(--pp-map-other-type);
 }
+.pp-fill-map-other-type {
+  fill: var(--pp-map-other-type);
+}
 </style>

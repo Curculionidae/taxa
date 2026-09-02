@@ -5,17 +5,28 @@ import {
   TYPE_MATERIAL
 } from '@/constants/objectTypes'
 
+const OTHER_TYPE_MATERIAL = 'OtherTypeMaterial'
+
+// The type-material kind stamped on a feature by useGeojsonOptions.pointToLayer
+// overrides its raw base types: a paratype etc. shows yellow, a DwC-confirmed
+// primary type shows as TypeMaterial even if the geojson called it a plain CO.
+function markerTypes(l) {
+  const kind = l.feature?.properties?.typeMaterialKind
+  if (kind === 'other') return [OTHER_TYPE_MATERIAL]
+  if (kind === 'primary') return [TYPE_MATERIAL]
+  return (l.feature?.properties?.base || []).map((item) => item.type)
+}
+
 export function Mixed(cluster) {
   const sliceColor = {
     [FIELD_OCCURRENCE]: 'fill-map-field-occurrence',
     [COLLECTION_OBJECT]: 'fill-map-collection-object',
-    [TYPE_MATERIAL]: 'fill-map-type-material'
+    [TYPE_MATERIAL]: 'fill-map-type-material',
+    [OTHER_TYPE_MATERIAL]: 'pp-fill-map-other-type'
   }
 
   const markers = cluster.getAllChildMarkers()
-  const types = markers.map((l) =>
-    l.feature.properties.base.map((item) => item.type)
-  )
+  const types = markers.map(markerTypes)
   const uniqueTypes = [...new Set(types.flat())]
   const segments = uniqueTypes.map((type) => ({
     class: sliceColor[type]

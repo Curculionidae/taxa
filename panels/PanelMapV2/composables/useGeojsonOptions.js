@@ -59,6 +59,8 @@ export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, ty
 
       pointToLayer: (feature, latLng) => {
         const kind = kindOf(feature)
+        // stamp the resolved kind so the cluster pie (Mixed.js) can colour it
+        if (feature.properties) feature.properties.typeMaterialKind = kind || undefined
         if (!kind) return defaults.pointToLayer(feature, latLng)
         const className =
           kind === 'other'

@@ -68,6 +68,21 @@ test('TDWG Level 3 "Central European Russia" (no iso) -> russia-european', () =>
   )
 })
 
+test('bare "Siberia" region -> null (not the country RU)', () => {
+  assert.equal(
+    normalizeShape({
+      name: 'Siberia',
+      geographic_area_type: { name: 'TDWG Level 2' },
+      parent: { name: 'Asia Temperate' }
+    }),
+    null
+  )
+  assert.equal(
+    normalizeShape({ name: 'Central Siberia', geographic_area_type: { name: 'TDWG Level 3' } }),
+    null
+  )
+})
+
 test('Asian Russia subregion -> its own slug key, kept out of Europe', () => {
   assert.deepEqual(
     normalizeShape({

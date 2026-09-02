@@ -16,10 +16,10 @@ export default [
     id: 'europe',
     label: 'Europe',
     members: [
-      'AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FO',
-      'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU',
-      'MT', 'MD', 'MC', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'SM', 'RS',
-      'SK', 'SI', 'ES', 'SJ', 'SE', 'CH', 'TR', 'UA', 'GB', 'VA',
+      'AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE',
+      'FO', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT',
+      'LU', 'MT', 'MD', 'MC', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'SM',
+      'RS', 'SK', 'SI', 'ES', 'SJ', 'SE', 'CH', 'TR', 'UA', 'GB', 'VA',
       'russia-european'
     ]
   }

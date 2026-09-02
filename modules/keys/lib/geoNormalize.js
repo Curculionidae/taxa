@@ -134,7 +134,9 @@ function russiaTerritory(name) {
   if (n === 'russia' || n === 'russian federation') return { key: 'RU', label: 'Russia' }
   if (/european russia$/.test(n) || n === 'european russia') return EUROPEAN_RUSSIA
   if (ASIAN_RUSSIA.has(n)) return { key: slug(name), label: String(name).trim() }
-  // "Russia" qualified some other way (e.g. "Russia South") -> fall back to RU
+  // A bare region name ("Siberia", "Central Siberia") is not a territory.
+  if (/siberia/.test(n)) return null
+  // "Russia" qualified some other way (e.g. "Russia South") -> fall back to RU.
   return { key: 'RU', label: 'Russia' }
 }
 
@@ -146,12 +148,13 @@ export function normalizeShape(shape) {
   const gtype = shape.geographic_area_type?.name || null
   const n = norm(name)
 
-  // 1. Russia special-case: the "European Russia" gazetteer carries iso RU, and
+  // 1. Region-level TDWG statements cannot be pinned to a territory (checked
+  //    first so "Siberia" as a TDWG Level 2 region is not mis-pinned to RU).
+  if (gtype === 'TDWG Level 2') return null
+
+  // 2. Russia special-case: the "European Russia" gazetteer carries iso RU, and
   //    the Urals split matters, so branch by name before trusting the ISO.
   if (iso === 'RU' || /\brussia\b|\bsiberia\b/.test(n)) return russiaTerritory(name)
-
-  // 2. Region-level TDWG statements cannot be pinned to a territory.
-  if (gtype === 'TDWG Level 2') return null
 
   // 3. An explicit ISO wins.
   if (iso) return { key: iso, label: countryName(iso) || name }

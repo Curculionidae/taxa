@@ -5,7 +5,7 @@
       <template v-for="(c, i) in shortCitations" :key="c.id">
         <span> </span>
         <span
-          class="cursor-pointer hover:underline"
+          class="cursor-pointer text-secondary hover:underline"
           role="button"
           tabindex="0"
           @click="$emit('open-citation', c)"

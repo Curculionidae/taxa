@@ -61,7 +61,7 @@ import FormatToggle from './components/FormatToggle.vue'
 import CoupletCitation from './components/CoupletCitation.vue'
 import { readFormat, writeFormat } from './lib/format.js'
 import { buildCompletenessReport, finestRank } from './lib/completeness.js'
-import { normalizeShape } from './lib/geoNormalize.js'
+import { normalizeShape, territoryLabel } from './lib/geoNormalize.js'
 import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
 import geoCategories from '../../panels/PanelKeys/geographyCategories.js'
 
@@ -124,7 +124,9 @@ const geoSelectionLabel = computed(() => {
   }
   const labels = [
     ...s.groupings.map((id) => geoCategories.find((g) => g.id === id)?.label).filter(Boolean),
-    ...s.territories.map((k) => geoTerritories.value.find((t) => t.key === k)?.label || k)
+    ...s.territories.map(
+      (k) => geoTerritories.value.find((t) => t.key === k)?.label || territoryLabel(k)
+    )
   ]
   return labels.length ? labels.join(', ') : 'the selected area'
 })

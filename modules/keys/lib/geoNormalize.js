@@ -114,6 +114,19 @@ export function countryName(iso) {
   return ISO_NAME[String(iso || '').toUpperCase()] || null
 }
 
+// A display label for any territory key, independent of which key is loaded
+// (the picker's own list only carries the current key's territories). ISO2 ->
+// country name; known slugs -> their label; anything else -> title-cased slug.
+const SLUG_LABEL = { 'russia-european': 'European Russia' }
+export function territoryLabel(key) {
+  if (!key) return ''
+  return (
+    countryName(key) ||
+    SLUG_LABEL[key] ||
+    String(key).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  )
+}
+
 const EUROPEAN_RUSSIA = { key: 'russia-european', label: 'European Russia' }
 
 function russiaTerritory(name) {

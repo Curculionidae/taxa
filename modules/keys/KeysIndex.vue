@@ -19,7 +19,7 @@
       >
         <RouterLink
           :to="{ name: 'dichotomous-key', params: { id: k.id } }"
-          class="text-lg text-base-content hover:underline hover:text-secondary [&_i]:italic"
+          class="text-lg text-secondary hover:underline [&_i]:italic"
           v-html="k.title"
         />
         <p

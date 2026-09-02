@@ -25,7 +25,7 @@
           <p v-if="fromCouplet(couplet)" class="text-xs text-base-soft mb-1">
             <RouterLink
               :to="coupletTo(fromCouplet(couplet))"
-              class="text-base-content hover:underline hover:text-secondary"
+              class="text-secondary hover:underline"
             >from {{ fromCouplet(couplet) }}</RouterLink>
           </p>
 

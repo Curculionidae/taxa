@@ -90,6 +90,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { territoryLabel } from '../lib/geoNormalize.js'
 
 const props = defineProps({
   // { groupings: string[], territories: string[] }
@@ -125,7 +126,7 @@ const summaryLabel = computed(() => {
     .map((id) => props.groupings.find((g) => g.id === id)?.label)
     .filter(Boolean)
   const tLabels = props.modelValue.territories
-    .map((k) => props.territories.find((t) => t.key === k)?.label || k)
+    .map((k) => props.territories.find((t) => t.key === k)?.label || territoryLabel(k))
   const all = [...gLabels, ...tLabels]
   if (!all.length) return 'Areas'
   if (all.length <= 2) return all.join(', ')

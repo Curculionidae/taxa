@@ -9,7 +9,7 @@
       rel="noopener"
       :class="variant === 'pill'
         ? 'inline-flex items-center whitespace-nowrap rounded-full bg-secondary/10 px-2.5 py-0.5 text-sm text-secondary hover:bg-secondary/20 hover:underline'
-        : 'text-base-content hover:underline hover:text-secondary'"
+        : 'text-secondary hover:underline'"
     ><span
         v-if="nameHtml"
         v-html="nameHtml"

@@ -4,8 +4,8 @@
       <template v-for="(step, i) in trail" :key="step.id">
         <RouterLink
           :to="to(step.coupletNumber)"
-          class="hover:underline hover:text-secondary"
-          :class="i === trail.length - 1 ? 'text-base-content font-medium' : 'text-base-soft'"
+          class="hover:underline"
+          :class="i === trail.length - 1 ? 'text-base-content font-medium' : 'text-secondary'"
         >Couplet {{ step.coupletNumber }}</RouterLink>
         <span v-if="i < trail.length - 1" class="text-base-soft">›</span>
       </template>
@@ -16,7 +16,7 @@
       <RouterLink
         v-if="parentCouplet"
         :to="to(parentCouplet.coupletNumber)"
-        class="key-print-hide text-sm text-base-soft hover:underline hover:text-secondary"
+        class="key-print-hide text-sm text-secondary hover:underline"
       >↑ back</RouterLink>
     </div>
 

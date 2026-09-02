@@ -1,13 +1,22 @@
 <template>
-  <div class="relative inline-block text-xs">
+  <div class="relative inline-flex items-stretch text-xs">
     <button
       type="button"
-      class="relative z-50 border border-base-muted rounded px-2 py-0.5 text-base-soft hover:text-base-content transition-colors"
+      class="relative z-50 border border-base-muted px-2 py-0.5 text-base-soft hover:text-base-content transition-colors"
+      :class="hasSelection ? 'rounded-l' : 'rounded'"
       @click="toggle"
     >
       <span aria-hidden="true">◍ </span>{{ summaryLabel }}
       <span aria-hidden="true">▾</span>
     </button>
+    <button
+      v-if="hasSelection"
+      type="button"
+      class="relative z-50 -ml-px rounded-r border border-base-muted px-1.5 py-0.5 text-base-soft hover:text-danger transition-colors"
+      aria-label="Clear geography filter"
+      title="Clear geography filter"
+      @click="clear"
+    >&times;</button>
 
     <template v-if="open">
       <button

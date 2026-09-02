@@ -33,6 +33,17 @@
       <span v-if="meta.updatedInWords" class="border border-base-muted rounded px-2 py-0.5">
         updated {{ meta.updatedInWords }} ago
       </span>
+
+      <GeographyPicker
+        class="key-print-hide"
+        :model-value="geoSelection"
+        :groupings="geoGroupings"
+        :territories="geoTerritories"
+        :loading="geoLoading"
+        @update:model-value="$emit('update:geoSelection', $event)"
+        @open="$emit('geoOpen')"
+      />
+
       <button
         v-if="completeness"
         type="button"
@@ -95,13 +106,22 @@
 import { ref, computed } from 'vue'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import CompletenessReport from './CompletenessReport.vue'
+import GeographyPicker from './GeographyPicker.vue'
 
 const props = defineProps({
   meta: { type: Object, required: true },
   completeness: { type: Object, default: null },
   references: { type: Array, default: () => [] },
-  primaryCitation: { type: String, default: null }
+  primaryCitation: { type: String, default: null },
+  geoGroupings: { type: Array, default: () => [] },
+  geoTerritories: { type: Array, default: () => [] },
+  geoLoading: { type: Boolean, default: false },
+  geoSelection: {
+    type: Object,
+    default: () => ({ groupings: [], territories: [] })
+  }
 })
+defineEmits(['update:geoSelection', 'geoOpen'])
 
 // null | 'taxonomy' | 'geography' — which completeness modal is open
 const showCompleteness = ref(null)

@@ -4,17 +4,19 @@
     <div v-else-if="error" class="text-danger">Could not load key {{ route.params.id }}.</div>
     <div v-else class="rounded-lg border border-base-muted bg-base-foreground p-4 sm:p-6">
       <div class="flex items-start justify-between gap-4">
-        <KeyHeader class="flex-1" :meta="meta" :completeness="completeness" :references="references" :primary-citation="primaryCitation" />
-        <div class="mt-1 flex shrink-0 items-center gap-2 key-print-hide">
-          <GeographyPicker
-            v-model="geoSelection"
-            :groupings="geoCategories"
-            :territories="geoTerritories"
-            :loading="geoLoading"
-            @open="geo.ensureLoaded()"
-          />
-          <FormatToggle v-model="format" />
-        </div>
+        <KeyHeader
+          class="flex-1"
+          :meta="meta"
+          :completeness="completeness"
+          :references="references"
+          :primary-citation="primaryCitation"
+          :geo-groupings="geoCategories"
+          :geo-territories="geoTerritories"
+          :geo-loading="geoLoading"
+          v-model:geo-selection="geoSelection"
+          @geo-open="geo.ensureLoaded()"
+        />
+        <FormatToggle v-model="format" class="mt-1 shrink-0 key-print-hide" />
       </div>
 
       <GuidedView
@@ -56,7 +58,6 @@ import KeyHeader from './components/KeyHeader.vue'
 import FullKeyView from './components/FullKeyView.vue'
 import GuidedView from './components/GuidedView.vue'
 import FormatToggle from './components/FormatToggle.vue'
-import GeographyPicker from './components/GeographyPicker.vue'
 import CoupletCitation from './components/CoupletCitation.vue'
 import { readFormat, writeFormat } from './lib/format.js'
 import { buildCompletenessReport, finestRank } from './lib/completeness.js'

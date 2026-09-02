@@ -103,12 +103,12 @@
 
       <!-- 2. everything not recorded from the selection -->
       <section v-if="notRecorded.length">
-        <h4 class="font-medium text-base-soft">Not recorded from {{ geo.label }}</h4>
-        <ul class="ml-4 mt-1 space-y-0.5 text-base-soft">
+        <h4 class="font-medium text-base-content">Not recorded from {{ geo.label }}</h4>
+        <ul class="ml-4 mt-1 space-y-0.5 text-base-content">
           <li v-for="m in notRecorded" :key="m.taxon.id">
             <TaxRefLink :taxon="m.taxon" /><span
               v-if="m.geoStatus === 'unknown'"
-              class="text-xs"
+              class="text-xs text-base-soft"
             >&nbsp;— no distribution data</span>
           </li>
         </ul>

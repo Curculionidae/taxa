@@ -227,7 +227,10 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
 
     // Second-pass metadata that the geojson does not carry: AssertedDistribution
     // tags (Adventive -> hatched) and CollectionObject type status (primary vs
-    // other type material -> colour). Re-emits the geojson once so VMap restyles.
+    // other type material -> colour). This only updates store state and the
+    // legend; PanelMapV2 restyles the already-drawn layers in place from
+    // `adventiveAdIds` / `typeStatusByCoId` (no geojson re-emit, so VMap does not
+    // tear the layer group down and rebuild it).
     async enrichFeatures(features, otuId, signal) {
       const [tagsByAd, typeByCo] = await Promise.all([
         fetchAdTags(assertedDistributionIds(features), signal),
@@ -259,10 +262,6 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       this.distribution.currentShapeTypes = [
         ...new Set([...this.distribution.currentShapeTypes, ...extraTypes])
       ]
-      // new object ref so VMap re-runs L.geoJSON with the enriched styling
-      this.distribution.geojson = {
-        features: [...this.distribution.geojson.features]
-      }
     }
   }
 })

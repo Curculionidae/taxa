@@ -1,74 +1,47 @@
 import { DISABLE_LAYER_OPTIONS } from '@/components/Map/constants'
 import geojsonDefaultOptions from '@/components/Map/utils/geojsonOptions'
-import * as Shape from '@/components/Map/shapes'
 import { computed, ref, unref } from 'vue'
+import {
+  featureTypeMaterialKind,
+  featureIsAdventive,
+  enrichedPolygonStyleDelta,
+  enrichedMarkerIconOptions,
+  ADVENTIVE_HATCH_CLASS
+} from './enrichedStyle.js'
 
 const asArray = (base) => (Array.isArray(base) ? base : [base])
-
-// An AssertedDistribution polygon tagged "Adventive" is drawn with the SVG hatch
-// pattern injected in PanelMapV2.vue.
-function isAdventiveFeature(feature, adventiveAdIds) {
-  if (!adventiveAdIds || !adventiveAdIds.size) return false
-  return asArray(feature?.properties?.base).some(
-    (b) => b?.type === 'AssertedDistribution' && adventiveAdIds.has(b.id)
-  )
-}
-
-// 'primary' | 'other' | null — the strongest type-material status among the
-// feature's CollectionObject bases, from the store's DwC-derived map
-// (Map<coId, { kind, statuses }>).
-function typeMaterialKind(feature, typeStatusByCoId) {
-  if (!typeStatusByCoId || !typeStatusByCoId.size) return null
-  let kind = null
-  for (const b of asArray(feature?.properties?.base)) {
-    if (b?.type !== 'CollectionObject') continue
-    const k = typeStatusByCoId.get(b.id)?.kind
-    if (k === 'primary') return 'primary'
-    if (k === 'other') kind = 'other'
-  }
-  return kind
-}
 
 export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, typeStatusByCoId }) {
   return function (args) {
     const { L } = args
     const defaults = geojsonDefaultOptions(args)
-    const kindOf = (f) => typeMaterialKind(f, unref(typeStatusByCoId))
+    const kindOf = (f) => featureTypeMaterialKind(f, unref(typeStatusByCoId))
 
     return {
       style: (feature) => {
         const base = defaults.style(feature)
         const kind = kindOf(feature)
-        if (kind === 'other') {
-          return {
-            ...base,
-            color: 'var(--pp-map-other-type)',
-            fillOpacity: 'var(--tp-map-shape-opacity)'
-          }
+        const adventive = !kind && featureIsAdventive(feature, unref(adventiveAdIds))
+        const delta = enrichedPolygonStyleDelta(kind, adventive)
+        if (!delta) return base
+
+        const next = { ...base, ...delta }
+        if (adventive) {
+          next.className = `${base.className || ''} ${ADVENTIVE_HATCH_CLASS}`.trim()
         }
-        if (kind === 'primary') return { ...base, ...Shape.TypeMaterial }
-        if (isAdventiveFeature(feature, unref(adventiveAdIds))) {
-          return {
-            ...base,
-            color: 'var(--pp-map-adventive)',
-            className: `${base.className || ''} leaflet-adventive-hatch`.trim(),
-            fillOpacity: 1
-          }
-        }
-        return base
+        return next
       },
 
       pointToLayer: (feature, latLng) => {
         const kind = kindOf(feature)
         // stamp the resolved kind so the cluster pie (Mixed.js) can colour it
         if (feature.properties) feature.properties.typeMaterialKind = kind || undefined
-        if (!kind) return defaults.pointToLayer(feature, latLng)
-        const className =
-          kind === 'other'
-            ? 'pp-map-other-type-marker map-point-marker rounded-full'
-            : 'bg-map-type-material map-point-marker rounded-full'
+
+        const iconOptions = enrichedMarkerIconOptions(kind)
+        if (!iconOptions) return defaults.pointToLayer(feature, latLng)
+
         const marker = L.marker(latLng, {
-          icon: L.divIcon({ className, iconSize: [8, 8], iconAnchor: [4, 4] }),
+          icon: L.divIcon(iconOptions),
           zIndexOffset: kind === 'primary' ? 6000 : 3000
         })
         marker.pm?.setOptions?.(DISABLE_LAYER_OPTIONS)

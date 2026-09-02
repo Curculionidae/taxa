@@ -87,7 +87,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 
 function linkify(html) {
   if (!html) return ''
@@ -100,6 +100,7 @@ import './map-tokens.css'
 import { useDistributionStore } from './store/useDistributionStore.js'
 import { makeClusterIconFor } from './clusters'
 import { useGeojsonOptions } from './composables/useGeojsonOptions.js'
+import { restyleEnriched } from './composables/enrichedStyle.js'
 import { LEGEND } from './constants'
 import MapPopup from './components/MapPopup.vue'
 import CachedMap from './components/CachedMap.vue'
@@ -135,6 +136,10 @@ const isOtuSearchVisible = ref(false)
 const dwcTableRef = ref(null)
 const store = useDistributionStore()
 const popupElement = ref(null)
+// the L.geoJSON layer group VMap hands back on @geojson:ready — kept so the
+// async enrichment can restyle its layers in place instead of the store
+// re-emitting the geojson (which makes VMap rebuild every layer + cluster pie).
+const geoLayerGroup = ref(null)
 const { popupItem, geojsonOptions } = useGeojsonOptions({
   popupElement,
   adventiveAdIds: computed(() => store.adventiveAdIds),
@@ -180,10 +185,44 @@ function addAdventivePattern() {
   document.body.appendChild(svg)
 }
 
-function onGeojsonReady() {
+let geojsonBuilds = 0
+
+function onGeojsonReady(group) {
   isLoading.value = false
+  geoLayerGroup.value = group
   addAdventivePattern()
+
+  if (import.meta.env.DEV) {
+    geojsonBuilds += 1
+    console.debug(`[PanelMapV2] L.geoJSON build #${geojsonBuilds}`)
+  }
 }
+
+// Restyle the already-drawn layers once the tag / type-status enrichment lands,
+// in place — no geojson re-emit, so VMap keeps the layer group it already built.
+async function applyEnrichedStyles() {
+  const group = geoLayerGroup.value
+  if (!group) return
+  if (!store.adventiveAdIds.size && !store.typeStatusByCoId.size) return
+
+  const { default: L } = await import('leaflet')
+  const t0 = import.meta.env.DEV ? performance.now() : 0
+  const changed = restyleEnriched(group, {
+    L,
+    adventiveAdIds: store.adventiveAdIds,
+    typeStatusByCoId: store.typeStatusByCoId
+  })
+  if (import.meta.env.DEV) {
+    console.debug(
+      `[PanelMapV2] restyled ${changed} layer(s) in ${(performance.now() - t0).toFixed(1)}ms (no rebuild)`
+    )
+  }
+}
+
+watch(
+  () => [store.adventiveAdIds, store.typeStatusByCoId, geoLayerGroup.value],
+  applyEnrichedStyles
+)
 
 onMounted(() => {
   isLoading.value = true

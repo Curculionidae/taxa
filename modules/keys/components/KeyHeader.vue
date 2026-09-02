@@ -40,7 +40,7 @@
         :disabled="!completeness"
         class="border rounded px-2 py-0.5 transition-colors"
         :class="!completeness
-          ? 'border-base-muted text-base-soft cursor-default'
+          ? 'border-warning text-warning bg-warning/10 cursor-default'
           : completeness.isComplete
             ? 'border-success text-success bg-success/10 hover:bg-success/20 cursor-pointer'
             : 'border-danger text-danger bg-danger/10 hover:bg-danger/20 cursor-pointer'"
@@ -69,7 +69,7 @@
         :disabled="geoLoading"
         class="border rounded px-2 py-0.5 transition-colors"
         :class="geoLoading
-          ? 'border-base-muted text-base-soft cursor-default'
+          ? 'border-warning text-warning bg-warning/10 cursor-default'
           : completeness.geographic.isComplete
             ? 'border-success text-success bg-success/10 hover:bg-success/20 cursor-pointer'
             : 'border-danger text-danger bg-danger/10 hover:bg-danger/20 cursor-pointer'"

@@ -33,6 +33,7 @@
             v-if="popupItem"
             :items="popupItem.base"
             :targets="popupItem.target"
+            :tags-by-ad-id="store.tagsByAdId"
             @selected="dwcTableRef.show"
             @citation-selected="activeCitation = $event"
           />

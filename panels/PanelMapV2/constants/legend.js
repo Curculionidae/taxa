@@ -14,9 +14,9 @@ export const LEGEND = {
   Adventive: {
     label: 'Adventive (introduced)',
     background: '',
-    // purple hatch, mirrors the polygon rendering
+    // purple hatch, same direction as the polygon SVG pattern (rotate(45))
     style:
-      'background: repeating-linear-gradient(45deg, var(--pp-map-adventive) 0 2px, color-mix(in srgb, var(--pp-map-adventive) 20%, transparent) 2px 5px);'
+      'background: repeating-linear-gradient(-45deg, var(--pp-map-adventive) 0 2px, color-mix(in srgb, var(--pp-map-adventive) 20%, transparent) 2px 5px);'
   },
   Georeference: {
     label: 'Georeference',

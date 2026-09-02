@@ -37,25 +37,28 @@ function sortFeaturesByType(arr, reference) {
   })
 }
 
-// AssertedDistribution ids carrying an "Adventive" tag are drawn hatched instead
-// of solid (introduced / non-native occurrence). The other AD tags in this
-// project (Island, endemic) get no special treatment for now.
-async function fetchAdventiveAdIds(adIds, signal) {
+// Tags on the AssertedDistribution records shown on the map, keyed by AD id.
+// An "Adventive" tag also drives the hatched polygon rendering; the popup shows
+// every tag verbatim.
+async function fetchAdTags(adIds, signal) {
   const ids = [...new Set(adIds)].filter(Boolean)
-  if (!ids.length) return new Set()
+  if (!ids.length) return new Map()
   try {
     const params = new URLSearchParams()
     params.set('tag_object_type', 'AssertedDistribution')
     ids.forEach((id) => params.append('tag_object_id[]', id))
     params.set('per', '500')
     const { data } = await makeAPIRequest.get(`/tags?${params}`, { signal })
-    return new Set(
-      (Array.isArray(data) ? data : [])
-        .filter((t) => (t.keyword?.name || '').toLowerCase() === 'adventive')
-        .map((t) => t.tag_object_id)
-    )
+    const byId = new Map()
+    for (const t of Array.isArray(data) ? data : []) {
+      const kw = t.keyword?.name
+      if (!kw) continue
+      if (!byId.has(t.tag_object_id)) byId.set(t.tag_object_id, [])
+      byId.get(t.tag_object_id).push(kw)
+    }
+    return byId
   } catch {
-    return new Set()
+    return new Map()
   }
 }
 
@@ -79,6 +82,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
         currentShapeTypes: [],
         cachedMap: null
       },
+      tagsByAdId: new Map(),
       adventiveAdIds: new Set(),
       controller: null
     }
@@ -122,6 +126,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     },
 
     async loadDistribution({ otuId, rankString }) {
+      this.tagsByAdId = new Map()
       this.adventiveAdIds = new Set()
       const isSpeciesGroup =
         rankString &&
@@ -152,13 +157,21 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
                 features
               }
 
-              fetchAdventiveAdIds(
+              fetchAdTags(
                 assertedDistributionIds(features),
                 this.controller.signal
-              ).then((ids) => {
-                if (!ids.size) return
-                this.adventiveAdIds = ids
-                if (!this.distribution.currentShapeTypes.includes('Adventive')) {
+              ).then((byId) => {
+                if (!byId.size) return
+                this.tagsByAdId = byId
+                const adventive = new Set()
+                for (const [id, kws] of byId) {
+                  if (kws.some((k) => k.toLowerCase() === 'adventive')) adventive.add(id)
+                }
+                this.adventiveAdIds = adventive
+                if (
+                  adventive.size &&
+                  !this.distribution.currentShapeTypes.includes('Adventive')
+                ) {
                   this.distribution.currentShapeTypes = [
                     ...this.distribution.currentShapeTypes,
                     'Adventive'

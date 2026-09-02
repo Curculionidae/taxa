@@ -72,6 +72,15 @@
                   v-if="item.areaType"
                   class="text-xs opacity-50 ml-1.5"
                 >{{ item.areaType }}</span>
+                <VBadge
+                  v-for="tag in item.tags || []"
+                  :key="tag"
+                  class="ml-1"
+                  color="yellow"
+                  shape="pill"
+                  size="sm"
+                  weight="normal"
+                >{{ tag }}</VBadge>
               </VTableBodyCell>
 
               <!-- Taxa column: merged All-tab view only -->
@@ -288,12 +297,14 @@ function mergeByArea(dists) {
         areaType: dist.areaType,
         parentName: dist.parentName,
         isAbsent: false,
+        tags: [],
         otuEntries: [],
         citationList: []
       })
     }
     const m = byArea.get(key)
     m.isAbsent = m.isAbsent || dist.isAbsent
+    for (const t of dist.tags || []) if (!m.tags.includes(t)) m.tags.push(t)
     if (!m.otuEntries.some((e) => e.otuId === dist.otuId)) {
       m.otuEntries.push({ otuId: dist.otuId, otuName: dist.otuName, isSynonym: dist.isSynonym })
     }
@@ -328,7 +339,7 @@ const groupedDistributions = computed(() => {
     }))
 })
 
-function makeDistribution(item, citationList) {
+function makeDistribution(item, citationList, tags = []) {
   const shape = item.asserted_distribution_shape || {}
   const obj = item.asserted_distribution_object || {}
   return {
@@ -341,6 +352,7 @@ function makeDistribution(item, citationList) {
     areaType: shape.geographic_area_type?.name || '',
     parentName: shape.parent?.name || 'Earth',
     isAbsent: !!item.is_absent,
+    tags,
     citationList
   }
 }
@@ -400,6 +412,29 @@ function shortCitation(body) {
   return `${authorsStr.split(',')[0].trim()} et al., ${year}`
 }
 
+// Tags on the AssertedDistribution records (keyword names), keyed by AD id.
+// One batched /tags call, mirrors fetchCitations.
+async function fetchTags(distributionIds) {
+  if (!distributionIds.length) return new Map()
+  const params = new URLSearchParams()
+  params.append('tag_object_type', 'AssertedDistribution')
+  distributionIds.forEach((id) => params.append('tag_object_id[]', id))
+  params.append('per', '500')
+  try {
+    const { data } = await makeAPIRequest.get(`/tags?${params.toString()}`)
+    const result = new Map()
+    for (const t of Array.isArray(data) ? data : []) {
+      const kw = t.keyword?.name
+      if (!kw) continue
+      if (!result.has(t.tag_object_id)) result.set(t.tag_object_id, [])
+      result.get(t.tag_object_id).push(kw)
+    }
+    return result
+  } catch {
+    return new Map()
+  }
+}
+
 async function fetchCitations(distributionIds) {
   if (!distributionIds.length) return new Map()
 
@@ -457,11 +492,16 @@ async function loadDistributions() {
       synData = data.filter((d) => !knownOtuIds.has(String(d.asserted_distribution_object_id)))
     }
 
-    // Step 3: citations for all records in one batch
+    // Step 3: citations + tags for all records, one batch each, in parallel
     const allData = [...adData, ...synData]
-    const citationsMap = await fetchCitations(allData.map((d) => d.id))
+    const [citationsMap, tagsMap] = await Promise.all([
+      fetchCitations(allData.map((d) => d.id)),
+      fetchTags(allData.map((d) => d.id))
+    ])
 
-    distributions.value = allData.map((item) => makeDistribution(item, citationsMap.get(item.id) || []))
+    distributions.value = allData.map((item) =>
+      makeDistribution(item, citationsMap.get(item.id) || [], tagsMap.get(item.id) || [])
+    )
     totalCount.value = distributions.value.length
 
     // Background: pre-fetch GeoJSON for all OTUs so map popups are instant.

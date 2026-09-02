@@ -21,7 +21,17 @@
 
         <!-- AssertedDistribution / AssertedAbsent — BA-linked variant -->
         <template v-else-if="AD_TYPES.includes(item.type) && isBaLinked(item, targets?.[i])">
-          <div class="text-sm font-medium text-base-soft">Asserted Distribution (Biological Association)</div>
+          <div class="text-sm font-medium text-base-soft">
+            Asserted Distribution (Biological Association)<VBadge
+              v-for="tag in tagList(item.id)"
+              :key="tag"
+              class="ml-1"
+              color="yellow"
+              shape="pill"
+              size="sm"
+              weight="normal"
+            >{{ tag }}</VBadge>
+          </div>
           <div class="text-xs mt-0.5">
             <span v-if="baLoading" class="text-base-soft italic">loading...</span>
             <template v-else-if="baDetailsMap.get(item.id)">
@@ -54,7 +64,15 @@
         <!-- AssertedDistribution / AssertedAbsent — regular -->
         <template v-else-if="AD_TYPES.includes(item.type)">
           <div class="text-sm font-medium text-base-soft">
-            {{ item.type === ASSERTED_ABSENT ? 'Asserted absent' : 'Asserted distribution' }}
+            {{ item.type === ASSERTED_ABSENT ? 'Asserted absent' : 'Asserted distribution' }}<VBadge
+              v-for="tag in tagList(item.id)"
+              :key="tag"
+              class="ml-1"
+              color="yellow"
+              shape="pill"
+              size="sm"
+              weight="normal"
+            >{{ tag }}</VBadge>
           </div>
           <div class="font-medium truncate">{{ areaNameFor(item) }}</div>
           <div class="text-xs truncate mt-0.5">
@@ -109,8 +127,18 @@ const props = defineProps({
   targets: {
     type: Array,
     default: undefined
+  },
+  // Map<assertedDistributionId, keywordName[]>
+  tagsByAdId: {
+    type: Object,
+    default: () => new Map()
   }
 })
+
+// keyword names tagged on this AssertedDistribution, rendered as yellow pills
+function tagList(adId) {
+  return props.tagsByAdId?.get?.(adId) || []
+}
 
 const emit = defineEmits(['selected', 'citation-selected'])
 

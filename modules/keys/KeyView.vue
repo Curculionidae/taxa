@@ -521,8 +521,50 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
   }
 }
 
+// Batch-walk parent_id upward from the given taxon-name ids until every chain
+// reaches `stopId` (the key's scope) or a depth cap. Returns a Map<tnId,
+// ancestorId[]> (the ancestor list is closest-parent first, excludes stopId).
+async function ancestorChains(tnIds, stopId, myGen) {
+  const parentOf = new Map()
+  let frontier = [...new Set(tnIds)].filter((id) => id != null)
+  for (let depth = 0; depth < 8 && frontier.length; depth++) {
+    const rows = []
+    for (let i = 0; i < frontier.length; i += 200) {
+      const q = new URLSearchParams()
+      frontier.slice(i, i + 200).forEach((id) => q.append('taxon_name_id[]', id))
+      q.set('per', '1000')
+      const { data } = await makeAPIRequest.get(`/taxon_names?${q}`)
+      if (myGen !== loadGen) return new Map()
+      if (Array.isArray(data)) rows.push(...data)
+    }
+    const next = []
+    for (const r of rows) {
+      if (parentOf.has(r.id)) continue
+      parentOf.set(r.id, r.parent_id ?? null)
+      if (r.parent_id != null && r.parent_id !== stopId && !parentOf.has(r.parent_id)) {
+        next.push(r.parent_id)
+      }
+    }
+    frontier = [...new Set(next)]
+  }
+  const chains = new Map()
+  for (const start of new Set(tnIds)) {
+    const out = []
+    const seen = new Set()
+    let cur = parentOf.get(start)
+    while (cur != null && cur !== stopId && !seen.has(cur) && out.length < 10) {
+      seen.add(cur)
+      out.push(cur)
+      cur = parentOf.get(cur)
+    }
+    chains.set(start, out)
+  }
+  return chains
+}
+
 async function buildExpectedTerritories(scopeTnId, myGen) {
-  const map = new Map()
+  // territory key set per AD taxon-name id, before roll-up
+  const perTn = new Map()
   try {
     for (let page = 1; page <= 25; page++) {
       const q = new URLSearchParams()
@@ -540,14 +582,30 @@ async function buildExpectedTerritories(scopeTnId, myGen) {
         if (tnId == null) continue
         const terr = normalizeShape(row.asserted_distribution_shape)
         if (!terr) continue
-        if (!map.has(tnId)) map.set(tnId, new Set())
-        map.get(tnId).add(terr.key)
+        if (!perTn.has(tnId)) perTn.set(tnId, new Set())
+        perTn.get(tnId).add(terr.key)
       }
       if (rows.length < 1000) break
     }
+
+    // A distribution is stated on a species OTU, but the geographic completeness
+    // measure runs at the key's target rank (a genus, a tribe). Roll every
+    // species' territories up onto its ancestors so buildGeographic can look
+    // them up by the genus id it actually iterates.
+    const chains = await ancestorChains([...perTn.keys()], scopeTnId, myGen)
+    if (myGen !== loadGen) return new Map()
+    const map = new Map()
+    const addAll = (id, keys) => {
+      if (!map.has(id)) map.set(id, new Set())
+      for (const k of keys) map.get(id).add(k)
+    }
+    for (const [tnId, keys] of perTn) {
+      addAll(tnId, keys)
+      for (const anc of chains.get(tnId) || []) addAll(anc, keys)
+    }
     return map
   } catch {
-    return map
+    return new Map()
   }
 }
 

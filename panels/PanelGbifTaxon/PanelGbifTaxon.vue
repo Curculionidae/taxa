@@ -522,6 +522,10 @@ const relIconRects = computed(
 // ICONS keys, or null (a colFoldsIn row whose TaxonWorks placement has not
 // resolved yet) in which case nothing renders. Carries an accessible label and
 // a native tooltip since the glyph is the point of the column.
+// The rect fills are inline, not a scoped `<style>` rule: this SVG is built with
+// h() so it never gets the component's data-v scope attribute, and a scoped
+// `.rel-ico-sm rect` selector would not match it (the rects would fall back to
+// solid black).
 const REL_ICON_LABEL = {
   congruent: 'the two concepts are congruent',
   includes: 'the TaxonWorks concept is the broader one',
@@ -536,25 +540,31 @@ const RelIcon = (props) => {
   return h(
     'svg',
     {
-      class: 'rel-ico-sm',
       width: 34,
       height: 20,
       viewBox: '0 0 52 30',
       role: 'img',
-      'aria-label': label
+      'aria-label': label,
+      style: { verticalAlign: 'middle' }
     },
     [
       h('title', label),
-      ...rects.map((r) =>
-        h('rect', {
-          class: r.cls,
+      ...rects.map((r) => {
+        const c = r.cls === 'tw' ? 'var(--pp-tw)' : 'var(--pp-gbif)'
+        return h('rect', {
           x: r.x,
           y: r.y,
           width: r.w,
           height: r.h,
-          rx: 2
+          rx: 2,
+          style: {
+            fill: c,
+            stroke: c,
+            fillOpacity: 0.22,
+            strokeWidth: 2
+          }
         })
-      )
+      })
     ]
   )
 }
@@ -901,21 +911,6 @@ watch(scientificName, load, { immediate: true })
   padding-left: 0.2rem;
   padding-right: 0.2rem;
   text-align: center;
-}
-.rel-ico-sm {
-  vertical-align: middle;
-}
-.rel-ico-sm rect {
-  fill-opacity: 0.22;
-  stroke-width: 2;
-}
-.rel-ico-sm .tw {
-  fill: var(--pp-tw);
-  stroke: var(--pp-tw);
-}
-.rel-ico-sm .gb {
-  fill: var(--pp-gbif);
-  stroke: var(--pp-gbif);
 }
 .ztable .rec {
   text-align: right;

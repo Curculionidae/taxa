@@ -1,56 +1,58 @@
 <template>
   <div class="text-sm [&_i]:italic space-y-3">
-    <p class="text-base-content">
+    <!-- taxonomy mode: the key-scope headline -->
+    <p
+      v-if="mode !== 'geography'"
+      class="text-base-content"
+    >
       Keyed at <strong>{{ report.targetRank }}</strong> level —
       {{ report.coveredCount }} of {{ report.expectedCount }} in the key's scope<span v-if="report.isComplete" class="text-base-soft">&nbsp;(complete)</span>.
     </p>
 
-    <div
-      v-if="report.geographic"
-      class="rounded border border-base-muted p-2 space-y-1"
-    >
+    <!-- geography mode: the region headline + context notes -->
+    <template v-if="mode === 'geography' && geo">
       <p class="text-base-content">
-        In <strong>{{ report.geographic.label }}</strong>:
-        {{ report.geographic.keyedCount }} of {{ report.geographic.expectedCount }}
-        {{ report.targetRank }} keyed out<span v-if="report.geographic.isComplete" class="text-base-soft">&nbsp;(complete)</span>.
-      </p>
-      <p v-if="report.geographic.missing.length" class="text-danger">
-        Missing: <span v-for="(m, i) in report.geographic.missing" :key="m">{{ i ? ', ' : '' }}<i>{{ m }}</i></span>
-      </p>
-      <p v-if="report.geographic.outOfAreaTerminals.length" class="text-base-soft">
-        In the key but outside {{ report.geographic.label }}:
-        <span v-for="(m, i) in report.geographic.outOfAreaTerminals" :key="m">{{ i ? ', ' : '' }}<i>{{ m }}</i></span>
+        In <strong>{{ geo.label }}</strong>:
+        {{ geo.keyedCount }} of {{ geo.expectedCount }} {{ report.targetRank }}
+        recorded there are keyed out<span v-if="geo.isComplete" class="text-base-soft">&nbsp;(complete)</span>.
       </p>
       <p
-        v-if="report.geographic.unknownExpected.length"
+        v-if="geo.unknownExpected.length"
         class="text-base-soft"
-        :title="report.geographic.unknownExpected.join(', ')"
+        :title="geo.unknownExpected.join(', ')"
       >
-        {{ report.geographic.unknownExpected.length }} in-scope {{ report.targetRank }}
-        with no distribution data (not counted).
+        {{ geo.unknownExpected.length }} in-scope {{ report.targetRank }} have no
+        distribution data (grey below, not counted).
       </p>
-    </div>
+      <p
+        v-if="geo.outOfAreaTerminals.length"
+        class="text-base-soft"
+      >
+        In the key but not recorded from {{ geo.label }}:
+        <span v-for="(m, i) in geo.outOfAreaTerminals" :key="m">{{ i ? ', ' : '' }}<i>{{ m }}</i></span>
+      </p>
+    </template>
 
     <section v-for="g in report.groups" :key="g.taxon.id">
       <h4 class="font-medium text-base-content">
-        <TaxRefLink :taxon="g.taxon" /><span class="text-base-soft text-xs">&nbsp;({{ coveredInGroup(g) }} / {{ g.members.length }} keyed out)</span>
+        <TaxRefLink :taxon="g.taxon" /><span class="text-base-soft text-xs">&nbsp;({{ groupCount(g) }})</span>
       </h4>
       <ul class="ml-4 mt-1 space-y-1">
         <li
           v-for="m in g.members"
           :key="m.taxon.id"
           class="flex items-start gap-1"
-          :class="m.status === 'missing' ? 'border-l-2 border-danger pl-2 -ml-2' : ''"
+          :class="rowClass(m)"
         >
           <span
             class="w-5 shrink-0 text-center font-semibold"
-            :class="m.status === 'included' ? 'text-success' : 'text-danger'"
+            :class="markClass(m)"
             aria-hidden="true"
-          >{{ m.status === 'included' ? '✓' : '✗' }}</span>
+          >{{ mark(m) }}</span>
           <span class="flex-1">
             <TaxRefLink
               :taxon="m.taxon"
-              :class="m.status === 'missing' ? 'text-danger font-medium' : ''"
+              :class="nameClass(m)"
             />
             <ul v-if="m.synonyms.length" class="ml-5 text-base-soft">
               <li v-for="s in m.synonyms" :key="s.id">= <TaxRefLink :taxon="s" /></li>
@@ -67,17 +69,17 @@
           v-for="m in report.ungrouped"
           :key="m.taxon.id"
           class="flex items-start gap-1"
-          :class="m.status === 'missing' ? 'border-l-2 border-danger pl-2 -ml-2' : ''"
+          :class="rowClass(m)"
         >
           <span
             class="w-5 shrink-0 text-center font-semibold"
-            :class="m.status === 'included' ? 'text-success' : 'text-danger'"
+            :class="markClass(m)"
             aria-hidden="true"
-          >{{ m.status === 'included' ? '✓' : '✗' }}</span>
+          >{{ mark(m) }}</span>
           <span class="flex-1">
             <TaxRefLink
               :taxon="m.taxon"
-              :class="m.status === 'missing' ? 'text-danger font-medium' : ''"
+              :class="nameClass(m)"
             />
           </span>
         </li>
@@ -96,9 +98,46 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import TaxRefLink from './TaxRefLink.vue'
 
-defineProps({ report: { type: Object, required: true } })
+const props = defineProps({
+  report: { type: Object, required: true },
+  // 'taxonomy' (default) or 'geography'
+  mode: { type: String, default: 'taxonomy' }
+})
 
-const coveredInGroup = (g) => g.members.filter((m) => m.status === 'included').length
+const geo = computed(() => props.report.geographic || null)
+const isGeo = computed(() => props.mode === 'geography' && !!geo.value)
+
+// In geography mode a taxon not recorded from the selection (out / unknown) is
+// greyed and loses its key-presence colour; only in-area taxa keep the ✓ / ✗.
+const greyed = (m) => isGeo.value && m.geoStatus !== 'in'
+
+const rowClass = (m) => {
+  if (greyed(m)) return 'opacity-50'
+  return m.status === 'missing' ? 'border-l-2 border-danger pl-2 -ml-2' : ''
+}
+const mark = (m) => {
+  if (greyed(m)) return '·'
+  return m.status === 'included' ? '✓' : '✗'
+}
+const markClass = (m) => {
+  if (greyed(m)) return 'text-base-soft'
+  return m.status === 'included' ? 'text-success' : 'text-danger'
+}
+const nameClass = (m) => {
+  if (greyed(m)) return 'text-base-soft'
+  return m.status === 'missing' ? 'text-danger font-medium' : ''
+}
+
+const groupCount = (g) => {
+  if (isGeo.value) {
+    const inArea = g.members.filter((m) => m.geoStatus === 'in')
+    const keyed = inArea.filter((m) => m.status === 'included').length
+    return `${keyed} / ${inArea.length} keyed out in ${geo.value.label}`
+  }
+  const keyed = g.members.filter((m) => m.status === 'included').length
+  return `${keyed} / ${g.members.length} keyed out`
+}
 </script>

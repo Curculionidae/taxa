@@ -2,6 +2,8 @@
 // key's scope taxon (with ranks), decide the rank the key operates at and whether every
 // taxon of that rank in scope is keyed out. No Vue, no network — Node-testable.
 
+import { territoryStatus } from './geoMatch.js'
+
 // Coarse -> fine. Anything not listed is "unknown" and ignored by finestRank.
 export const RANK_ORDER = [
   'kingdom', 'subkingdom', 'phylum', 'subphylum', 'superclass', 'class', 'subclass',
@@ -134,9 +136,22 @@ export function buildCompletenessReport({
     return false
   }
 
+  // Per-taxon geography membership, when a selection is active: 'in' (recorded
+  // from a selected territory), 'out' (recorded, none selected), 'unknown' (no
+  // distribution data). undefined when no filter is active.
+  const geoEff = geoScope && geoScope.effectiveKeys
+  const geoActive = !!(geoEff && geoEff.size)
+  const geoByTid =
+    geoActive && geoScope.territoriesByTaxonId instanceof Map
+      ? geoScope.territoriesByTaxonId
+      : null
+  const geoStatusOf = (id) =>
+    geoActive ? territoryStatus(geoByTid ? geoByTid.get(id) : null, geoEff) : undefined
+
   const mkMember = (d) => ({
     taxon: taxRef(d, tnIdToOtuId),
     status: isIncluded(d) ? 'included' : 'missing',
+    geoStatus: geoStatusOf(d.id),
     synonyms: (synsByValidId.get(d.id) || []).slice().sort((a, b) => a.name.localeCompare(b.name))
   })
 
@@ -175,42 +190,29 @@ export function buildCompletenessReport({
     isComplete: missing.length === 0 && outOfScope.length === 0,
     groups,
     ungrouped,
-    ...buildGeographic({ geoScope, targetTaxa, descs, termSet, isIncluded })
+    ...buildGeographic({ geoActive, geoScope, geoStatusOf, targetTaxa, descs, termSet, isIncluded })
   }
 }
 
 // The second, geography-scoped measure (design spec section 9). Returns
 // `{ geographic: {...} }` when a non-empty selection is supplied, else `{}` so
 // the report shape is unchanged when no filter is active.
-function buildGeographic({ geoScope, targetTaxa, descs, termSet, isIncluded }) {
-  const eff = geoScope && geoScope.effectiveKeys
-  if (!eff || typeof eff.size !== 'number' || eff.size === 0) return {}
-  const byTid =
-    geoScope.territoriesByTaxonId instanceof Map
-      ? geoScope.territoriesByTaxonId
-      : new Map()
-  const terrOf = (id) => byTid.get(id) || null
-  const intersects = (set) => {
-    for (const k of set) if (eff.has(k)) return true
-    return false
-  }
+function buildGeographic({ geoActive, geoScope, geoStatusOf, targetTaxa, descs, termSet, isIncluded }) {
+  if (!geoActive) return {}
   const alpha = (a, b) => a.localeCompare(b)
 
   const inArea = []
   const unknown = []
   for (const d of targetTaxa) {
-    const set = terrOf(d.id)
-    if (!set || set.size === 0) unknown.push(d)
-    else if (intersects(set)) inArea.push(d)
-    // else: recorded, but outside the selection -> not part of this denominator
+    const st = geoStatusOf(d.id)
+    if (st === 'unknown') unknown.push(d)
+    else if (st === 'in') inArea.push(d)
+    // 'out': recorded, but outside the selection -> not part of this denominator
   }
   const missing = inArea.filter((d) => !isIncluded(d)).map(authored).sort(alpha)
   const outOfAreaTerminals = descs
     .filter((d) => termSet.has(d.id))
-    .filter((d) => {
-      const set = terrOf(d.id)
-      return set && set.size && !intersects(set)
-    })
+    .filter((d) => geoStatusOf(d.id) === 'out')
     .map(authored)
     .sort(alpha)
 

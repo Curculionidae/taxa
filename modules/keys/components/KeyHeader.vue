@@ -40,9 +40,9 @@
         :class="completeness.isComplete
           ? 'border-success text-success bg-success/10 hover:bg-success/20'
           : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
-        @click="showCompleteness = true"
-        @keydown.enter="showCompleteness = true"
-        @keydown.space.prevent="showCompleteness = true"
+        @click="showCompleteness = 'taxonomy'"
+        @keydown.enter="showCompleteness = 'taxonomy'"
+        @keydown.space.prevent="showCompleteness = 'taxonomy'"
       >taxonomy: {{ completeness.isComplete
         ? `complete (${completeness.expectedCount} ${completeness.targetRank})`
         : `${completeness.coveredCount} / ${completeness.expectedCount} ${completeness.targetRank}` }}</button>
@@ -54,9 +54,9 @@
         :class="completeness.geographic.isComplete
           ? 'border-success text-success bg-success/10 hover:bg-success/20'
           : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
-        @click="showCompleteness = true"
-        @keydown.enter="showCompleteness = true"
-        @keydown.space.prevent="showCompleteness = true"
+        @click="showCompleteness = 'geography'"
+        @keydown.enter="showCompleteness = 'geography'"
+        @keydown.space.prevent="showCompleteness = 'geography'"
       >{{ completeness.geographic.label.toLowerCase() }}: {{ completeness.geographic.isComplete
         ? `complete (${completeness.geographic.expectedCount} ${completeness.targetRank})`
         : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount} ${completeness.targetRank}` }}</button>
@@ -69,10 +69,14 @@
       >References cited ({{ references.length }})</button>
     </div>
 
-    <VModal v-if="showCompleteness && completeness" @close="showCompleteness = false">
-      <template #header><div class="text-sm font-medium">Completeness</div></template>
+    <VModal v-if="showCompleteness && completeness" @close="showCompleteness = null">
+      <template #header><div class="text-sm font-medium">{{
+        showCompleteness === 'geography'
+          ? `Completeness in ${completeness.geographic?.label || 'the selected area'}`
+          : 'Completeness'
+      }}</div></template>
       <div class="px-4 pb-4">
-        <CompletenessReport :report="completeness" />
+        <CompletenessReport :report="completeness" :mode="showCompleteness" />
       </div>
     </VModal>
 
@@ -99,7 +103,8 @@ const props = defineProps({
   primaryCitation: { type: String, default: null }
 })
 
-const showCompleteness = ref(false)
+// null | 'taxonomy' | 'geography' — which completeness modal is open
+const showCompleteness = ref(null)
 const showReferences = ref(false)
 
 // attribution shape from TaxonWorks attribution_to_json is loosely specified; render a

@@ -65,6 +65,26 @@ test('geoScope present: second measure scoped to the selected territories', () =
   assert.deepEqual(r.geographic.unknownExpected, ['E'])
   assert.deepEqual(r.geographic.outOfAreaTerminals, ['C'])
   assert.equal(r.geographic.isComplete, false)
+
+  // every member row carries its geography membership for the geo modal
+  const bySortName = [...r.ungrouped].sort((a, b) =>
+    a.taxon.name.localeCompare(b.taxon.name)
+  )
+  assert.deepEqual(
+    bySortName.map((m) => [m.taxon.name, m.geoStatus]),
+    [
+      ['A', 'in'],
+      ['B', 'in'],
+      ['C', 'out'],
+      ['D', 'in'],
+      ['E', 'unknown']
+    ]
+  )
+})
+
+test('no geoScope: members carry no geoStatus', () => {
+  const r = buildCompletenessReport(BASE)
+  assert.equal(r.ungrouped[0].geoStatus, undefined)
 })
 
 test('geoScope: no expected taxon in the area (or data still loading) is not "complete"', () => {

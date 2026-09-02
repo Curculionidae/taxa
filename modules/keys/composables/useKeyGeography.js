@@ -100,7 +100,10 @@ export function useKeyGeography(terminalListRef) {
   })
 
   function add(otuId, territory) {
-    if (!territory) return
+    // otuId is null for a BiologicalAssociation-linked asserted distribution
+    // (asserted_distribution_object_type !== 'Otu'); those describe an
+    // interaction, not a terminal's range, so they must not count.
+    if (otuId == null || !territory) return
     const map = territoriesByOtu.value
     if (!map.has(otuId)) map.set(otuId, new Set())
     map.get(otuId).add(territory.key)

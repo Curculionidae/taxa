@@ -127,7 +127,7 @@ const summaryLabel = computed(() => {
   const tLabels = props.modelValue.territories
     .map((k) => props.territories.find((t) => t.key === k)?.label || k)
   const all = [...gLabels, ...tLabels]
-  if (!all.length) return 'All areas'
+  if (!all.length) return 'Areas'
   if (all.length <= 2) return all.join(', ')
   return `${all[0]} + ${all.length - 1}`
 })

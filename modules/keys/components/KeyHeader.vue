@@ -34,16 +34,6 @@
         updated {{ meta.updatedInWords }} ago
       </span>
 
-      <GeographyPicker
-        class="key-print-hide"
-        :model-value="geoSelection"
-        :groupings="geoGroupings"
-        :territories="geoTerritories"
-        :loading="geoLoading"
-        @update:model-value="$emit('update:geoSelection', $event)"
-        @open="$emit('geoOpen')"
-      />
-
       <button
         v-if="completeness"
         type="button"
@@ -55,8 +45,18 @@
         @keydown.enter="showCompleteness = 'taxonomy'"
         @keydown.space.prevent="showCompleteness = 'taxonomy'"
       >Taxonomy: {{ completeness.isComplete
-        ? `complete (${completeness.expectedCount} ${completeness.targetRank})`
-        : `${completeness.coveredCount} / ${completeness.expectedCount} ${completeness.targetRank}` }}</button>
+        ? `complete (${completeness.expectedCount})`
+        : `${completeness.coveredCount} / ${completeness.expectedCount}` }}</button>
+
+      <GeographyPicker
+        class="key-print-hide"
+        :model-value="geoSelection"
+        :groupings="geoGroupings"
+        :territories="geoTerritories"
+        :loading="geoLoading"
+        @update:model-value="$emit('update:geoSelection', $event)"
+        @open="$emit('geoOpen')"
+      />
 
       <button
         v-if="completeness && completeness.geographic"
@@ -69,8 +69,8 @@
         @keydown.enter="showCompleteness = 'geography'"
         @keydown.space.prevent="showCompleteness = 'geography'"
       >{{ completeness.geographic.label }}: {{ completeness.geographic.isComplete
-        ? `complete (${completeness.geographic.expectedCount} ${completeness.targetRank})`
-        : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount} ${completeness.targetRank}` }}</button>
+        ? `complete (${completeness.geographic.expectedCount})`
+        : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount}` }}</button>
 
       <button
         v-if="references.length > 1 || (references.length === 1 && !references[0].isPrimary)"

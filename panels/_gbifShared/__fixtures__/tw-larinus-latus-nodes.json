@@ -1,0 +1,9 @@
+[
+  { "name": "Larinus latus (Herbst, 1783)", "short": "Larinus latus", "authorYear": "(Herbst, 1783)", "originalCombination": "Curculio latus Herbst, 1783", "role": "accepted", "colMatched": true },
+  { "name": "Larinus mutabilis Host, 1789", "short": "Larinus mutabilis", "authorYear": "Host, 1789", "originalCombination": "Curculio mutabilis Host, 1789", "role": "twSynonym", "colMatched": true },
+  { "name": "Larinus cynarae (Herbst, 1795)", "short": "Larinus cynarae", "authorYear": "(Herbst, 1795)", "originalCombination": "Curculio cynarae Herbst, 1795", "role": "twSynonym", "colMatched": true },
+  { "name": "Larinus subcostatus Brullé, 1832", "short": "Larinus subcostatus", "authorYear": "Brullé, 1832", "originalCombination": "Larinus subcostatus Brullé, 1832", "role": "twSynonym", "colMatched": true },
+  { "name": "Larinus cirsii Gyllenhal, 1835", "short": "Larinus cirsii", "authorYear": "Gyllenhal, 1835", "originalCombination": "Larinus cirsii Gyllenhal, 1835", "role": "twSynonym", "colMatched": true },
+  { "name": "Larinus costirostris Gyllenhal, 1835", "short": "Larinus costirostris", "authorYear": "Gyllenhal, 1835", "originalCombination": "Larinus costirostris Gyllenhal, 1835", "role": "twSynonym", "colMatched": true },
+  { "name": "Larinus teretirostris Gyllenhal, 1835", "short": "Larinus teretirostris", "authorYear": "Gyllenhal, 1835", "originalCombination": "Larinus teretirostris Gyllenhal, 1835", "role": "twSynonym", "colMatched": true }
+]

@@ -56,6 +56,72 @@ function getOrFetch(name) {
   return cache.get(name)
 }
 
+const SPECIES_GROUP_RANKS = new Set([
+  'SPECIES',
+  'SUBSPECIES',
+  'VARIETY',
+  'FORM'
+])
+
+/**
+ * True when a match landed on a real species-group usage — not a genus reached
+ * because the name is absent from the checklist. `matchType: HIGHERRANK` is that
+ * silent upgrade; without this guard a species page with no CoL entry pulls the
+ * whole genus's occurrences (e.g. every type specimen in Larinus). A SYNONYM
+ * whose acceptedUsage is a species still passes — that's a legitimate resolution.
+ */
+export function isSpeciesGroupMatch(matchData) {
+  if (!matchData || matchData.diagnostics?.matchType === 'HIGHERRANK') return false
+  const usage =
+    matchData.usage?.status === 'SYNONYM' && matchData.acceptedUsage
+      ? matchData.acceptedUsage
+      : matchData.usage
+  return SPECIES_GROUP_RANKS.has(String(usage?.rank || '').toUpperCase())
+}
+
+/**
+ * name → CoL usage key, resolving synonyms to their accepted usage (same rule as
+ * the composable's `targetUsage`/`gbifKey`). null on a low-confidence match or
+ * error. Shares the module cache with useGbifMatch.
+ *
+ * - `speciesGroupOnly` — null unless `isSpeciesGroupMatch` (species/subspecies/
+ *   variety/form; also drops HIGHERRANK). Use where only species-group makes
+ *   sense (type material).
+ * - `rejectHigherRank` — null only on `matchType: HIGHERRANK` (name absent from
+ *   CoL → silently upgraded to its genus). A genuine genus/family match is kept.
+ *
+ * Use this for a list of names (a taxon's synonyms): the useGbifMatch composable
+ * wraps one reactive ref and can't be mapped over.
+ */
+export async function matchGbifKey(
+  name,
+  { speciesGroupOnly = false, rejectHigherRank = false } = {}
+) {
+  if (!name) return null
+  const { match } = await getOrFetch(name)
+  if (!match) return null
+  if (speciesGroupOnly && !isSpeciesGroupMatch(match)) return null
+  if (
+    (rejectHigherRank || speciesGroupOnly) &&
+    match.diagnostics?.matchType === 'HIGHERRANK'
+  ) {
+    return null
+  }
+  const usage =
+    match.usage?.status === 'SYNONYM' && match.acceptedUsage
+      ? match.acceptedUsage
+      : match.usage
+  return usage?.key ?? null
+}
+
+// The cached raw match response for a name (for callers that need diagnostics
+// or rank, e.g. the concept-alignment rank gate). Shares the module cache.
+export async function matchGbifRaw(name) {
+  if (!name) return null
+  const { match } = await getOrFetch(name)
+  return match
+}
+
 export function useGbifMatch(scientificName) {
   const loading = ref(false)
   const error = ref(false)

@@ -2,6 +2,15 @@
 // "<epithet>|<surname>|<year>", genus independent so a recombination still
 // matches, and specific enough to keep homonyms apart. Each match is graded
 // into a tier. See the design spec, section 4.4.
+//
+// Citations: the protonym-as-tie-point idea and the tiered grading follow
+// Rees, T., Franz, N.M. & Sterner, B. (2026), Biodiversity Data Journal 14:
+// e191754, doi:10.3897/BDJ.14.e191754. The reason the "homotypic" tier needs
+// the original combination and not just epithet+author+year is ICZN Art. 53.3
+// (primary vs secondary homonymy), with Art. 57.2-3, Art. 58 (spelling
+// variants the Code deems identical, which the "weak" tier's epithetKey
+// approximates) and Art. 61 (Principle of Typification; "objective synonym" =
+// the homotypic tier).
 import { canonicalName, epithetKey } from './gbifNameFilter.js'
 
 const PARTICLES = new Set([

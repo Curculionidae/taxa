@@ -90,9 +90,24 @@ The work is not based on one source alone. Which source underpins which part:
 - **The secondary homonym point** (why the original combination, not just
   epithet plus author plus year, is required to prove name identity):
   standard nomenclatural theory from the International Code of Zoological
-  Nomenclature (primary versus secondary homonymy, Arts. 53 to 60), which
-  Franz and Peet 2009 Appendix 1 itself draws on via Hawksworth 1994 and
-  Berendsohn et al. 2003.
+  Nomenclature, which Franz and Peet 2009 Appendix 1 itself draws on via
+  Hawksworth 1994 and Berendsohn et al. 2003. The specific articles:
+  - **Art. 53.3** — primary homonymy is names established in the same original
+    genus; secondary homonymy is same spelled names later brought together in
+    one genus. This is the cite for grading `homotypic` on the original
+    combination rather than the current combination.
+  - **Art. 57.2 and 57.3** — a junior primary homonym is permanently invalid; a
+    junior secondary homonym is invalid but reinstatable. Why `probable`
+    (epithet, author, year agree, shared type unconfirmed) cannot be promoted
+    to `homotypic`.
+  - **Art. 58** — the spelling variants the Code deems identical (ae/oe/e, i/y,
+    -i/-ii, gender and connecting vowel differences, and the rest). What the
+    `weak` tier's `epithetKey` loosely approximates.
+  - **Art. 61** — the Principle of Typification. The Code term "objective
+    synonym" (same name bearing type) is the `homotypic` tier.
+
+  Local mirror of the Code:
+  `/home/jakobj/Data/Literatur/Biodiversity_Data/ICZN/code.iczn.org`.
 
 If a single citation is needed for the matching engine, it is Rees, Franz and
 Sterner 2026.
@@ -346,9 +361,17 @@ paging.
 
 Taxonomy: 1 match per `N` name (cached, usually 1 to 4), 1 checklist concept
 call plus 1 synonyms call, optionally 1 batched `/taxon_names` for original
-combinations. Counts: 1 facet call, 3 count calls. Reverse lookups: 0 on load,
-up to about 12 on zone expand (6 targets, up to 2 calls each). No record
-payloads at any point. The backbone match call the old panel made is dropped.
+combinations. Counts: 1 facet call, 3 count calls. No record payloads at any
+point. The backbone match call the old panel made is dropped.
+
+Reverse lookups: one `fetchTwPlacement` per `colFoldsIn` row, fired in parallel
+on load, `N` = the `colFoldsIn` row count, typically 1 to 5. Each is up to three
+GETs (`/taxon_names?name=`, `/taxon_names/:id`, `/otus`), cached per name string
+in `placementCache` so navigation and revisits do not re-pay it. This changed
+from "0 on load" once the round 4 redesign removed the per-row `<details>`
+expansion: the per-row relation icon and the inline "TaxonWorks places it under
+X" link are always visible, so there is no expand event to hang a lazy fetch on,
+and a lazy fill would leave the icon column blank until every row is opened.
 
 ## 6. Engine modules
 
@@ -484,16 +507,31 @@ One paragraph, four sentences, `text-xs`, with a `border-base-muted` top rule:
 ### 8.4 Zone table
 
 The data element. `<table>`, plain flow, no positioned layout. Columns: Name,
-`TaxonWorks: {twName}`, `Catalogue of Life: {colAcceptedName}`, GBIF records.
-Rows grouped under the section 4.3 zone headings in that order, each heading a
-full width row with a left accent (`--pp-tw`, `--pp-gbif`, or neutral for the
-shared and data only groups).
+`TaxonWorks: {twName}`, a relation icon, `Catalogue of Life: {colAcceptedName}`,
+GBIF records. The icon column sits **between** the two source columns and holds a
+small Franz and Peet Figure 2 glyph for that one name's relation across the two
+sources (`congruent` for the shared zone, `includes` = TaxonWorks broader for
+`twKeepsIn`, `included` = Catalogue of Life broader or `overlap` for `colFoldsIn`
+depending on the resolved placement, disjoint for misapplied, nothing for the
+data only and not comparable rows). Rows grouped under the section 4.3 zone
+headings in that order, each heading a full width row (`colspan` all five
+columns) with a left accent (`--pp-tw`, `--pp-gbif`, or neutral for the shared
+and data only groups).
+
+Names and record counts in the table are plain text, never links: the only
+links in the table body are the blue `--pp-tw` TaxonPages links on the
+`colFoldsIn` placement entry (see below). The Catalogue of Life accepted taxon
+keeps its link, in the "Open in GBIF" line (section 8.7), not in the header.
 
 Cell wording, terse, a taxon named only when different from the column's:
 
-* TaxonWorks column: "valid name", "synonym", "synonym of *{Z}* ({author})",
-  "valid species, as *{TaxonWorks name}*", "not in TaxonWorks", "more than one
-  match in TaxonWorks", "—" for misapplied and data only rows.
+* TaxonWorks column: "valid name", "synonym" for the shared and `twKeepsIn`
+  rows; for `colFoldsIn`, the resolved placement as an inline entry:
+  "synonym of *{Z}* ({author})" or "*{Z}* ({author}), valid species", with
+  *{Z}* a blue `RouterLink` to that concept's OTU page when the OTU resolves
+  (plain italic otherwise); "not in TaxonWorks"; "more than one match in
+  TaxonWorks"; "—" for misapplied and data only rows. A small inline spinner
+  shows while the placement lookup is in flight.
 * Catalogue of Life column: "accepted name", "synonym", "separate accepted
   species" (plus " (provisional)" when the usage is provisional), "misapplied,
   excluded".
@@ -504,12 +542,13 @@ Match tier tag: a small inline tag after the name, `homotypic` or `probable` or
 `weak`, `title` giving the reason. On `weak` the tag is more prominent since it
 affects confidence.
 
-A `colFoldsIn` row is a `<details>`: the summary is the name, the body shows the
-other genus combinations of the same name in Catalogue of Life and the
-TaxonWorks placement once the lazy lookup returns (a small inline spinner until
-then).
+A `colFoldsIn` row is a plain `<tr>`, no disclosure. The other genus
+combinations of the same name in Catalogue of Life are a small faint sub line
+under the name ("also written *X*, *Y* in Catalogue of Life"); the TaxonWorks
+placement is the inline entry described above, resolved on load (section 5.4).
 
-Only zone headings and `<th>` may be faint. Every value cell is full contrast.
+Only zone headings, `<th>`, and the "also written" sub line (an annotation, not
+a value) may be faint. Every value cell is full contrast.
 
 ### 8.5 Column headers carry the referent
 
@@ -521,29 +560,33 @@ only when it is a different one.
 
 ### 8.6 Occurrence summary
 
-Exact, no approximation marks, framed as current holdings:
+Exact, no approximation marks, framed as current holdings, one line:
 
-> GBIF holds **{total}** occurrence records that Catalogue of Life files under
-> *{colAcceptedName}*: {withImage} with images, {withCoordinate} georeferenced.
+> GBIF holds **{total}** records ({withImage} imaged, {withCoordinate} mapped).
 
-When the dominant identified name is a `colFoldsIn` name, add one sentence:
-"**{n}** of them ({pct} percent) are identified as *{name}*, which TaxonWorks
-assigns to *{Z}*." If `zones.inDataOnly` is non empty, add a `text-xs` line:
+The `{total}` is a link to the scoped occurrence search. The parenthetical is
+dropped when either sub count is not a number. The dominant identified name
+sentence the earlier draft carried is **removed**: the `colFoldsIn` placement
+entry in the zone table now states which TaxonWorks concept each folded in name
+maps to, so the summary does not repeat it (and it no longer needs a reverse
+lookup of its own). If `zones.inDataOnly` is non empty, add a `text-xs` line:
 "{sum} further records carry names not resolved into the comparison above (for
 example BIN placeholders)."
 
 ### 8.7 Open in GBIF
 
-A short labelled list near the bottom, not a row of buttons. Each line one
-clause on what that view is:
+One `text-xs` line near the bottom: "Open in GBIF:" then up to four links,
+middot separated, each carrying its explanatory clause as a `title` tooltip
+rather than inline text, and each omitted when its URL is null:
 
-* *{colAcceptedName}* in Catalogue of Life. The taxonomy the panels here use.
-* *{twName}* in the GBIF backbone. GBIF's default view, which may group the
-  names differently.
-* All GBIF occurrences under the name *{twName}*. Everything GBIF has, grouped
-  GBIF's default way, not filtered by this project.
-* Occurrences used in the panels here. The filtered set behind Images, Map and
-  Type specimens.
+* Catalogue of Life — the taxonomy the panels here use (`urls.colTaxon`).
+* backbone — GBIF's default view, which may group the names differently.
+* all occurrences — everything GBIF has, grouped GBIF's default way, not
+  filtered by this project.
+* panel set — the filtered set behind Images, Map and Type specimens.
+
+(The earlier draft called for a multi line labelled list; it was compressed to
+one line in the round 4 UI pass.)
 
 ### 8.8 Request store
 

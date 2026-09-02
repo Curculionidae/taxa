@@ -43,9 +43,23 @@
         @click="showCompleteness = true"
         @keydown.enter="showCompleteness = true"
         @keydown.space.prevent="showCompleteness = true"
-      >{{ completeness.isComplete
+      >taxonomy: {{ completeness.isComplete
         ? `complete (${completeness.expectedCount} ${completeness.targetRank})`
         : `${completeness.coveredCount} / ${completeness.expectedCount} ${completeness.targetRank}` }}</button>
+
+      <button
+        v-if="completeness && completeness.geographic"
+        type="button"
+        class="border rounded px-2 py-0.5 cursor-pointer transition-colors"
+        :class="completeness.geographic.isComplete
+          ? 'border-success text-success bg-success/10 hover:bg-success/20'
+          : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
+        @click="showCompleteness = true"
+        @keydown.enter="showCompleteness = true"
+        @keydown.space.prevent="showCompleteness = true"
+      >{{ completeness.geographic.label.toLowerCase() }}: {{ completeness.geographic.isComplete
+        ? `complete (${completeness.geographic.expectedCount} ${completeness.targetRank})`
+        : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount} ${completeness.targetRank}` }}</button>
 
       <button
         v-if="references.length > 1 || (references.length === 1 && !references[0].isPrimary)"

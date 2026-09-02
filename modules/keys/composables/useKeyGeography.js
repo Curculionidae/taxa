@@ -17,6 +17,14 @@ import { rankIndex, RANK_ORDER } from '../lib/completeness.js'
 const DWC_CONCURRENCY = 6
 const SPECIES_IDX = RANK_ORDER.indexOf('species')
 
+// An asserted_distributions row links to its OTU via
+// asserted_distribution_object_{type,id}; the top-level `otu_id` is null.
+function adOtuId(row) {
+  return row?.asserted_distribution_object_type === 'Otu'
+    ? row.asserted_distribution_object_id
+    : null
+}
+
 // A key terminal above species rank (a genus, tribe, ...) rarely carries an
 // asserted distribution of its own; its species do. For those we also pull the
 // descendant distributions and union them onto the terminal.
@@ -117,7 +125,7 @@ export function useKeyGeography(terminalListRef) {
       if (myGen !== gen) return
       for (const row of Array.isArray(data) ? data : []) {
         if (row?.is_absent) continue
-        add(row.otu_id, normalizeShape(row.asserted_distribution_shape))
+        add(adOtuId(row), normalizeShape(row.asserted_distribution_shape))
       }
       bump()
     } catch {

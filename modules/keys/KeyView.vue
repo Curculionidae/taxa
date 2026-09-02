@@ -498,19 +498,16 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     }
 
     // Distributions of the expected (descendant) taxa, for the geographic
-    // completeness pass. One call; AD rows carry otu_id, joined back via
-    // tnIdToOtuId. Failure just leaves the geographic measure without data.
-    territoriesByExpectedId.value = await buildExpectedTerritories(
-      scopeTnId,
-      tnIdToOtuId,
-      myGen
-    )
+    // completeness pass. One call. Each AD row inlines its OTU as
+    // asserted_distribution_object with a taxon_name_id; key the territory map by
+    // that. Failure just leaves the geographic measure without data.
+    territoriesByExpectedId.value = await buildExpectedTerritories(scopeTnId, myGen)
   } catch {
     if (myGen === loadGen) completenessInput.value = null
   }
 }
 
-async function buildExpectedTerritories(scopeTnId, tnIdToOtuId, myGen) {
+async function buildExpectedTerritories(scopeTnId, myGen) {
   try {
     const q = new URLSearchParams()
     q.append('taxon_name_id[]', scopeTnId)
@@ -518,14 +515,11 @@ async function buildExpectedTerritories(scopeTnId, tnIdToOtuId, myGen) {
     q.set('per', '1000')
     const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
     if (myGen !== loadGen) return new Map()
-    const otuToTn = new Map()
-    for (const [tnId, otuId] of Object.entries(tnIdToOtuId)) {
-      otuToTn.set(Number(otuId), Number(tnId))
-    }
     const map = new Map()
     for (const row of Array.isArray(data) ? data : []) {
       if (row?.is_absent) continue
-      const tnId = otuToTn.get(row.otu_id)
+      if (row.asserted_distribution_object_type !== 'Otu') continue
+      const tnId = row.asserted_distribution_object?.taxon_name_id
       if (tnId == null) continue
       const terr = normalizeShape(row.asserted_distribution_shape)
       if (!terr) continue

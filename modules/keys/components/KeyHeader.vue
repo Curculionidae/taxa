@@ -35,18 +35,23 @@
       </span>
 
       <button
-        v-if="completeness"
+        v-if="completeness || completenessLoading"
         type="button"
-        class="border rounded px-2 py-0.5 cursor-pointer transition-colors"
-        :class="completeness.isComplete
-          ? 'border-success text-success bg-success/10 hover:bg-success/20'
-          : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
-        @click="showCompleteness = 'taxonomy'"
-        @keydown.enter="showCompleteness = 'taxonomy'"
-        @keydown.space.prevent="showCompleteness = 'taxonomy'"
-      >Taxonomy: {{ completeness.isComplete
-        ? `complete (${completeness.expectedCount})`
-        : `${completeness.coveredCount} / ${completeness.expectedCount}` }}</button>
+        :disabled="!completeness"
+        class="border rounded px-2 py-0.5 transition-colors"
+        :class="!completeness
+          ? 'border-base-muted text-base-soft cursor-default'
+          : completeness.isComplete
+            ? 'border-success text-success bg-success/10 hover:bg-success/20 cursor-pointer'
+            : 'border-danger text-danger bg-danger/10 hover:bg-danger/20 cursor-pointer'"
+        @click="completeness && (showCompleteness = 'taxonomy')"
+        @keydown.enter="completeness && (showCompleteness = 'taxonomy')"
+        @keydown.space.prevent="completeness && (showCompleteness = 'taxonomy')"
+      >Taxonomy: {{ !completeness
+        ? 'loading…'
+        : completeness.isComplete
+          ? `complete (${completeness.expectedCount})`
+          : `${completeness.coveredCount} / ${completeness.expectedCount}` }}</button>
 
       <GeographyPicker
         class="key-print-hide"
@@ -61,16 +66,21 @@
       <button
         v-if="completeness && completeness.geographic"
         type="button"
-        class="border rounded px-2 py-0.5 cursor-pointer transition-colors"
-        :class="completeness.geographic.isComplete
-          ? 'border-success text-success bg-success/10 hover:bg-success/20'
-          : 'border-danger text-danger bg-danger/10 hover:bg-danger/20'"
-        @click="showCompleteness = 'geography'"
-        @keydown.enter="showCompleteness = 'geography'"
-        @keydown.space.prevent="showCompleteness = 'geography'"
-      >{{ completeness.geographic.label }}: {{ completeness.geographic.isComplete
-        ? `complete (${completeness.geographic.expectedCount})`
-        : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount}` }}</button>
+        :disabled="geoLoading"
+        class="border rounded px-2 py-0.5 transition-colors"
+        :class="geoLoading
+          ? 'border-base-muted text-base-soft cursor-default'
+          : completeness.geographic.isComplete
+            ? 'border-success text-success bg-success/10 hover:bg-success/20 cursor-pointer'
+            : 'border-danger text-danger bg-danger/10 hover:bg-danger/20 cursor-pointer'"
+        @click="!geoLoading && (showCompleteness = 'geography')"
+        @keydown.enter="!geoLoading && (showCompleteness = 'geography')"
+        @keydown.space.prevent="!geoLoading && (showCompleteness = 'geography')"
+      >{{ completeness.geographic.label }}: {{ geoLoading
+        ? 'loading…'
+        : completeness.geographic.isComplete
+          ? `complete (${completeness.geographic.expectedCount})`
+          : `${completeness.geographic.keyedCount} / ${completeness.geographic.expectedCount}` }}</button>
 
       <button
         v-if="references.length > 1 || (references.length === 1 && !references[0].isPrimary)"
@@ -111,6 +121,7 @@ import GeographyPicker from './GeographyPicker.vue'
 const props = defineProps({
   meta: { type: Object, required: true },
   completeness: { type: Object, default: null },
+  completenessLoading: { type: Boolean, default: false },
   references: { type: Array, default: () => [] },
   primaryCitation: { type: String, default: null },
   geoGroupings: { type: Array, default: () => [] },

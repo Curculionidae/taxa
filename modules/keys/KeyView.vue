@@ -8,6 +8,7 @@
           class="flex-1"
           :meta="meta"
           :completeness="completeness"
+          :completeness-loading="completenessLoading"
           :references="references"
           :primary-citation="primaryCitation"
           :geo-groupings="geoCategories"
@@ -107,7 +108,6 @@ provide('keyTaxonNames', keyTaxonNames)
 // terminal taxa's distributions; the selection is persisted per browser.
 const geo = useKeyGeography(terminalOtuList)
 const geoTerritories = geo.allTerritories
-const geoLoading = geo.loading
 const geoSelection = ref({ groupings: [], territories: [] })
 onMounted(() => {
   geoSelection.value = readGeoPrefs()
@@ -155,10 +155,16 @@ const citations = ref({})
 const activeCitation = ref(null)
 // Base inputs for buildCompletenessReport, assembled once per load.
 const completenessInput = ref(null)
+// True while the (slow) completeness pipeline runs, so the header chip can say
+// "loading" rather than nothing.
+const completenessLoading = ref(false)
 // { targetTaxonNameId -> Set<territoryKey> } for the geographic completeness
 // pass. Assembled lazily: reuse the picker's per-terminal data for the taxa that
 // are in the key, fetch only the gaps (missing taxa, usually a handful).
 const territoriesByExpectedId = ref(new Map())
+// True from a filter becoming active until its distribution data is assembled.
+const geoCompletenessLoading = ref(false)
+const geoLoading = computed(() => geo.loading.value || geoCompletenessLoading.value)
 let geoTerrGen = -1
 
 // The report without the geographic pass — the source of the target-rank taxa
@@ -178,12 +184,21 @@ const targetTaxa = computed(() => {
 })
 
 watch(
-  () => geoEffective.value.size > 0 && targetTaxa.value.length > 0,
-  (active) => {
-    if (!active || geoTerrGen === loadGen) return
-    const myGen = loadGen
-    geoTerrGen = myGen
-    assembleExpectedTerritories(targetTaxa.value, myGen)
+  () => [
+    geoEffective.value.size > 0,
+    targetTaxa.value.length > 0,
+    geo.loading.value
+  ],
+  ([active, hasTargets, geoBusy]) => {
+    if (!active) {
+      geoCompletenessLoading.value = false
+      return
+    }
+    if (geoTerrGen === loadGen) return
+    geoCompletenessLoading.value = true // filter on, data not ready yet
+    if (!hasTargets || geoBusy) return // wait for the picker + the base report
+    geoTerrGen = loadGen
+    assembleExpectedTerritories(targetTaxa.value, loadGen)
   },
   { immediate: true }
 )
@@ -209,7 +224,10 @@ async function assembleExpectedTerritories(targets, myGen) {
     }
   }
   await Promise.all([worker(), worker(), worker(), worker()])
-  if (myGen === loadGen) territoriesByExpectedId.value = new Map(map)
+  if (myGen === loadGen) {
+    territoriesByExpectedId.value = new Map(map)
+    geoCompletenessLoading.value = false
+  }
 }
 
 async function fetchTaxonTerritories(tnId, myGen) {
@@ -316,7 +334,9 @@ async function load(id) {
   keyTaxonNames.reset()
   geo.reset()
   completenessInput.value = null
+  completenessLoading.value = true
   territoriesByExpectedId.value = new Map()
+  geoCompletenessLoading.value = false
   geoTerrGen = -1
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
@@ -591,6 +611,8 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     }
   } catch {
     if (myGen === loadGen) completenessInput.value = null
+  } finally {
+    if (myGen === loadGen) completenessLoading.value = false
   }
 }
 

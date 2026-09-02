@@ -30,7 +30,7 @@
       </section>
 
       <section v-if="report.ungrouped.length">
-        <h4 class="font-medium text-base-content">Not placed in a lower group</h4>
+        <h4 v-if="report.groups.length" class="font-medium text-base-content">Not placed in a lower group</h4>
         <ul class="ml-4 mt-1 space-y-1">
           <li
             v-for="m in report.ungrouped"
@@ -83,7 +83,7 @@
       </section>
 
       <section v-if="geoUngrouped.length">
-        <h4 class="font-medium text-base-content">Not placed in a lower group</h4>
+        <h4 v-if="geoGroups.length" class="font-medium text-base-content">Not placed in a lower group</h4>
         <ul class="ml-4 mt-1 space-y-1">
           <li
             v-for="m in geoUngrouped"

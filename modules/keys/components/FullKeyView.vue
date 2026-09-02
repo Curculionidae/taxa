@@ -32,7 +32,9 @@
           <div
             v-for="(choice, idx) in childrenOf(couplet.id)"
             :key="choice.id"
-            class="mb-3 last:mb-0"
+            class="mb-3 last:mb-0 transition-opacity"
+            :class="isDimmed(choice) ? 'opacity-40' : ''"
+            :title="isDimmed(choice) ? `leads only outside ${geoLabel}` : undefined"
           >
             <div class="flex gap-2">
               <span class="text-base-soft shrink-0 w-4 text-right">{{ idx === 0 ? '' : '—' }}</span>
@@ -108,8 +110,9 @@
 </template>
 
 <script setup>
-import { watch, nextTick, computed } from 'vue'
+import { watch, nextTick, computed, inject } from 'vue'
 import { childChoices } from '../lib/tree.js'
+import { leadGeoStatus } from '../lib/geoMatch.js'
 import { partitionCoupletFigures } from '../lib/images.js'
 import LeadText from './LeadText.vue'
 import TaxonLink from './TaxonLink.vue'
@@ -125,6 +128,23 @@ const props = defineProps({
 defineEmits(['open-citation'])
 
 const childrenOf = (id) => childChoices(id, props.nodes)
+
+// Geography path roll-up: dim a lead whose whole reachable subtree is outside
+// the selection. 'unknown' and 'in' are left alone.
+const geo = inject('keyGeo', null)
+const geoLabel = computed(() => geo?.selectionLabel?.value || 'the selected area')
+function leadStatus(nodeId) {
+  if (!geo) return 'in'
+  return leadGeoStatus(
+    geo.reachableTerminalsByNode.value.get(Number(nodeId)),
+    geo.territoriesByOtu.value,
+    geo.effective.value
+  )
+}
+// Only dim couplet (branch) leads here; a terminal lead's own TaxonLink dims
+// itself, so dimming its wrapper too would double the opacity.
+const isDimmed = (choice) =>
+  choice.isCouplet && leadStatus(choice.id) === 'out'
 
 // Per couplet: figures shared by every lead (hoisted to a couplet-level row) vs.
 // the individual figures that stay under each lead. Keyed by couplet id.

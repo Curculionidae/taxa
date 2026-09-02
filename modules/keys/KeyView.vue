@@ -47,7 +47,7 @@
 import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useRoute } from 'vue-router'
 import { makeAPIRequest } from '@/utils/request'
-import { buildNodes, orderedCouplets, terminalOtus, lowestCommonAncestor } from './lib/tree.js'
+import { buildNodes, orderedCouplets, terminalOtus, lowestCommonAncestor, descendantOtus } from './lib/tree.js'
 import { useKeyImages } from './composables/useKeyImages.js'
 import { useKeyTaxonNames } from './composables/useKeyTaxonNames.js'
 import { useKeyGeography } from './composables/useKeyGeography.js'
@@ -121,10 +121,23 @@ const geoSelectionLabel = computed(() => {
   ]
   return labels.length ? labels.join(', ') : 'the selected area'
 })
+// Terminal OTU ids reachable from each lead node, for the path roll-up dimming.
+const reachableTerminalsByNode = computed(() => {
+  const map = new Map()
+  const n = nodes.value || {}
+  for (const id of Object.keys(n)) {
+    map.set(
+      Number(id),
+      new Set(descendantOtus(Number(id), n).map((o) => o.id))
+    )
+  }
+  return map
+})
 provide('keyGeo', {
   territoriesByOtu: geo.territoriesByOtu,
   effective: geoEffective,
-  selectionLabel: geoSelectionLabel
+  selectionLabel: geoSelectionLabel,
+  reachableTerminalsByNode
 })
 
 const citations = ref({})

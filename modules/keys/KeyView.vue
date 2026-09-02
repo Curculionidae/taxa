@@ -157,6 +157,22 @@ const activeCitation = ref(null)
 // itself is a computed so the geographic pass re-runs when the selection changes.
 const completenessInput = ref(null)
 const territoriesByExpectedId = ref(new Map())
+// The expected-taxa distribution fetch is deferred until a filter is active
+// (like the picker's own data). scopeTnForGeo is stashed by loadCompleteness;
+// geoTerrGen tracks which load generation it has been fetched for.
+const scopeTnForGeo = ref(null)
+let geoTerrGen = -1
+watch(
+  () => geoEffective.value.size > 0 && scopeTnForGeo.value,
+  async (tn) => {
+    if (!tn || geoTerrGen === loadGen) return
+    const myGen = loadGen
+    geoTerrGen = myGen
+    const map = await buildExpectedTerritories(tn, myGen).catch(() => new Map())
+    if (myGen === loadGen) territoriesByExpectedId.value = map
+  },
+  { immediate: true }
+)
 const completeness = computed(() => {
   const input = completenessInput.value
   if (!input) return null
@@ -236,6 +252,8 @@ async function load(id) {
   geo.reset()
   completenessInput.value = null
   territoriesByExpectedId.value = new Map()
+  scopeTnForGeo.value = null
+  geoTerrGen = -1
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
     const listReq = makeAPIRequest.get('/leads').catch(() => ({ data: [] }))
@@ -508,14 +526,10 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
       outOfScopeTerminals
     }
 
-    // Distributions of the expected (descendant) taxa, for the geographic
-    // completeness pass. `.catch` guards the just-set base report: a failure
-    // here must not null completenessInput. Each AD row inlines its OTU as
-    // asserted_distribution_object with a taxon_name_id; key the map by that.
-    territoriesByExpectedId.value = await buildExpectedTerritories(
-      scopeTnId,
-      myGen
-    ).catch(() => new Map())
+    // Hand the scope taxon-name to the deferred geographic pass; the watcher on
+    // geoEffective fetches the expected-taxa distributions only once a filter is
+    // actually active.
+    scopeTnForGeo.value = scopeTnId
   } catch {
     if (myGen === loadGen) completenessInput.value = null
   }

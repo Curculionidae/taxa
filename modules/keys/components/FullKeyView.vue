@@ -60,6 +60,7 @@
                       :id="choice.targetId"
                       :label="String(choice.targetLabel)"
                       variant="pill"
+                      :suppress-geo-dim="isDimmed(choice)"
                     />
                     <a
                       v-else-if="choice.targetLink"
@@ -141,10 +142,10 @@ function leadStatus(nodeId) {
     geo.effective.value
   )
 }
-// Only dim couplet (branch) leads here; a terminal lead's own TaxonLink dims
-// itself, so dimming its wrapper too would double the opacity.
-const isDimmed = (choice) =>
-  choice.isCouplet && leadStatus(choice.id) === 'out'
+// Dim any lead whose reachable subtree is entirely out of area, taxon leads
+// included (the taxon pill is told to suppress its own dimming so opacities
+// don't compound).
+const isDimmed = (choice) => leadStatus(choice.id) === 'out'
 
 // Per couplet: figures shared by every lead (hoisted to a couplet-level row) vs.
 // the individual figures that stay under each lead. Keyed by couplet id.

@@ -29,7 +29,7 @@
         :nodes="nodes"
         :citations="citations"
         :own-figures="coupletFigures.ownByLeadId ? (coupletFigures.ownByLeadId[choice.id] || []) : null"
-        :dimmed="choice.isCouplet && leadStatus(choice.id) === 'out'"
+        :dimmed="leadStatus(choice.id) === 'out'"
         :dimmed-label="geoLabel"
         @open-citation="$emit('open-citation', $event)"
       />

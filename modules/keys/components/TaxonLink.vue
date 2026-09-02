@@ -28,7 +28,10 @@ const props = defineProps({
   label: { type: String, required: true },
   // 'text' (default) keeps the inline link used in the reachable-taxa list;
   // 'pill' is the right-aligned filled chip used as a lead target in the key views.
-  variant: { type: String, default: 'text' }
+  variant: { type: String, default: 'text' },
+  // set by a caller that already dims the surrounding lead, so this link does
+  // not dim itself on top (opacities would compound)
+  suppressGeoDim: { type: Boolean, default: false }
 })
 
 const synonymy = inject('keySynonymy', { value: {} })
@@ -42,7 +45,7 @@ const geo = inject('keyGeo', null)
 const geoDimSuppressed = inject('geoDimSuppressed', null)
 const geoLabel = computed(() => geo?.selectionLabel?.value || 'the selected area')
 const outOfArea = computed(() => {
-  if (geoDimSuppressed?.value) return false
+  if (props.suppressGeoDim || geoDimSuppressed?.value) return false
   const eff = geo?.effective?.value
   if (!eff || eff.size === 0) return false
   const set = geo.territoriesByOtu.value.get(Number(props.id))

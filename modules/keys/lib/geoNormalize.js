@@ -1,0 +1,163 @@
+// Pure. Turn a heterogeneous TaxonWorks distribution shape, or a specimen DwC
+// `country` string, into one { key, label } territory or null. `key` is an
+// ISO 3166-1 alpha-2 code where one applies, otherwise a lowercase slug
+// (`russia-european`, `west-siberia`). No Vue, no network. See the design spec,
+// section 4.
+
+// ISO 3166-1 alpha-2 -> canonical English short name. Not exhaustive of every
+// dependent territory, but every sovereign state plus the ones the weevil
+// distribution data turns up.
+const ISO_NAME = {
+  AD: 'Andorra', AE: 'United Arab Emirates', AF: 'Afghanistan',
+  AG: 'Antigua and Barbuda', AL: 'Albania', AM: 'Armenia', AO: 'Angola',
+  AR: 'Argentina', AT: 'Austria', AU: 'Australia', AZ: 'Azerbaijan',
+  BA: 'Bosnia and Herzegovina', BB: 'Barbados', BD: 'Bangladesh', BE: 'Belgium',
+  BF: 'Burkina Faso', BG: 'Bulgaria', BH: 'Bahrain', BI: 'Burundi', BJ: 'Benin',
+  BN: 'Brunei', BO: 'Bolivia', BR: 'Brazil', BS: 'Bahamas', BT: 'Bhutan',
+  BW: 'Botswana', BY: 'Belarus', BZ: 'Belize', CA: 'Canada',
+  CD: 'Democratic Republic of the Congo', CF: 'Central African Republic',
+  CG: 'Republic of the Congo', CH: 'Switzerland', CI: "Cote d'Ivoire",
+  CL: 'Chile', CM: 'Cameroon', CN: 'China', CO: 'Colombia', CR: 'Costa Rica',
+  CU: 'Cuba', CV: 'Cape Verde', CY: 'Cyprus', CZ: 'Czech Republic',
+  DE: 'Germany', DJ: 'Djibouti', DK: 'Denmark', DM: 'Dominica',
+  DO: 'Dominican Republic', DZ: 'Algeria', EC: 'Ecuador', EE: 'Estonia',
+  EG: 'Egypt', ER: 'Eritrea', ES: 'Spain', ET: 'Ethiopia', FI: 'Finland',
+  FJ: 'Fiji', FM: 'Micronesia', FO: 'Faroe Islands', FR: 'France', GA: 'Gabon',
+  GB: 'United Kingdom', GD: 'Grenada', GE: 'Georgia', GH: 'Ghana',
+  GL: 'Greenland', GM: 'Gambia', GN: 'Guinea', GQ: 'Equatorial Guinea',
+  GR: 'Greece', GT: 'Guatemala', GW: 'Guinea-Bissau', GY: 'Guyana',
+  HN: 'Honduras', HR: 'Croatia', HT: 'Haiti', HU: 'Hungary', ID: 'Indonesia',
+  IE: 'Ireland', IL: 'Israel', IN: 'India', IQ: 'Iraq', IR: 'Iran',
+  IS: 'Iceland', IT: 'Italy', JM: 'Jamaica', JO: 'Jordan', JP: 'Japan',
+  KE: 'Kenya', KG: 'Kyrgyzstan', KH: 'Cambodia', KI: 'Kiribati',
+  KM: 'Comoros', KP: 'North Korea', KR: 'South Korea', KW: 'Kuwait',
+  KZ: 'Kazakhstan', LA: 'Laos', LB: 'Lebanon', LI: 'Liechtenstein',
+  LK: 'Sri Lanka', LR: 'Liberia', LS: 'Lesotho', LT: 'Lithuania',
+  LU: 'Luxembourg', LV: 'Latvia', LY: 'Libya', MA: 'Morocco', MC: 'Monaco',
+  MD: 'Moldova', ME: 'Montenegro', MG: 'Madagascar', MK: 'North Macedonia',
+  ML: 'Mali', MM: 'Myanmar', MN: 'Mongolia', MR: 'Mauritania', MT: 'Malta',
+  MU: 'Mauritius', MV: 'Maldives', MW: 'Malawi', MX: 'Mexico', MY: 'Malaysia',
+  MZ: 'Mozambique', NA: 'Namibia', NE: 'Niger', NG: 'Nigeria', NI: 'Nicaragua',
+  NL: 'Netherlands', NO: 'Norway', NP: 'Nepal', NZ: 'New Zealand', OM: 'Oman',
+  PA: 'Panama', PE: 'Peru', PG: 'Papua New Guinea', PH: 'Philippines',
+  PK: 'Pakistan', PL: 'Poland', PT: 'Portugal', PY: 'Paraguay', QA: 'Qatar',
+  RO: 'Romania', RS: 'Serbia', RU: 'Russia', RW: 'Rwanda', SA: 'Saudi Arabia',
+  SB: 'Solomon Islands', SC: 'Seychelles', SD: 'Sudan', SE: 'Sweden',
+  SG: 'Singapore', SI: 'Slovenia', SJ: 'Svalbard and Jan Mayen', SK: 'Slovakia',
+  SL: 'Sierra Leone', SM: 'San Marino', SN: 'Senegal', SO: 'Somalia',
+  SR: 'Suriname', SS: 'South Sudan', ST: 'Sao Tome and Principe',
+  SV: 'El Salvador', SY: 'Syria', SZ: 'Eswatini', TD: 'Chad', TG: 'Togo',
+  TH: 'Thailand', TJ: 'Tajikistan', TL: 'Timor-Leste', TM: 'Turkmenistan',
+  TN: 'Tunisia', TR: 'Turkey', TT: 'Trinidad and Tobago', TW: 'Taiwan',
+  TZ: 'Tanzania', UA: 'Ukraine', UG: 'Uganda', US: 'United States',
+  UY: 'Uruguay', UZ: 'Uzbekistan', VA: 'Vatican City',
+  VC: 'Saint Vincent and the Grenadines', VE: 'Venezuela', VN: 'Vietnam',
+  VU: 'Vanuatu', WS: 'Samoa', YE: 'Yemen', ZA: 'South Africa', ZM: 'Zambia',
+  ZW: 'Zimbabwe'
+}
+
+// Common name variants that are not the canonical ISO_NAME value. Lowercased.
+const NAME_ALIASES = {
+  usa: 'US', 'u.s.a.': 'US', 'u.s.a': 'US', 'united states of america': 'US',
+  'great britain': 'GB', england: 'GB', scotland: 'GB', wales: 'GB',
+  'northern ireland': 'GB', 'u.k.': 'GB', uk: 'GB', britain: 'GB',
+  czechia: 'CZ', 'czech rep.': 'CZ',
+  macedonia: 'MK', 'republic of macedonia': 'MK', 'fyr macedonia': 'MK',
+  'bosnia-herzegovina': 'BA', 'bosnia herzegovina': 'BA', bosnia: 'BA',
+  holland: 'NL', 'the netherlands': 'NL',
+  'russian federation': 'RU', russia: 'RU',
+  'republic of ireland': 'IE',
+  'vatican': 'VA', 'vatican city state': 'VA', 'holy see': 'VA',
+  'ivory coast': 'CI',
+  'south korea': 'KR', 'korea, south': 'KR', 'republic of korea': 'KR',
+  'north korea': 'KP', 'korea, north': 'KP',
+  moldavia: 'MD', 'republic of moldova': 'MD',
+  'slovak republic': 'SK',
+  'turkiye': 'TR', türkiye: 'TR',
+  'swiss confederation': 'CH',
+  'kirghizia': 'KG', kirgizia: 'KG',
+  'white russia': 'BY', byelorussia: 'BY'
+}
+
+// Russian WGSRPD units east of the Urals (Siberia + Russian Far East). Each keeps
+// its own key and stays out of the "Europe" grouping.
+const ASIAN_RUSSIA = new Set([
+  'altay', 'altai', 'amur', 'buryatiya', 'buryatia', 'chita', 'east siberia',
+  'irkutsk', 'kamchatka', 'khabarovsk', 'krasnoyarsk',
+  'kuril islands', 'kurile is.', 'kuril is.', 'magadan', 'primorye', 'sakhalin',
+  'russian far east', 'tuva', 'west siberia', 'western siberia', 'yakutiya',
+  'yakutia', 'sakha'
+])
+
+function norm(s) {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+export function slug(s) {
+  return norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+// Country name (any casing / spacing, plus the alias table) -> ISO2, or null.
+const NAME_ISO = Object.fromEntries(
+  Object.entries(ISO_NAME).map(([iso, name]) => [norm(name), iso])
+)
+export function nameToIso(name) {
+  const n = norm(name)
+  if (!n) return null
+  return NAME_ISO[n] || NAME_ALIASES[n] || null
+}
+
+export function countryName(iso) {
+  return ISO_NAME[String(iso || '').toUpperCase()] || null
+}
+
+const EUROPEAN_RUSSIA = { key: 'russia-european', label: 'European Russia' }
+
+function russiaTerritory(name) {
+  const n = norm(name)
+  if (n === 'russia' || n === 'russian federation') return { key: 'RU', label: 'Russia' }
+  if (/european russia$/.test(n) || n === 'european russia') return EUROPEAN_RUSSIA
+  if (ASIAN_RUSSIA.has(n)) return { key: slug(name), label: String(name).trim() }
+  // "Russia" qualified some other way (e.g. "Russia South") -> fall back to RU
+  return { key: 'RU', label: 'Russia' }
+}
+
+export function normalizeShape(shape) {
+  if (!shape) return null
+  const name = String(shape.name || '').trim()
+  if (!name) return null
+  const iso = shape.iso_3166_a2 ? String(shape.iso_3166_a2).toUpperCase() : null
+  const gtype = shape.geographic_area_type?.name || null
+  const n = norm(name)
+
+  // 1. Russia special-case: the "European Russia" gazetteer carries iso RU, and
+  //    the Urals split matters, so branch by name before trusting the ISO.
+  if (iso === 'RU' || /\brussia\b|\bsiberia\b/.test(n)) return russiaTerritory(name)
+
+  // 2. Region-level TDWG statements cannot be pinned to a territory.
+  if (gtype === 'TDWG Level 2') return null
+
+  // 3. An explicit ISO wins.
+  if (iso) return { key: iso, label: countryName(iso) || name }
+
+  // 4. The shape's own name is a country.
+  const byName = nameToIso(name)
+  if (byName) return { key: byName, label: countryName(byName) }
+
+  // 5. The parent is a country (TDWG Level 4, subdivision shapes).
+  const byParent = nameToIso(shape.parent?.name)
+  if (byParent) return { key: byParent, label: countryName(byParent) }
+
+  // 6. Unresolvable (Caucasus, Illyria, Eastern Europe, ...).
+  return null
+}
+
+// Specimen DwC `country` strings: alias table, then the name map. Bare "Russia"
+// stays RU here (a specimen locality is not evidence of European vs Asian).
+export function normalizeCountryString(str) {
+  const iso = nameToIso(str)
+  return iso ? { key: iso, label: countryName(iso) } : null
+}

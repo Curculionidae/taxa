@@ -5,6 +5,32 @@
       {{ report.coveredCount }} of {{ report.expectedCount }} in the key's scope<span v-if="report.isComplete" class="text-base-soft">&nbsp;(complete)</span>.
     </p>
 
+    <div
+      v-if="report.geographic"
+      class="rounded border border-base-muted p-2 space-y-1"
+    >
+      <p class="text-base-content">
+        In <strong>{{ report.geographic.label }}</strong>:
+        {{ report.geographic.keyedCount }} of {{ report.geographic.expectedCount }}
+        {{ report.targetRank }} keyed out<span v-if="report.geographic.isComplete" class="text-base-soft">&nbsp;(complete)</span>.
+      </p>
+      <p v-if="report.geographic.missing.length" class="text-danger">
+        Missing: <span v-for="(m, i) in report.geographic.missing" :key="m">{{ i ? ', ' : '' }}<i>{{ m }}</i></span>
+      </p>
+      <p v-if="report.geographic.outOfAreaTerminals.length" class="text-base-soft">
+        In the key but outside {{ report.geographic.label }}:
+        <span v-for="(m, i) in report.geographic.outOfAreaTerminals" :key="m">{{ i ? ', ' : '' }}<i>{{ m }}</i></span>
+      </p>
+      <p
+        v-if="report.geographic.unknownExpected.length"
+        class="text-base-soft"
+        :title="report.geographic.unknownExpected.join(', ')"
+      >
+        {{ report.geographic.unknownExpected.length }} in-scope {{ report.targetRank }}
+        with no distribution data (not counted).
+      </p>
+    </div>
+
     <section v-for="g in report.groups" :key="g.taxon.id">
       <h4 class="font-medium text-base-content">
         <TaxRefLink :taxon="g.taxon" /><span class="text-base-soft text-xs">&nbsp;({{ coveredInGroup(g) }} / {{ g.members.length }} keyed out)</span>

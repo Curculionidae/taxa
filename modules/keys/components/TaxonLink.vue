@@ -1,5 +1,8 @@
 <template>
-  <span>
+  <span
+    :class="outOfArea ? 'opacity-50' : ''"
+    :title="outOfArea ? `not in ${geoLabel}` : undefined"
+  >
     <RouterLink
       :to="{ name: 'otus-id', params: { id } }"
       target="_blank"
@@ -30,6 +33,20 @@ const props = defineProps({
 
 const synonymy = inject('keySynonymy', { value: {} })
 const validName = computed(() => synonymy.value?.[props.id]?.validName || '')
+
+// Geography filter (design spec 2026-09-02): dim a terminal whose recorded
+// territories are all outside the selection. Unknown (no distribution data) and
+// in-area terminals are left alone. `props.id` is the target OTU id.
+const geo = inject('keyGeo', null)
+const geoLabel = computed(() => geo?.selectionLabel?.value || 'the selected area')
+const outOfArea = computed(() => {
+  const eff = geo?.effective?.value
+  if (!eff || eff.size === 0) return false
+  const set = geo.territoriesByOtu.value.get(Number(props.id))
+  if (!set || set.size === 0) return false
+  for (const k of set) if (eff.has(k)) return false
+  return true
+})
 
 // Provided by KeyView: otuId -> { html: "<i>Name</i>", authorYear: "Author, Year" }.
 // Falls back to the plain (fully italic) label when the OTU isn't resolved yet.

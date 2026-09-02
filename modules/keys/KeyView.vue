@@ -5,7 +5,15 @@
     <div v-else class="rounded-lg border border-base-muted bg-base-foreground p-4 sm:p-6">
       <div class="flex items-start justify-between gap-4">
         <KeyHeader class="flex-1" :meta="meta" :completeness="completeness" :references="references" :primary-citation="primaryCitation" />
-        <FormatToggle v-model="format" class="mt-1 shrink-0 key-print-hide" />
+        <div class="mt-1 flex shrink-0 items-center gap-2 key-print-hide">
+          <GeographyPicker
+            v-model="geoSelection"
+            :groupings="geoCategories"
+            :territories="geoTerritories"
+            :loading="geoLoading"
+          />
+          <FormatToggle v-model="format" />
+        </div>
       </div>
 
       <GuidedView
@@ -42,13 +50,18 @@ import { makeAPIRequest } from '@/utils/request'
 import { buildNodes, orderedCouplets, terminalOtus, lowestCommonAncestor } from './lib/tree.js'
 import { useKeyImages } from './composables/useKeyImages.js'
 import { useKeyTaxonNames } from './composables/useKeyTaxonNames.js'
+import { useKeyGeography } from './composables/useKeyGeography.js'
 import KeyHeader from './components/KeyHeader.vue'
 import FullKeyView from './components/FullKeyView.vue'
 import GuidedView from './components/GuidedView.vue'
 import FormatToggle from './components/FormatToggle.vue'
+import GeographyPicker from './components/GeographyPicker.vue'
 import CoupletCitation from './components/CoupletCitation.vue'
 import { readFormat, writeFormat } from './lib/format.js'
 import { buildCompletenessReport, finestRank } from './lib/completeness.js'
+import { normalizeShape } from './lib/geoNormalize.js'
+import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
+import geoCategories from '../../panels/PanelKeys/geographyCategories.js'
 
 const route = useRoute()
 
@@ -87,9 +100,52 @@ provide('keyImages', keyImages)
 // (matches the vanilla OTU page's cached_html / cached_author_year split).
 const keyTaxonNames = useKeyTaxonNames(terminalOtuList)
 provide('keyTaxonNames', keyTaxonNames)
+
+// Geography filter (design spec 2026-09-02). The picker options come from the
+// terminal taxa's distributions; the selection is persisted per browser.
+const geo = useKeyGeography(terminalOtuList)
+const geoTerritories = geo.allTerritories
+const geoLoading = geo.loading
+const geoSelection = ref({ groupings: [], territories: [] })
+onMounted(() => { geoSelection.value = readGeoPrefs() })
+watch(geoSelection, (v) => writeGeoPrefs(v), { deep: true })
+const geoEffective = computed(() => effectiveKeys(geoSelection.value, geoCategories))
+const geoSelectionLabel = computed(() => {
+  const s = geoSelection.value
+  if (s.groupings.length === 1 && !s.territories.length) {
+    return geoCategories.find((g) => g.id === s.groupings[0])?.label || 'the selected area'
+  }
+  const labels = [
+    ...s.groupings.map((id) => geoCategories.find((g) => g.id === id)?.label).filter(Boolean),
+    ...s.territories.map((k) => geoTerritories.value.find((t) => t.key === k)?.label || k)
+  ]
+  return labels.length ? labels.join(', ') : 'the selected area'
+})
+provide('keyGeo', {
+  territoriesByOtu: geo.territoriesByOtu,
+  effective: geoEffective,
+  selectionLabel: geoSelectionLabel
+})
+
 const citations = ref({})
 const activeCitation = ref(null)
-const completeness = ref(null)
+// Base inputs for buildCompletenessReport, assembled once per load; the report
+// itself is a computed so the geographic pass re-runs when the selection changes.
+const completenessInput = ref(null)
+const territoriesByExpectedId = ref(new Map())
+const completeness = computed(() => {
+  const input = completenessInput.value
+  if (!input) return null
+  const eff = geoEffective.value
+  const geoScope = eff.size
+    ? {
+        effectiveKeys: eff,
+        territoriesByTaxonId: territoriesByExpectedId.value,
+        label: geoSelectionLabel.value
+      }
+    : null
+  return buildCompletenessReport({ ...input, geoScope })
+})
 // Scope taxon for the header — resolved by loadScope() independently of the (slower)
 // completeness pipeline. `scopeTaxonName.html` is the taxon's `full_name_tag` (the same
 // field TaxonPages renders its page title from: name parts italic, author roman);
@@ -153,6 +209,9 @@ async function load(id) {
   scopeTaxonName.value = null
   keyImages.reset()
   keyTaxonNames.reset()
+  geo.reset()
+  completenessInput.value = null
+  territoriesByExpectedId.value = new Map()
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
     const listReq = makeAPIRequest.get('/leads').catch(() => ({ data: [] }))
@@ -293,7 +352,7 @@ async function resolveScopeFromTerminals(tnIds) {
 async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
   try {
     if (myGen !== loadGen) return
-    completeness.value = null
+    completenessInput.value = null
     synonymyByOtuId.value = {}
 
     // key terminals that point at an OTU, deduped by OTU id (first target_label wins)
@@ -417,15 +476,52 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     }
 
     if (myGen !== loadGen) return
-    completeness.value = buildCompletenessReport({
+    completenessInput.value = {
       scopeRank,
       descendants,
       terminalTnIds: [...new Set(terminalTnIds)],
       tnIdToOtuId,
       outOfScopeTerminals
-    })
+    }
+
+    // Distributions of the expected (descendant) taxa, for the geographic
+    // completeness pass. One call; AD rows carry otu_id, joined back via
+    // tnIdToOtuId. Failure just leaves the geographic measure without data.
+    territoriesByExpectedId.value = await buildExpectedTerritories(
+      scopeTnId,
+      tnIdToOtuId,
+      myGen
+    )
   } catch {
-    if (myGen === loadGen) completeness.value = null
+    if (myGen === loadGen) completenessInput.value = null
+  }
+}
+
+async function buildExpectedTerritories(scopeTnId, tnIdToOtuId, myGen) {
+  try {
+    const q = new URLSearchParams()
+    q.append('taxon_name_id[]', scopeTnId)
+    q.set('descendants', 'true')
+    q.set('per', '1000')
+    const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
+    if (myGen !== loadGen) return new Map()
+    const otuToTn = new Map()
+    for (const [tnId, otuId] of Object.entries(tnIdToOtuId)) {
+      otuToTn.set(Number(otuId), Number(tnId))
+    }
+    const map = new Map()
+    for (const row of Array.isArray(data) ? data : []) {
+      if (row?.is_absent) continue
+      const tnId = otuToTn.get(row.otu_id)
+      if (tnId == null) continue
+      const terr = normalizeShape(row.asserted_distribution_shape)
+      if (!terr) continue
+      if (!map.has(tnId)) map.set(tnId, new Set())
+      map.get(tnId).add(terr.key)
+    }
+    return map
+  } catch {
+    return new Map()
   }
 }
 

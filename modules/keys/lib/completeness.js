@@ -74,7 +74,8 @@ const authored = (d) => [String(d.name || ''), d.authorYear].filter(Boolean).joi
 // scope and target — each with its target-rank `members` marked included/missing and their
 // `synonyms`) and `ungrouped` (target taxa parented directly by the scope). Pure.
 export function buildCompletenessReport({
-  scopeRank, descendants, terminalTnIds, tnIdToOtuId = {}, outOfScopeTerminals = []
+  scopeRank, descendants, terminalTnIds, tnIdToOtuId = {}, outOfScopeTerminals = [],
+  geoScope = null
 }) {
   const descs = Array.isArray(descendants) ? descendants : []
   const termSet = new Set((terminalTnIds || []).filter((x) => x != null))
@@ -173,6 +174,57 @@ export function buildCompletenessReport({
     outOfScope,
     isComplete: missing.length === 0 && outOfScope.length === 0,
     groups,
-    ungrouped
+    ungrouped,
+    ...buildGeographic({ geoScope, targetTaxa, descs, termSet, isIncluded })
+  }
+}
+
+// The second, geography-scoped measure (design spec section 9). Returns
+// `{ geographic: {...} }` when a non-empty selection is supplied, else `{}` so
+// the report shape is unchanged when no filter is active.
+function buildGeographic({ geoScope, targetTaxa, descs, termSet, isIncluded }) {
+  const eff = geoScope && geoScope.effectiveKeys
+  if (!eff || typeof eff.size !== 'number' || eff.size === 0) return {}
+  const byTid =
+    geoScope.territoriesByTaxonId instanceof Map
+      ? geoScope.territoriesByTaxonId
+      : new Map()
+  const terrOf = (id) => byTid.get(id) || null
+  const intersects = (set) => {
+    for (const k of set) if (eff.has(k)) return true
+    return false
+  }
+  const alpha = (a, b) => a.localeCompare(b)
+
+  const inArea = []
+  const unknown = []
+  for (const d of targetTaxa) {
+    const set = terrOf(d.id)
+    if (!set || set.size === 0) unknown.push(d)
+    else if (intersects(set)) inArea.push(d)
+    // else: recorded, but outside the selection -> not part of this denominator
+  }
+  const missing = inArea.filter((d) => !isIncluded(d)).map(authored).sort(alpha)
+  const outOfAreaTerminals = descs
+    .filter((d) => termSet.has(d.id))
+    .filter((d) => {
+      const set = terrOf(d.id)
+      return set && set.size && !intersects(set)
+    })
+    .map(authored)
+    .sort(alpha)
+
+  return {
+    geographic: {
+      label: geoScope.label || '',
+      expectedCount: inArea.length,
+      keyedCount: inArea.filter(isIncluded).length,
+      missing,
+      unknownExpected: unknown.map(authored).sort(alpha),
+      outOfAreaTerminals,
+      // 0 of 0 (still loading distributions, or nothing recorded in the area) is
+      // not "complete".
+      isComplete: inArea.length > 0 && missing.length === 0
+    }
   }
 }

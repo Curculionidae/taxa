@@ -45,9 +45,10 @@ taxa_page:
 
   GBIF:
     label: 'GBIF'
+    # panel:gbif-taxon removed pending a redesign; the concept-alignment rebuild
+    # shipped with known correctness bugs (see the 2026-08-31 GBIF spec).
     panels:
-      - - - panel:gbif-taxon
-          - panel:gbif-images
+      - - - panel:gbif-images
           - panel:gbif-map
           - panel:gbif-type-specimens
 

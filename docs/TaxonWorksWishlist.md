@@ -24,3 +24,6 @@ Remaining text by Claude:
   Workaround for curators: after editing couplets, re-save the root lead.
 
 - **`/api/v1/taxon_names` `rank` param is scalar + rank-*group* inclusive (undocumented).** `rank=genus` returns genus AND subgenus rows; `rank=species` returns species + subspecies + variety + form. Repeated `rank=` params are last-one-wins (not an array). The keys module's completeness check works around this by issuing one rank-filtered request per distinct terminal rank and merging. A documented `rank[]` array + an exact-rank option would let it do a single call.
+
+## "is data depiction" on depictions
+where do I edit that?

@@ -10,6 +10,10 @@ import {
 } from '../utils'
 import { ASSERTED_ABSENT } from '@/constants/objectTypes'
 import { LEGEND } from '../constants'
+import {
+  classifyTypeStatus,
+  typeStatusLabels
+} from '../composables/enrichedStyle.js'
 
 function normalizeAbsentFeatures(arr) {
   arr.forEach((feature) => {
@@ -84,21 +88,11 @@ function collectionObjectIds(features) {
   return out
 }
 
-// Classify a free-text DwC typeStatus ("2 syntypes of Bothynoderes crotchi ...",
-// "Paralectotype", ...): 'primary' for a name-bearing type, 'other' for any
-// other kind of type material, null when it is not a type at all. The para-/iso-
-// forms are checked first so "paralectotype" is not read as "lectotype".
-function classifyTypeStatus(ts) {
-  const s = String(ts || '').toLowerCase()
-  if (!s) return null
-  if (/\b(para|iso|topo|allo|co)-?[a-z]*type/.test(s)) return 'other'
-  if (/\b(holo|lecto|neo|syn)-?type/.test(s)) return 'primary'
-  return 'other'
-}
-
 // Map<collectionObjectId, { kind: 'primary'|'other', statuses: string[] }> from
-// the OTU's DwC inventory. A specimen can be a type of more than one name, so
-// statuses accumulate; kind is 'primary' if any of them is name-bearing.
+// the OTU's DwC inventory. `statuses` holds the individual "<type> of <name>"
+// labels (a specimen can be a type of more than one name); `kind` is 'primary'
+// if any of them is name-bearing. Classification lives in enrichedStyle.js so
+// the marker/polygon styling and the popup can't drift apart.
 async function fetchTypeStatusByCoId(otuId, signal) {
   try {
     const { data } = await makeAPIRequest.get(
@@ -113,8 +107,8 @@ async function fetchTypeStatusByCoId(otuId, signal) {
       if (!kind) continue
       const id = r.dwc_occurrence_object_id
       const cur = byId.get(id) || { kind: 'other', statuses: [] }
-      if (r.typeStatus && !cur.statuses.includes(r.typeStatus)) {
-        cur.statuses.push(r.typeStatus)
+      for (const label of typeStatusLabels(r.typeStatus)) {
+        if (!cur.statuses.includes(label)) cur.statuses.push(label)
       }
       if (kind === 'primary') cur.kind = 'primary'
       byId.set(id, cur)

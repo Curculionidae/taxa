@@ -6,6 +6,45 @@
 
 const asArray = (base) => (Array.isArray(base) ? base : base == null ? [] : [base])
 
+// A DwC `typeStatus` cell is a " | "-joined list of "<type_type> of <name>"
+// labels (TaxonWorks builds it as `type_materials.map { label_for_type_material }
+// .join(' | ')`). Split it back into the individual labels.
+export function typeStatusLabels(cell) {
+  return String(cell || '')
+    .split(' | ')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+// Classify one "<type_type> of <name>" label:
+//   'primary' — a name-bearing type (holotype, lectotype, neotype, syntype, or
+//               the bare historical "type")
+//   'other'   — any other qualified type (paratype, isotype, topotype, ...)
+//   null      — the string names no type at all
+// The name-bearing forms are anchored with \b so "paralectotype" does not read
+// as "lectotype" (no word boundary between "para" and "lecto").
+export function classifyOneTypeStatus(label) {
+  const s = String(label || '').toLowerCase().trim()
+  if (!/type/.test(s)) return null
+  if (/\b(?:holo|lecto|neo|syn)-?types?\b/.test(s)) return 'primary'
+  if (/^(?:the\s+)?types?\b/.test(s)) return 'primary'
+  return 'other'
+}
+
+// Classify a whole DwC `typeStatus` cell. 'primary' wins over 'other'; null when
+// the cell names no type (or is empty).
+export function classifyTypeStatus(cell) {
+  const labels = typeStatusLabels(cell)
+  if (!labels.length) return null
+  let kind = null
+  for (const label of labels) {
+    const k = classifyOneTypeStatus(label)
+    if (k === 'primary') return 'primary'
+    if (k === 'other') kind = 'other'
+  }
+  return kind
+}
+
 // 'primary' | 'other' | null — the strongest type-material status among a
 // feature's CollectionObject bases, from the store's DwC-derived
 // Map<coId, { kind, statuses }>.

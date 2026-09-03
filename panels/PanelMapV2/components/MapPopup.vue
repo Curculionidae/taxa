@@ -2,7 +2,7 @@
   <div class="max-h-64 overflow-y-auto text-xs min-w-80">
     <ul>
       <li
-        v-for="(item, i) in items"
+        v-for="{ item, i } in rows"
         :key="i"
         class="py-2 last:border-0 border-b"
         :class="CLICKABLE_TYPES.includes(item.type) ? 'cursor-pointer text-secondary hover:underline' : ''"
@@ -100,11 +100,10 @@
           </div>
         </template>
 
-        <!-- TypeMaterial and other bare types. Skip a TypeMaterial entry when a
-             sibling CollectionObject in the same popup already carries its
-             DwC type status, to avoid showing "holotype of ..." twice. -->
+        <!-- TypeMaterial and other bare types. Redundant TypeMaterial rows are
+             already dropped from `rows` (see typeMaterialIsDuplicate). -->
         <span
-          v-else-if="!(item.type === TYPE_MATERIAL && siblingHasTypeStatus)"
+          v-else
           class="truncate [&_i]:italic"
           v-html="item.type === TYPE_MATERIAL ? formatTypeStatus(item.label) : escapeHtml(item.label)"
         />
@@ -163,10 +162,27 @@ function tagList(adId) {
 function typeStatusList(coId) {
   return props.typeStatusByCoId?.get?.(coId)?.statuses || []
 }
-const siblingHasTypeStatus = computed(() =>
-  props.items.some(
-    (it) => CLICKABLE_TYPES.includes(it.type) && typeStatusList(it.id).length
+// A TypeMaterial popup row is redundant only when another row in the SAME popup
+// is a CollectionObject that already renders the very same "<type> of <name>"
+// status (the DwC typeStatus string is built from the same label helper, so the
+// two match exactly). A blanket "any sibling has any status" check would wrongly
+// hide an unrelated type — several types georeferenced to one locality get
+// merged into a single popup.
+function typeMaterialIsDuplicate(item) {
+  if (item.type !== TYPE_MATERIAL) return false
+  return props.items.some(
+    (it) =>
+      CLICKABLE_TYPES.includes(it.type) && typeStatusList(it.id).includes(item.label)
   )
+}
+
+// items minus the redundant TypeMaterial rows, keeping each row's original index
+// so `targets[i]` still lines up. Filtering here (rather than with a v-if on the
+// row) keeps a suppressed row from leaving an empty bordered <li> behind.
+const rows = computed(() =>
+  props.items
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => !typeMaterialIsDuplicate(item))
 )
 
 function escapeHtml(s) {
@@ -180,7 +196,9 @@ function escapeHtml(s) {
 // "holotype of <i>Parexophthalmus vitiensis</i> Marshall, 1941"
 function formatTypeStatus(s) {
   const str = String(s || '')
-  const m = str.match(/^(.*? of )(.+)$/)
+  // split on the LAST " of " so a status like "one of the syntypes of Aus bus"
+  // still italicises only the trailing name
+  const m = str.match(/^(.* of )(.+)$/)
   if (!m) return escapeHtml(str)
   const { name, author } = splitName(m[2])
   return (

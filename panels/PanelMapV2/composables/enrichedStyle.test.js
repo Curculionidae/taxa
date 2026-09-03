@@ -6,6 +6,9 @@ import {
   enrichedPolygonStyleDelta,
   enrichedMarkerIconOptions,
   restyleEnriched,
+  classifyOneTypeStatus,
+  classifyTypeStatus,
+  typeStatusLabels,
   ADVENTIVE_HATCH_CLASS
 } from './enrichedStyle.js'
 
@@ -107,6 +110,65 @@ test('enrichedMarkerIconOptions: other marker uses the yellow disc class', () =>
 
 test('enrichedMarkerIconOptions: no kind keeps the package default marker', () => {
   assert.equal(enrichedMarkerIconOptions(null), null)
+})
+
+// --- type-status classification ------------------------------------------
+
+test('typeStatusLabels: splits a " | "-joined DwC typeStatus cell', () => {
+  assert.deepEqual(
+    typeStatusLabels('holotype of Aus bus Leach, 1817 | paratype of Aus bus Leach, 1817'),
+    ['holotype of Aus bus Leach, 1817', 'paratype of Aus bus Leach, 1817']
+  )
+  assert.deepEqual(typeStatusLabels(''), [])
+  assert.deepEqual(typeStatusLabels(null), [])
+})
+
+test('classifyOneTypeStatus: name-bearing types are primary', () => {
+  for (const t of ['holotype', 'lectotype', 'neotype', 'syntype', 'syntypes']) {
+    assert.equal(classifyOneTypeStatus(`${t} of Aus bus`), 'primary', t)
+  }
+})
+
+test('classifyOneTypeStatus: "paralectotype" is other, not lectotype', () => {
+  assert.equal(classifyOneTypeStatus('paralectotype of Aus bus'), 'other')
+  assert.equal(classifyOneTypeStatus('paraneotype of Aus bus'), 'other')
+})
+
+test('classifyOneTypeStatus: qualified types are other', () => {
+  for (const t of ['paratype', 'isotype', 'topotype', 'allotype', 'isosyntype']) {
+    assert.equal(classifyOneTypeStatus(`${t} of Aus bus`), 'other', t)
+  }
+})
+
+test('classifyOneTypeStatus: the bare historical "type" is primary', () => {
+  assert.equal(classifyOneTypeStatus('Type'), 'primary')
+  assert.equal(classifyOneTypeStatus('the type of Aus bus'), 'primary')
+})
+
+test('classifyOneTypeStatus: a string with no "type" word, or blank, is null', () => {
+  assert.equal(classifyOneTypeStatus('just a specimen'), null)
+  assert.equal(classifyOneTypeStatus('   '), null)
+  assert.equal(classifyOneTypeStatus(''), null)
+})
+
+test('classifyTypeStatus: primary wins across a compound cell', () => {
+  assert.equal(
+    classifyTypeStatus('Holotype, 2 paratypes of Aus bus'),
+    'primary'
+  )
+  assert.equal(
+    classifyTypeStatus('paratype of Aus bus | holotype of Cus dus'),
+    'primary'
+  )
+})
+
+test('classifyTypeStatus: other when nothing name-bearing is present', () => {
+  assert.equal(classifyTypeStatus('paratype of Aus bus | isotype of Aus bus'), 'other')
+})
+
+test('classifyTypeStatus: null for an empty or non-type cell', () => {
+  assert.equal(classifyTypeStatus(''), null)
+  assert.equal(classifyTypeStatus('just a specimen'), null)
 })
 
 // --- restyleEnriched -------------------------------------------------------

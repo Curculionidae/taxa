@@ -2,6 +2,17 @@
 
 Not a panel — no `main.js`, so the taxonpages panel loader ignores this directory (same convention as `panels/_gbifShared/`). Holds components shared by multiple panels, imported by relative path.
 
+## assertedDistributionTags.js
+
+`fetchAssertedDistributionTags(ids, { signal } = {})` → one batched `GET /tags?tag_object_type=AssertedDistribution&tag_object_id[]=…&per=500`, resolving to `Map<assertedDistributionId, keywordName[]>` (empty Map on error or empty input).
+
+**Depended on by:**
+
+| Panel | File | Use |
+|---|---|---|
+| PanelMapV2 | `../PanelMapV2/store/useDistributionStore.js` | popup keyword pills; an `Adventive` keyword also drives the hatched polygon styling |
+| PanelAssertedDistributions | `../PanelAssertedDistributions/PanelAssertedDistributions.vue` | yellow keyword pills in the area cell |
+
 ## DwcTable.vue
 
 Modal showing the full DarwinCore record for a CollectionObject or FieldOccurrence: institution (resolved to full name via GRSciColl), identification, collection event, location, coordinates (with OpenStreetMap link), biological associations, and associated media thumbnails. Fetches `/collection_objects/:id/dwc` or `/field_occurrences/:id/dwc`.

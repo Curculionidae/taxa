@@ -224,6 +224,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest.js'
+import { fetchAssertedDistributionTags } from '../_shared/assertedDistributionTags.js'
 function convertUrlsToLinks(text = '') {
   return text.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
 }
@@ -412,29 +413,6 @@ function shortCitation(body) {
   return `${authorsStr.split(',')[0].trim()} et al., ${year}`
 }
 
-// Tags on the AssertedDistribution records (keyword names), keyed by AD id.
-// One batched /tags call, mirrors fetchCitations.
-async function fetchTags(distributionIds) {
-  if (!distributionIds.length) return new Map()
-  const params = new URLSearchParams()
-  params.append('tag_object_type', 'AssertedDistribution')
-  distributionIds.forEach((id) => params.append('tag_object_id[]', id))
-  params.append('per', '500')
-  try {
-    const { data } = await makeAPIRequest.get(`/tags?${params.toString()}`)
-    const result = new Map()
-    for (const t of Array.isArray(data) ? data : []) {
-      const kw = t.keyword?.name
-      if (!kw) continue
-      if (!result.has(t.tag_object_id)) result.set(t.tag_object_id, [])
-      result.get(t.tag_object_id).push(kw)
-    }
-    return result
-  } catch {
-    return new Map()
-  }
-}
-
 async function fetchCitations(distributionIds) {
   if (!distributionIds.length) return new Map()
 
@@ -496,7 +474,7 @@ async function loadDistributions() {
     const allData = [...adData, ...synData]
     const [citationsMap, tagsMap] = await Promise.all([
       fetchCitations(allData.map((d) => d.id)),
-      fetchTags(allData.map((d) => d.id))
+      fetchAssertedDistributionTags(allData.map((d) => d.id))
     ])
 
     distributions.value = allData.map((item) =>

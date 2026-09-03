@@ -14,6 +14,7 @@ import {
   classifyTypeStatus,
   typeStatusLabels
 } from '../composables/enrichedStyle.js'
+import { fetchAssertedDistributionTags } from '../../_shared/assertedDistributionTags.js'
 
 function normalizeAbsentFeatures(arr) {
   arr.forEach((feature) => {
@@ -41,31 +42,6 @@ function sortFeaturesByType(arr, reference) {
   })
 }
 
-// Tags on the AssertedDistribution records shown on the map, keyed by AD id.
-// An "Adventive" tag also drives the hatched polygon rendering; the popup shows
-// every tag verbatim.
-async function fetchAdTags(adIds, signal) {
-  const ids = [...new Set(adIds)].filter(Boolean)
-  if (!ids.length) return new Map()
-  try {
-    const params = new URLSearchParams()
-    params.set('tag_object_type', 'AssertedDistribution')
-    ids.forEach((id) => params.append('tag_object_id[]', id))
-    params.set('per', '500')
-    const { data } = await makeAPIRequest.get(`/tags?${params}`, { signal })
-    const byId = new Map()
-    for (const t of Array.isArray(data) ? data : []) {
-      const kw = t.keyword?.name
-      if (!kw) continue
-      if (!byId.has(t.tag_object_id)) byId.set(t.tag_object_id, [])
-      byId.get(t.tag_object_id).push(kw)
-    }
-    return byId
-  } catch {
-    return new Map()
-  }
-}
-
 function assertedDistributionIds(features) {
   const out = []
   for (const f of features || []) {
@@ -77,29 +53,25 @@ function assertedDistributionIds(features) {
   return out
 }
 
-function collectionObjectIds(features) {
-  const out = []
-  for (const f of features || []) {
-    const base = f?.properties?.base
-    for (const b of Array.isArray(base) ? base : [base]) {
-      if (b?.type === 'CollectionObject' && b.id != null) out.push(b.id)
-    }
-  }
-  return out
-}
-
 // Map<collectionObjectId, { kind: 'primary'|'other', statuses: string[] }> from
 // the OTU's DwC inventory. `statuses` holds the individual "<type> of <name>"
 // labels (a specimen can be a type of more than one name); `kind` is 'primary'
 // if any of them is name-bearing. Classification lives in enrichedStyle.js so
 // the marker/polygon styling and the popup can't drift apart.
+//
+// The whole inventory is fetched (not a per-CO lookup): "other type material"
+// (paratypes, ...) is absent from distribution.geojson, which only carries
+// primary types of valid names, so there is no on-map id list to filter by, and
+// /otus/:id/inventory/dwc.json takes no CO-id filter. PanelSpecimenOccurrences
+// and PanelBiologicalAssociationsV2 fetch the same endpoint; a shared cross-panel
+// cache would be the real fix and is left for later.
 async function fetchTypeStatusByCoId(otuId, signal) {
   try {
     const { data } = await makeAPIRequest.get(
       `/otus/${otuId}/inventory/dwc.json`,
       { signal }
     )
-    const rows = data?.data || data?.rows || (Array.isArray(data) ? data : [])
+    const rows = Array.isArray(data) ? data : []
     const byId = new Map()
     for (const r of rows) {
       if (r?.dwc_occurrence_object_type !== 'CollectionObject') continue
@@ -227,7 +199,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     // tear the layer group down and rebuild it).
     async enrichFeatures(features, otuId, signal) {
       const [tagsByAd, typeByCo] = await Promise.all([
-        fetchAdTags(assertedDistributionIds(features), signal),
+        fetchAssertedDistributionTags(assertedDistributionIds(features), { signal }),
         fetchTypeStatusByCoId(otuId, signal)
       ])
       if (signal?.aborted) return

@@ -138,7 +138,7 @@
         class="opacity-60 my-1"
       >{{ image.attribution.label }}</div>
       <div
-        v-else-if="!displayCitations.length && !image.source?.label"
+        v-else-if="citationsResolved && !displayCitations.length && !image.source?.label"
         class="opacity-60 my-1 italic"
       >attribution missing</div>
 
@@ -162,8 +162,12 @@
         v-html="image.source.label"
       />
 
-      <!-- Thumbnail strip -->
-      <div class="flex flex-row overflow-x-auto justify-center gap-1.5 mt-2 pb-2">
+      <!-- Thumbnail strip: only when there is more than one image to move
+           between (a single-image viewer has nothing to navigate). -->
+      <div
+        v-if="images.length > 1"
+        class="flex flex-row overflow-x-auto justify-center gap-1.5 mt-2 pb-2"
+      >
         <div
           v-for="(img, i) in images"
           :key="img.id"
@@ -423,6 +427,17 @@ const displayCitations = computed(() => {
   if (Array.isArray(img.citations) && img.citations.length) return img.citations
   const id = twImageId(img)
   return (id && citationCache[id]) || []
+})
+
+// Has the citation lookup for this image actually finished? Used to hold back
+// the "attribution missing" line until we know whether a citation exists — an
+// image may carry a citation instead of an attribution, and that is fine.
+const citationsResolved = computed(() => {
+  const img = image.value
+  if (Array.isArray(img.citations)) return true // caller supplied the set
+  const id = twImageId(img)
+  if (!id) return true // nothing fetchable — we are done looking
+  return Array.isArray(citationCache[id])
 })
 
 // Extract the description embedded in an OTU label after ': ', stripping the trailing

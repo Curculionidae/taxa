@@ -132,21 +132,28 @@
         >{{ image.caption }}</div>
       </div>
 
-      <!-- Attribution + citations (image-level) -->
-      <div class="opacity-60 my-1">
-        <span v-if="image.attribution?.label">{{ image.attribution.label }}</span>
-        <span
-          v-else-if="!displayCitations.length"
-          class="italic"
-        >attribution missing</span>
-        <span
+      <!-- Attribution (image-level) -->
+      <div
+        v-if="image.attribution?.label"
+        class="opacity-60 my-1"
+      >{{ image.attribution.label }}</div>
+      <div
+        v-else-if="!displayCitations.length && !image.source?.label"
+        class="opacity-60 my-1 italic"
+      >attribution missing</div>
+
+      <!-- Citation(s): the short reference, clickable to open the full reference -->
+      <div
+        v-if="displayCitations.length"
+        class="opacity-60 my-1"
+      >{{ displayCitations.length > 1 ? 'Citations:' : 'Citation:' }}<button
           v-for="cit in displayCitations"
           :key="cit.id"
+          type="button"
           class="ml-1 text-secondary hover:underline cursor-pointer"
           @click="activeCitation = cit"
           v-html="cit.citation_source_body"
-        />
-      </div>
+        /></div>
 
       <!-- Source -->
       <div
@@ -179,20 +186,22 @@
       @close="onDwcTableClose"
     />
 
-    <Teleport to="body">
-      <VModal
-        v-if="activeCitation"
-        @close="activeCitation = null"
-      >
-        <template #header>
-          <div class="text-sm font-medium">Reference</div>
-        </template>
-        <div
-          class="px-4 pb-4 text-sm leading-relaxed"
-          v-html="activeCitation.source?.cached || activeCitation.citation_source_body"
-        />
-      </VModal>
-    </Teleport>
+    <!-- Reference detail. A direct child, NOT teleported: VModal's own overlay is
+         only z-[2000], so from <body> it would sit behind this z-[10000] viewer.
+         Inside the viewer's stacking context it paints on top (same as DwcTable). -->
+    <VModal
+      v-if="activeCitation"
+      aria-label="Reference"
+      @close="closeCitation"
+    >
+      <template #header>
+        <div class="text-sm font-medium">Reference</div>
+      </template>
+      <div
+        class="px-4 pb-4 text-sm leading-relaxed"
+        v-html="activeCitation.source?.cached || activeCitation.citation_source_body"
+      />
+    </VModal>
   </div>
 </template>
 
@@ -530,12 +539,18 @@ function onDwcTableClose() {
   document.body.classList.add('overflow-hidden')
 }
 
+function closeCitation() {
+  activeCitation.value = null
+  // VModal cleared `overflow-hidden` on unmount; this viewer is still up.
+  document.body.classList.add('overflow-hidden')
+}
+
 // Capture phase so this runs before VModal's bubble-phase keydown listener: when a
 // DwcTable modal is stacked *under* this viewer (its media strip), Escape closes
-// only this viewer, not both. When a DwcTable is stacked *over* this viewer (the ⓘ
-// button), dwcTableOpen is set and we bail so that modal handles its own keys.
+// only this viewer, not both. When a modal is stacked *over* this viewer (the ⓘ
+// button's DwcTable, or the reference modal), we bail so that modal owns its keys.
 function handleKeydown(e) {
-  if (dwcTableOpen.value) return
+  if (dwcTableOpen.value || activeCitation.value) return
   if (e.key === 'Escape') {
     e.stopImmediatePropagation()
     emit('close')

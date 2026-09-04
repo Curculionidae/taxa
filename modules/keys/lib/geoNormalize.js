@@ -159,8 +159,18 @@ export function normalizeShape(shape) {
   // 3. An explicit ISO wins.
   if (iso) return { key: iso, label: countryName(iso) || name }
 
-  // 4. The shape's own name is a country.
-  const byName = nameToIso(name)
+  // 4. The shape's own name is a country -- but not when the shape is a
+  //    sub-national GADM / Natural Earth unit that merely shares a name with an
+  //    unrelated country (the municipality of "Albania" in Caqueta, Colombia;
+  //    the Shire of "Denmark" in Western Australia; the US state of "Georgia").
+  //    Those carry GADM hierarchy pointers to a level-0 country that is not the
+  //    shape itself; a genuine country record has level0_id null or equal to
+  //    its own id. Step 5 still gets a chance to resolve them via the parent.
+  const isSubnational =
+    (shape.level0_id != null && shape.level0_id !== shape.id) ||
+    shape.level1_id != null ||
+    shape.level2_id != null
+  const byName = isSubnational ? null : nameToIso(name)
   if (byName) return { key: byName, label: countryName(byName) }
 
   // 5. The parent is a country (TDWG Level 4, subdivision shapes).

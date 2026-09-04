@@ -83,7 +83,16 @@ lowercase slug (`russia-european`, `west-siberia`).
 3. `iso_3166_a2` present → `{ key: ISO2, label: countryName(ISO2) ?? name }`.
 4. name resolves in the country-name map (`nameToIso`) → that ISO2 (handles
    `"Italy"` as a TDWG L3 name, `"Ukraine"` when ISO is missing, ISO-bearing
-   gazetteers named for a country).
+   gazetteers named for a country). **Skipped when the shape is a sub-national
+   GADM / Natural Earth unit that merely shares a name with an unrelated
+   country** (e.g. the municipality of `"Albania"` in Caquetá, Colombia; the
+   Shire of `"Denmark"`, Western Australia; the US state of `"Georgia"`).
+   Detected by GADM hierarchy pointers: `level0_id` present and not equal to the
+   shape's own `id`, or `level1_id` / `level2_id` present (a genuine country
+   record has `level0_id` null or equal to its own `id`).
+   Such shapes fall through to step 5, so `"Georgia"` / parent
+   `"United States of America"` still resolves (to `US`), while `"Albania"` /
+   parent `"Caquetá"` becomes `null`.
 5. `parent.name` resolves in the country-name map → that ISO2 (handles TDWG L4
    `"Austria"` / parent `"Austria"`, `"Baden-Württemberg"` / parent `"Germany"`).
 6. otherwise `null` (`"Caucasus"`, `"Illyria"`, `"Eastern Europe"`).

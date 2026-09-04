@@ -145,6 +145,106 @@ test('TDWG Level 3 whose name is itself a country resolves by name', () => {
   )
 })
 
+// A GADM / Natural Earth sub-national unit can carry the exact name of an
+// unrelated sovereign state. It must not be mistaken for that country: it
+// carries GADM hierarchy pointers (level0_id / level1_id / level2_id) to a
+// level-0 country that is not itself. Real captures from project 40's
+// asserted distributions.
+
+test('GADM municipality named like a country, parent not a country -> null', () => {
+  // GeographicArea 6771: the municipality of "Albania" in Caqueta, Colombia.
+  assert.equal(
+    normalizeShape({
+      name: 'Albania',
+      geographic_area_type: { name: 'Municipality' },
+      iso_3166_a2: null,
+      data_origin: 'gadm',
+      level0_id: 50,
+      level1_id: 5832,
+      level2_id: 6771,
+      id: 6771,
+      parent: { name: 'Caquetá' }
+    }),
+    null
+  )
+})
+
+test('sub-national unit named like a country resolves to its real parent country', () => {
+  // GeographicArea 33457: the US state of "Georgia" (Natural Earth), NOT the
+  // Caucasus country GE.
+  assert.deepEqual(
+    normalizeShape({
+      name: 'Georgia',
+      geographic_area_type: { name: 'State' },
+      iso_3166_a2: null,
+      data_origin: 'ne_states',
+      level0_id: 33412,
+      level1_id: null,
+      level2_id: null,
+      id: 33457,
+      parent: { name: 'United States of America' }
+    }),
+    { key: 'US', label: 'United States' }
+  )
+})
+
+test('GADM shire named like a country, parent not a country -> null', () => {
+  // GeographicArea 3859: the Shire of "Denmark" in Western Australia.
+  assert.equal(
+    normalizeShape({
+      name: 'Denmark',
+      geographic_area_type: { name: 'Shire' },
+      iso_3166_a2: null,
+      data_origin: 'gadm',
+      level0_id: 15,
+      level1_id: 307,
+      level2_id: 3859,
+      id: 3859,
+      parent: { name: 'Western Australia' }
+    }),
+    null
+  )
+})
+
+test('GADM district whose parent IS the eponymous country still resolves (step 5)', () => {
+  // GeographicArea 8051: a district of Djibouti. Flagged sub-national at step 4,
+  // but the parent name carries it.
+  assert.deepEqual(
+    normalizeShape({
+      name: 'Djibouti',
+      geographic_area_type: { name: 'District' },
+      iso_3166_a2: null,
+      data_origin: 'gadm',
+      level0_id: 63,
+      level1_id: 8050,
+      level2_id: 8051,
+      id: 8051,
+      parent: { name: 'Djibouti' }
+    }),
+    { key: 'DJ', label: 'Djibouti' }
+  )
+})
+
+test('Natural Earth country record (no iso, level0_id === id) still resolves by name', () => {
+  // GeographicArea 24651 "Syria" etc.: NE country rows in this project carry no
+  // iso_3166_a2 but level0_id equal to their own id. The sub-national guard
+  // must not suppress them.
+  assert.deepEqual(
+    normalizeShape({
+      name: 'Syria',
+      geographic_area_type: { name: 'Country' },
+      iso_3166_a2: null,
+      data_origin: 'ne_countries',
+      level0_id: 24651,
+      level1_id: null,
+      level2_id: null,
+      id: 24651,
+      parent: { name: 'Earth' }
+    }),
+    { key: 'SY', label: 'Syria' }
+  )
+})
+
 test('gazetteer with no iso and a non-country name -> null', () => {
   assert.equal(
     normalizeShape({

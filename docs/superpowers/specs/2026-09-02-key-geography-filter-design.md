@@ -143,14 +143,37 @@ Neotropical) are later one-entry additions.
 - `unknownOtuIds: Ref<Set<otuId>>` terminals with no resolved territory yet
 - `loading: Ref<boolean>`
 
-Flow: one batched `/asserted_distributions?otu_id[]=...` call, drop `is_absent`,
-normalize each shape, populate the map. Then fire the per-terminal
-`/otus/:id/inventory/dwc.json` calls with bounded concurrency; normalize each
-`country` string and merge the results in reactively, so `allTerritories` grows
-and `unknownOtuIds` shrinks as specimen data arrives. Every call is guarded
-against stale key navigation (a load generation counter, the pattern already in
-`KeyView.vue`). Any single failure is tolerated (that terminal simply has fewer
-territories); a total AD failure leaves `allTerritories` specimen-only or empty.
+Flow:
+
+1. Resolve each terminal OTU to its taxon-name id + rank
+   (`/otus?otu_id[]=…`, `/taxon_names?taxon_name_id[]=…`).
+2. One batched `/asserted_distributions?otu_id[]=…` for ADs stated directly on
+   the terminals; drop `is_absent`, normalize each shape, populate the map.
+3. For every terminal **above species rank** (`lib/geoScope.js#needsDescendantAd`),
+   `/asserted_distributions?taxon_name_id[]=<tn>&descendants=true`. Each such
+   query fetches page 1 to read `Pagination-Total(-Pages)`, then pages 2..N
+   concurrently. No page cap that matters (200-page safety ceiling; Curculionidae,
+   the worst real case, is 49). This is cheap to page — a normal indexed query,
+   unlike `/inventory/dwc.json`.
+4. **Specimen countries** — `/otus/:id/inventory/dwc.json` per terminal, but
+   only where that call is cheap: species terminals, name-less informal OTUs,
+   and genus/subgenus terminals whose descendant-AD total (from step 3) is under
+   `LARGE_TAXON_AD_TOTAL`. A family/tribe or giant-genus terminal is skipped —
+   step 3 already covers it, and its inventory call is ~100 MB / minutes
+   (the endpoint rebuilds the whole DWC set server-side on every request, so
+   there is no cheap size probe). See `lib/geoScope.js#needsSpecimenPass`.
+
+Results merge in reactively, so `allTerritories` grows and `unknownOtuIds`
+shrinks as data arrives. Every call is guarded against stale key navigation (a
+load generation counter, the pattern already in `KeyView.vue`). Any single
+failure is tolerated (that terminal simply has fewer territories); a total AD
+failure leaves `allTerritories` specimen-only or empty.
+
+Measured cost of a cold scope of the pathological key 5024 ("Key to Families of
+Weevils", 11 family/subfamily terminals, Curculionidae among them): **~50–65 s,
+~96 MB**, versus ~283 s / ~160 MB with a serial 25-page cap that also dropped
+~half of Curculionidae's 48 391 descendant ADs. A genus- or tribe-scoped key is
+1–3 s. Deferred until the picker opens and cached for the session either way.
 
 ## 7. Selection state and persistence
 

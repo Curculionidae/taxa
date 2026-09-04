@@ -3,8 +3,14 @@
 // Given the key's terminal OTU ids it resolves, on first demand (ensureLoaded):
 //   0. terminal OTU -> taxon-name id + rank
 //   1. asserted distributions stated directly on the terminal OTUs (paged)
-//   2. for terminals above species rank, descendant asserted distributions (paged)
-//   3. GET /otus/:id/inventory/dwc.json per terminal for specimen countries
+//   2. for terminals above species rank, descendant asserted distributions —
+//      page 1 first (to read the total), then pages 2..N in parallel
+//   3. GET /otus/:id/inventory/dwc.json for specimen countries, but ONLY for
+//      terminals where that call is cheap (species, small informal OTUs, and
+//      genus/subgenus terminals that aren't huge) — see lib/geoScope.js. A
+//      family/tribe or giant-genus terminal is covered by step 2 alone; its
+//      inventory call would be ~100 MB / minutes for a few specimen-only
+//      countries.
 // normalising every shape / country string with lib/geoNormalize.js.
 //
 // Nothing is fetched until ensureLoaded() is called (the picker opening, or a
@@ -15,12 +21,17 @@
 import { ref, computed, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import { normalizeShape, normalizeCountryString } from '../lib/geoNormalize.js'
-import { rankIndex, RANK_ORDER } from '../lib/completeness.js'
+import { needsDescendantAd, needsSpecimenPass } from '../lib/geoScope.js'
 
 const DWC_CONCURRENCY = 6
 const AD_PER = 1000
-const AD_MAX_PAGES = 25
-const SPECIES_IDX = RANK_ORDER.indexOf('species')
+// Safety ceiling only — a real key terminal is far under this. Curculionidae,
+// the worst case seen, is 49 pages.
+const AD_MAX_PAGES = 200
+// Pages 2..N of one AD query, fetched concurrently. Nested inside step 2's
+// per-terminal pool, but in practice only one terminal per key is large, so the
+// effective width for that terminal is ~this. AD pages are light indexed reads.
+const AD_PAGE_CONCURRENCY = 6
 const SPECIMEN_TYPES = new Set(['CollectionObject', 'FieldOccurrence'])
 
 // An asserted_distributions row links to its OTU via
@@ -31,27 +42,39 @@ function adOtuId(row) {
     : null
 }
 
-// A key terminal above species rank (a genus, tribe, ...) rarely carries an
-// asserted distribution of its own; its species do.
-function isHigherRank(rank) {
-  const i = rankIndex(rank)
-  return i >= 0 && i < SPECIES_IDX
-}
-
-// GET /asserted_distributions, following pages until a short one. The endpoint
-// has no rank filter to split on, so a big scope really can exceed one page.
+// GET /asserted_distributions for baseParams — every page. Page 1 is fetched to
+// learn the count (Pagination-Total / -Total-Pages headers); pages 2..N then run
+// in a pool. Paging this endpoint is cheap (a normal indexed query), unlike
+// /inventory/dwc.json. Returns { rows, total }.
 async function fetchAllAD(baseParams) {
-  const out = []
-  for (let page = 1; page <= AD_MAX_PAGES; page++) {
+  const pageUrl = (page) => {
     const q = new URLSearchParams(baseParams)
     q.set('per', String(AD_PER))
     q.set('page', String(page))
-    const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
-    const rows = Array.isArray(data) ? data : []
-    out.push(...rows)
-    if (rows.length < AD_PER) break
+    return `/asserted_distributions?${q}`
   }
-  return out
+
+  const first = await makeAPIRequest.get(pageUrl(1))
+  const rows = Array.isArray(first.data) ? [...first.data] : []
+  const total =
+    parseInt(first.headers?.['pagination-total'] || '', 10) || rows.length
+  const totalPages = Math.min(
+    parseInt(first.headers?.['pagination-total-pages'] || '1', 10) || 1,
+    AD_MAX_PAGES
+  )
+
+  if (totalPages > 1) {
+    const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+    await mapPool(pages, AD_PAGE_CONCURRENCY, async (page) => {
+      try {
+        const { data } = await makeAPIRequest.get(pageUrl(page))
+        if (Array.isArray(data)) rows.push(...data)
+      } catch {
+        /* a dropped page just loses some territories */
+      }
+    })
+  }
+  return { rows, total }
 }
 
 async function mapPool(items, limit, fn) {
@@ -133,7 +156,11 @@ export function useKeyGeography(terminalListRef) {
     // 0. terminal OTU -> taxon-name id + rank
     const otuToTn = new Map()
     otuToTnRef.value = new Map()
+    const rankByTn = new Map()
     const higherRankOtus = []
+    // step 2 fills this: terminal otuId -> its descendant-AD Pagination-Total,
+    // the "how big is this taxon" signal step 3 gates on.
+    const adTotalByOtu = new Map()
     try {
       const q = new URLSearchParams()
       otuIds.forEach((id) => q.append('otu_id[]', id))
@@ -151,11 +178,9 @@ export function useKeyGeography(terminalListRef) {
         tq.set('per', '1000')
         const { data: tns } = await makeAPIRequest.get(`/taxon_names?${tq}`)
         if (myGen !== gen) return
-        const rankByTn = new Map(
-          (Array.isArray(tns) ? tns : []).map((t) => [t.id, t.rank])
-        )
+        for (const t of Array.isArray(tns) ? tns : []) rankByTn.set(t.id, t.rank)
         for (const [otuId, tnId] of otuToTn) {
-          if (isHigherRank(rankByTn.get(tnId))) higherRankOtus.push(otuId)
+          if (needsDescendantAd(rankByTn.get(tnId))) higherRankOtus.push(otuId)
         }
       }
     } catch {
@@ -166,7 +191,7 @@ export function useKeyGeography(terminalListRef) {
     try {
       const base = new URLSearchParams()
       otuIds.forEach((id) => base.append('otu_id[]', id))
-      const rows = await fetchAllAD(base)
+      const { rows } = await fetchAllAD(base)
       if (myGen !== gen) return
       for (const row of rows) {
         if (row?.is_absent) continue
@@ -185,8 +210,9 @@ export function useKeyGeography(terminalListRef) {
         const base = new URLSearchParams()
         base.append('taxon_name_id[]', tnId)
         base.set('descendants', 'true')
-        const rows = await fetchAllAD(base)
+        const { rows, total } = await fetchAllAD(base)
         if (myGen !== gen) return
+        adTotalByOtu.set(otuId, total)
         for (const row of rows) {
           if (row?.is_absent) continue
           if (row.asserted_distribution_object_type !== 'Otu') continue
@@ -199,10 +225,21 @@ export function useKeyGeography(terminalListRef) {
     if (myGen !== gen) return
     bump()
 
-    // 3. specimen countries, per terminal. dwc.json also returns
-    //    AssertedDistribution rows (individualCount null) — allow-list the two
-    //    specimen types so this pass really is specimen-only.
-    await mapPool(otuIds, DWC_CONCURRENCY, async (otuId) => {
+    // 3. specimen countries. dwc.json also returns AssertedDistribution rows
+    //    (individualCount null) — allow-list the two specimen types so this pass
+    //    is specimen-only. Skip terminals where the call is expensive
+    //    (family/tribe, or a giant genus): step 2 already covers them, and the
+    //    inventory endpoint rebuilds the whole DWC set server-side per request
+    //    so there is no cheap way to probe size first.
+    const specimenOtus = otuIds.filter((otuId) => {
+      const tnId = otuToTn.get(otuId)
+      return needsSpecimenPass({
+        rank: tnId == null ? undefined : rankByTn.get(tnId),
+        hasName: tnId != null,
+        adTotal: adTotalByOtu.get(otuId) || 0
+      })
+    })
+    await mapPool(specimenOtus, DWC_CONCURRENCY, async (otuId) => {
       try {
         const { data } = await makeAPIRequest.get(
           `/otus/${otuId}/inventory/dwc.json`

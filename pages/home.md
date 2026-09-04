@@ -18,12 +18,7 @@ project: "TaxonPages: Curculionidae of the World"
   </a>
 </div>
 
-
-  <div style="text-align: center; margin-top: 1rem;">
-    <span style="font-weight: 700;">Valid Species:</span> <ValidSpeciesCount/>; 
-    <ProjectStats :data="['Taxon names', 'Collection objects', 'Images', 'Biological associations']" class="capitalize"></ProjectStats>
-  </div>
-</div>
+<ProjectStatsStrip />
 
 <div class="mx-auto flex flex-col items-center mt-6 sm:mt-10 w-full ">
       <autocomplete-otu class="w-full sm:w-96 text-base-content ml-2 sm:ml-0" placeholder="Search by taxon name" autofocus/>
@@ -39,3 +34,4 @@ project: "TaxonPages: Curculionidae of the World"
     just send us an email at 
     <a href="mailto:WeevilWorkers@gmail.com" style="text-decoration: underline;">WeevilWorkers@gmail.com</a>.
   </p>
+</div>

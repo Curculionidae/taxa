@@ -198,8 +198,8 @@
         <div class="text-sm font-medium">Reference</div>
       </template>
       <div
-        class="px-4 pb-4 text-sm leading-relaxed"
-        v-html="activeCitation.source?.cached || activeCitation.citation_source_body"
+        class="px-4 pb-4 text-sm leading-relaxed [&_a]:text-secondary [&_a]:hover:underline"
+        v-html="sanitizeAndLinkifyHtml(activeCitation.source?.cached || activeCitation.citation_source_body || '')"
       />
     </VModal>
   </div>
@@ -210,6 +210,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, defineAsyncComp
 import ControlImageNext from '@/components/ImageViewer/ControlImageNext.vue'
 import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.vue'
 import { makeAPIRequest } from '@/utils/request'
+import { sanitizeAndLinkifyHtml } from '@/utils'
 import { fetchImageCitations, imageIdFromOriginalPng } from './imageCitations.js'
 
 // Async both ways: DwcTable imports this file back (its media strip opens this

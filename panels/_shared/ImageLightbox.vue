@@ -146,7 +146,7 @@
       <div
         v-if="displayCitations.length"
         class="opacity-60 my-1"
-      >{{ displayCitations.length > 1 ? 'Citations:' : 'Citation:' }}<button
+      >{{ displayCitations.length > 1 ? 'Image citations:' : 'Image citation:' }}<button
           v-for="cit in displayCitations"
           :key="cit.id"
           type="button"

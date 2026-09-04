@@ -51,6 +51,37 @@ ignored (total stays 51 426 with or without it). All geo filtering is client-sid
 country-directory endpoint. Not needed: the country list is built from the `name` /
 `iso_3166_a2` on the shapes we already fetch.
 
+### Higher-taxon terminals — DwC inventory rolls up descendants (verified 2026-09-04)
+
+TaxonWorks staff confirmed: **there is no periodically-updated per-OTU distribution index**.
+The only aggregate is the cached map/shape (`distribution.json` → `cached_map.geo_json`), which
+is dissolved geometry with zero attributes — you cannot read countries off it (see
+`memory/reference_cached_map_aggregate.md`). Staff's suggested proxy: *"the DwC acts as a
+proxy of sorts, as you could quickly query it and get the countries."*
+
+Tested — it works and is better than the per-terminal AD call:
+
+`GET /otus/<genusOtuId>/inventory/dwc.json` **rolls up every descendant's occurrences in one
+call.** Genus OTU 732685 (Adosomus) → 75 rows spanning 7 descendant species; the 36 rows of
+species OTU 732686 are a subset. Rows carry the plain DwC `country` string and both
+`AssertedDistribution` and `CollectionObject` / `FieldOccurrence` in
+`dwc_occurrence_object_type`. No pagination params, full set returned (~0.37 s for 75 rows).
+
+Consequences:
+- A genus / subgenus couplet target needs **one call, no descendant walk** — and it brings
+  specimen-derived countries for free, not just curated ADs.
+- This supersedes the "one `asserted_distributions?taxon_name_id[]=<TN>&descendants=true` call
+  per higher terminal" path — use the DwC inventory instead.
+- Trade-off: a very large genus returns thousands of rows in that one response. Still one
+  request; fetch lazily per higher terminal.
+- Species that have **no** distribution data at all don't appear in the rollup. For the
+  *taxonomic* completeness side ("are all species of the genus keyed?") you still need the
+  nomenclature call (`taxon_names` descendants); the DwC rollup only answers "which species
+  occur where". The two completeness checks stay separate queries.
+- Same shape → country normalization problem as below (the DwC `country` string is already
+  normalized to country level, so region-level ADs like "Caucasus" collapse to their member
+  countries or drop out — simpler, but lossy).
+
 ## The hard part — shape → country normalization
 
 One OTU (732686) carries ADs at four different granularities at once:

@@ -144,8 +144,9 @@ const lightboxItems = computed(() =>
   items.value.map((f, i) => ({
     ...f,
     // A key's own lead figure has no `id`; recover it from `original_png` so the
-    // lightbox can look up the image's citations.
-    id: f.id ?? figureImageId(f) ?? i,
+    // lightbox can look up the image's citations. The `fig${i}` fallback is a
+    // string on purpose — a bare index would be read as a TaxonWorks image id.
+    id: f.id ?? figureImageId(f) ?? `fig${i}`,
     original: lightboxSrc(f),
     thumb: f.thumb || f.medium || '',
     figure_label: f.figure_label || '',

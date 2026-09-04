@@ -19,6 +19,8 @@
 //                  own heading from `depictions`
 // - `sourceTag`  → 'TaxonWorks' | 'iNaturalist', for LeadFigures' one-line strip
 
+import { imageIdFromOriginalPng } from '../../../panels/_shared/imageCitations.js'
+
 const TOKEN =
   (typeof __APP_ENV__ !== 'undefined' && __APP_ENV__.project_token) || ''
 const API_URL = (typeof __APP_ENV__ !== 'undefined' && __APP_ENV__.url) || ''
@@ -85,11 +87,11 @@ export function pickPreview(list, n = 3) {
 
 // The numeric TW image id from a lead figure's `original_png`
 // ("/api/v1/images/<id>/scale_to_box/…"), or null. A lead's `figures[]` from
-// `/leads/key/:id` carry no `id` field, so this is the only handle on the image
-// (e.g. for ImageLightbox's citation lookup).
+// `/leads/key/:id` carry no `id` field, so this is the only handle on the image.
+// Delegates to the shared parser so this id and ImageLightbox's citation-lookup
+// id (imageIdFromOriginalPng, same call) can never diverge.
 export function figureImageId(fig) {
-  const m = String(fig?.original_png || '').match(/\/images\/(\d+)/)
-  return m ? Number(m[1]) : null
+  return imageIdFromOriginalPng(fig?.original_png)
 }
 
 // Stable identity for a lead figure — the underlying image, ignoring per-lead

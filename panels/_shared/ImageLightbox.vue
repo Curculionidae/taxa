@@ -272,10 +272,16 @@ const otuValidCache = reactive({})
 const citationCache = reactive({})
 
 // An iNaturalist / GBIF photo has no TW citation record; its numeric `id` is a
-// foreign id and must not be used to query /citations.
+// foreign id and must not be used to query /citations. The synthetic images
+// PanelGallery / PaneliNaturalist build set `sourceTag`, or a `source.label`
+// that *is* an anchor to the site — match the `href`, not the bare domain, so a
+// real TW reference whose text ends "Available at https://www.inaturalist.org/…"
+// is not mistaken for one.
 function isExternalImage(img) {
   if (img?.sourceTag && img.sourceTag !== 'TaxonWorks') return true
-  return /inaturalist\.org|gbif\.org/i.test(img?.source?.label || '')
+  return /<a\s[^>]*href="[^"]*(?:inaturalist\.org|gbif\.org)/i.test(
+    img?.source?.label || ''
+  )
 }
 
 // The TaxonWorks image id: from `original_png` (the field that still carries it

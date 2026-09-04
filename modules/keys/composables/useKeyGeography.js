@@ -28,10 +28,12 @@ const AD_PER = 1000
 // Safety ceiling only — a real key terminal is far under this. Curculionidae,
 // the worst case seen, is 49 pages.
 const AD_MAX_PAGES = 200
-// Pages 2..N of one AD query, fetched concurrently. Nested inside step 2's
-// per-terminal pool, but in practice only one terminal per key is large, so the
-// effective width for that terminal is ~this. AD pages are light indexed reads.
-const AD_PAGE_CONCURRENCY = 6
+// Pages of one AD query fetched together. Bounded against step 2's per-terminal
+// pool (AD_TERMINAL_CONCURRENCY) so peak parallel AD requests ≈ the product.
+const AD_PAGE_CONCURRENCY = 5
+// Higher-rank terminals processed at once in step 2. Low, because fetchAllAD
+// already parallelises each terminal's own pages.
+const AD_TERMINAL_CONCURRENCY = 3
 const SPECIMEN_TYPES = new Set(['CollectionObject', 'FieldOccurrence'])
 
 // An asserted_distributions row links to its OTU via
@@ -42,10 +44,11 @@ function adOtuId(row) {
     : null
 }
 
-// GET /asserted_distributions for baseParams — every page. Page 1 is fetched to
-// learn the count (Pagination-Total / -Total-Pages headers); pages 2..N then run
-// in a pool. Paging this endpoint is cheap (a normal indexed query), unlike
-// /inventory/dwc.json. Returns { rows, total }.
+// GET /asserted_distributions for baseParams — every page, a batch at a time so
+// pages come back in parallel. Stops at the first short page (or a page error),
+// so correctness does not depend on the Pagination headers. Paging this endpoint
+// is cheap (a normal indexed query), unlike /inventory/dwc.json.
+// Returns { rows, total } where total is the real fetched row count.
 async function fetchAllAD(baseParams) {
   const pageUrl = (page) => {
     const q = new URLSearchParams(baseParams)
@@ -56,25 +59,36 @@ async function fetchAllAD(baseParams) {
 
   const first = await makeAPIRequest.get(pageUrl(1))
   const rows = Array.isArray(first.data) ? [...first.data] : []
-  const total =
-    parseInt(first.headers?.['pagination-total'] || '', 10) || rows.length
-  const totalPages = Math.min(
-    parseInt(first.headers?.['pagination-total-pages'] || '1', 10) || 1,
-    AD_MAX_PAGES
-  )
-
-  if (totalPages > 1) {
-    const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-    await mapPool(pages, AD_PAGE_CONCURRENCY, async (page) => {
-      try {
-        const { data } = await makeAPIRequest.get(pageUrl(page))
-        if (Array.isArray(data)) rows.push(...data)
-      } catch {
-        /* a dropped page just loses some territories */
+  let done = rows.length < AD_PER
+  let next = 2
+  while (!done && next <= AD_MAX_PAGES) {
+    const batch = []
+    for (
+      let p = next;
+      p < next + AD_PAGE_CONCURRENCY && p <= AD_MAX_PAGES;
+      p++
+    ) {
+      batch.push(p)
+    }
+    const parts = await Promise.all(
+      batch.map((p) =>
+        makeAPIRequest
+          .get(pageUrl(p))
+          .then((r) => (Array.isArray(r.data) ? r.data : []))
+          .catch(() => null)
+      )
+    )
+    for (const part of parts) {
+      if (part === null) {
+        done = true // a page error — stop (keep what we have)
+        continue
       }
-    })
+      rows.push(...part)
+      if (part.length < AD_PER) done = true
+    }
+    next += batch.length
   }
-  return { rows, total }
+  return { rows, total: rows.length }
 }
 
 async function mapPool(items, limit, fn) {
@@ -158,9 +172,13 @@ export function useKeyGeography(terminalListRef) {
     otuToTnRef.value = new Map()
     const rankByTn = new Map()
     const higherRankOtus = []
-    // step 2 fills this: terminal otuId -> its descendant-AD Pagination-Total,
-    // the "how big is this taxon" signal step 3 gates on.
+    // step 2 fills this: terminal otuId -> its descendant-AD row count, the
+    // "how big is this taxon" signal step 3 gates on.
     const adTotalByOtu = new Map()
+    // Only true once ranks are actually known. If it stays false the rank-based
+    // gate in step 3 has nothing to work with, so step 3 is skipped rather than
+    // risk a family-sized /inventory/dwc.json call for every terminal.
+    let ranksResolved = false
     try {
       const q = new URLSearchParams()
       otuIds.forEach((id) => q.append('otu_id[]', id))
@@ -172,19 +190,22 @@ export function useKeyGeography(terminalListRef) {
       }
       otuToTnRef.value = new Map(otuToTn)
       const tnIds = [...new Set(otuToTn.values())]
-      if (tnIds.length) {
+      if (!tnIds.length) {
+        ranksResolved = true // nothing to resolve — every terminal is name-less
+      } else {
         const tq = new URLSearchParams()
         tnIds.forEach((id) => tq.append('taxon_name_id[]', id))
         tq.set('per', '1000')
         const { data: tns } = await makeAPIRequest.get(`/taxon_names?${tq}`)
         if (myGen !== gen) return
         for (const t of Array.isArray(tns) ? tns : []) rankByTn.set(t.id, t.rank)
+        ranksResolved = true
         for (const [otuId, tnId] of otuToTn) {
           if (needsDescendantAd(rankByTn.get(tnId))) higherRankOtus.push(otuId)
         }
       }
     } catch {
-      /* fall back to the otu_id[] AD call only */
+      /* fall back to the otu_id[] AD call only; step 3 is skipped */
     }
 
     // 1. asserted distributions stated directly on the terminal OTUs.
@@ -203,7 +224,7 @@ export function useKeyGeography(terminalListRef) {
     }
 
     // 2. descendant distributions for the higher-rank terminals.
-    await mapPool(higherRankOtus, DWC_CONCURRENCY, async (otuId) => {
+    await mapPool(higherRankOtus, AD_TERMINAL_CONCURRENCY, async (otuId) => {
       const tnId = otuToTn.get(otuId)
       if (!tnId) return
       try {
@@ -230,15 +251,19 @@ export function useKeyGeography(terminalListRef) {
     //    is specimen-only. Skip terminals where the call is expensive
     //    (family/tribe, or a giant genus): step 2 already covers them, and the
     //    inventory endpoint rebuilds the whole DWC set server-side per request
-    //    so there is no cheap way to probe size first.
-    const specimenOtus = otuIds.filter((otuId) => {
-      const tnId = otuToTn.get(otuId)
-      return needsSpecimenPass({
-        rank: tnId == null ? undefined : rankByTn.get(tnId),
-        hasName: tnId != null,
-        adTotal: adTotalByOtu.get(otuId) || 0
-      })
-    })
+    //    so there is no cheap way to probe size first. Skip the whole pass when
+    //    ranks never resolved — without them we cannot tell a family terminal
+    //    (a ~100 MB call) from a species one.
+    const specimenOtus = ranksResolved
+      ? otuIds.filter((otuId) => {
+          const tnId = otuToTn.get(otuId)
+          return needsSpecimenPass({
+            rank: tnId == null ? undefined : rankByTn.get(tnId),
+            hasName: tnId != null,
+            adTotal: adTotalByOtu.get(otuId) || 0
+          })
+        })
+      : []
     await mapPool(specimenOtus, DWC_CONCURRENCY, async (otuId) => {
       try {
         const { data } = await makeAPIRequest.get(

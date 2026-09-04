@@ -17,6 +17,13 @@ test('figureImageId: null when there is no original_png / no numeric id', () => 
   assert.equal(figureImageId({ original: 'https://www.inaturalist.org/photos/9' }), null)
 })
 
+test('figureImageId: matches the shared imageIdFromOriginalPng parser exactly', () => {
+  // anchored parser: id must be followed by "/" or end — a query-string path
+  // yields null in both places, so LeadFigures and ImageLightbox cannot diverge.
+  assert.equal(figureImageId({ original_png: '/api/v1/images/123?token=x' }), null)
+  assert.equal(figureImageId({ original_png: '/api/v1/images/123' }), 123)
+})
+
 test('figureKey: img:<id> when resolvable, else a URL fallback', () => {
   assert.equal(
     figureKey({ original_png: '/api/v1/images/1199100/scale_to_box/x' }),

@@ -8,12 +8,16 @@
 //     { id, thumb, medium, original, attribution:{label}, source:{label:'<a…>'},
 //       depictions:[{ label: taxonName }] }
 //
-// Output shape is what LeadFigures reads (and maps onto the shared
-// panels/_shared/ImageLightbox.vue in `minimal` mode):
-//   { id, thumb, medium, original, label, caption, sourceTag }
-// - `label`     → the lightbox heading (taxon name)
-// - `caption`   → HTML (attribution + source), run through sanitizeAndLinkifyHtml
-// - `sourceTag` → 'TaxonWorks' | 'iNaturalist', for the one-line strip caption
+// Output is the SAME shape every other panels/_shared/ImageLightbox.vue caller
+// feeds it (see PanelGallery.vue#normalizeImage): the structured provenance
+// fields pass through untouched so the lightbox renders attribution, source and
+// citations itself — no flattening here.
+//   { id, thumb, medium, original, label, attribution, source, citations,
+//     depictions, sourceTag }
+// - `original`   → largest source (original_png resolved to a token URL)
+// - `label`      → taxon-name fallback for a tooltip; the lightbox derives its
+//                  own heading from `depictions`
+// - `sourceTag`  → 'TaxonWorks' | 'iNaturalist', for LeadFigures' one-line strip
 
 const TOKEN =
   (typeof __APP_ENV__ !== 'undefined' && __APP_ENV__.project_token) || ''
@@ -37,18 +41,13 @@ function firstDepictionLabel(raw) {
   return hit ? String(hit.label) : ''
 }
 
-function buildCaption(raw) {
-  const attribution = raw?.attribution?.label ? String(raw.attribution.label).trim() : ''
-  const source = raw?.source?.label ? String(raw.source.label).trim() : ''
-  return [attribution, source].filter(Boolean).join(' · ')
-}
-
 // sourceTag: 'taxonworks' | 'inaturalist'
 export function normalizeKeyImage(raw, { sourceTag = 'taxonworks', apiUrl = API_URL, token = TOKEN } = {}) {
   if (!raw) return null
   const original =
+    (raw.original_png ? resolveOriginalPng(raw.original_png, { apiUrl, token }) : '') ||
     raw.original ||
-    (raw.original_png ? resolveOriginalPng(raw.original_png, { apiUrl, token }) : '')
+    ''
   const medium = raw.medium || raw.thumb || original
   const thumb = raw.thumb || raw.medium || original
   return {
@@ -56,8 +55,17 @@ export function normalizeKeyImage(raw, { sourceTag = 'taxonworks', apiUrl = API_
     thumb,
     medium,
     original,
+    // Carried through so ImageLightbox can recover the TW image id for its
+    // citation lookup: `/otus/:id/inventory/images` keys images by id but omits
+    // it from the object, so `original_png` ("/api/v1/images/<id>/…") is the
+    // only place it survives. Absent on iNaturalist images (correct — no TW
+    // citations to fetch).
+    original_png: raw.original_png || null,
     label: firstDepictionLabel(raw),
-    caption: buildCaption(raw),
+    attribution: raw.attribution || { label: '' },
+    source: raw.source || { label: '' },
+    citations: Array.isArray(raw.citations) ? raw.citations : [],
+    depictions: Array.isArray(raw.depictions) ? raw.depictions : [],
     sourceTag: sourceTag === 'inaturalist' ? 'iNaturalist' : 'TaxonWorks'
   }
 }
@@ -75,12 +83,21 @@ export function pickPreview(list, n = 3) {
   return { preview: all.slice(0, count), rest: Math.max(0, all.length - count) }
 }
 
+// The numeric TW image id from a lead figure's `original_png`
+// ("/api/v1/images/<id>/scale_to_box/…"), or null. A lead's `figures[]` from
+// `/leads/key/:id` carry no `id` field, so this is the only handle on the image
+// (e.g. for ImageLightbox's citation lookup).
+export function figureImageId(fig) {
+  const m = String(fig?.original_png || '').match(/\/images\/(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
 // Stable identity for a lead figure — the underlying image, ignoring per-lead
-// caption / figure_label differences. `original_png` is "/api/v1/images/<id>/…".
+// caption / figure_label differences.
 export function figureKey(fig) {
   if (!fig) return ''
-  const m = String(fig.original_png || '').match(/\/images\/(\d+)/)
-  if (m) return `img:${m[1]}`
+  const id = figureImageId(fig)
+  if (id) return `img:${id}`
   return fig.thumb || fig.medium || fig.original || ''
 }
 

@@ -175,6 +175,10 @@ function normalizeImage(img) {
     original: img.original_png
       ? `${url}/${img.original_png.substring(8)}?project_token=${project_token}`
       : img.original,
+    // Kept so ImageLightbox can recover the TW image id for its citation
+    // lookup — the inventory endpoint keys images by id but omits it from the
+    // object, leaving `original_png` ("/api/v1/images/<id>/…") the only carrier.
+    original_png: img.original_png || null,
     attribution: img.attribution || { label: '' },
     source: img.source || { label: '' },
     citations: img.citations || [],

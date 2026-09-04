@@ -13,6 +13,32 @@ Not a panel — no `main.js`, so the taxonpages panel loader ignores this direct
 | PanelMapV2 | `../PanelMapV2/store/useDistributionStore.js` | popup keyword pills; an `Adventive` keyword also drives the hatched polygon styling |
 | PanelAssertedDistributions | `../PanelAssertedDistributions/PanelAssertedDistributions.vue` | yellow keyword pills in the area cell |
 
+## imageCitations.js
+
+`fetchImageCitations(imageIds)` → batched, chunked, paginated
+`GET /citations?citation_object_type=Image&citation_object_id[]=…&extend[]=source`,
+resolving to `Map<imageId, Citation[]>` (empty Map on error / empty input).
+`groupCitationsByImage(rows)` is the pure grouping step, unit-tested in
+`imageCitations.test.js`.
+
+Exists because **no image endpoint serialises citations** — `extend[]=citations`
+is a silent no-op on `/otus/:id/inventory/images` and `/images` (verified against
+sfg, 2026-09; the TW commit that adds it to `/images/:id` is unmerged). This is
+the only way to read an image's full citation list.
+
+`imageIdFromOriginalPng(str)` — `"/api/v1/images/847941/scale_to_box/…"` → `847941`.
+**`/otus/:id/inventory/images` and a key lead's `figures[]` both key the image by
+id upstream but omit it from the object**, so `original_png` is the only carrier
+that survives; an external (iNat / GBIF) image has no `original_png`, so `null`
+also reads as "not a TaxonWorks image, no citations to fetch". `ImageLightbox`
+resolves the id this way (`twImageId`), and `PanelGallery`/`normalizeKeyImage`
+now pass `original_png` through instead of dropping it.
+
+`@/utils/request` is imported *dynamically* inside `fetchImageCitations` so the
+unit test can import the pure helpers without resolving the `@/` alias.
+
+**Depended on by:** `./ImageLightbox.vue` (lazy, per visible image + neighbours).
+
 ## DwcTable.vue
 
 Modal showing the full DarwinCore record for a CollectionObject or FieldOccurrence: institution (resolved to full name via GRSciColl), identification, collection event, location, coordinates (with OpenStreetMap link), biological associations, and associated media thumbnails. Fetches `/collection_objects/:id/dwc` or `/field_occurrences/:id/dwc`.
@@ -50,7 +76,6 @@ Fixed, full-viewport overlay (`fixed inset-0 z-[10000]`, no internal Teleport �
 | `next` | Boolean | `false` | a next image exists |
 | `previous` | Boolean | `false` | a previous image exists |
 | `showInfoButton` | Boolean | `true` | show the ⓘ button that opens `DwcTable` for a CO/FO depiction, and render the nested `DwcTable`. Pass `false` when mounting from within a `DwcTable` to stop the recursion. |
-| `minimal` | Boolean | `false` | caption-only: render just the bold label + caption block. No name/OTU block, CO/FO entries, attribution, source, thumbnail strip, ⓘ or DWC fetch. Used by the keys module, whose lead figures only ever carry a label + caption. |
 
 **Emits:** `close`, `next`, `previous`, `selectIndex(i)` — the parent owns `index` and the list.
 
@@ -64,7 +89,10 @@ Fixed, full-viewport overlay (`fixed inset-0 z-[10000]`, no internal Teleport �
   original:    string,          // shown at full size
   attribution: { label: string },
   source:      { label: string },   // may contain <a> HTML
-  citations:   Citation[],          // TW gallery only
+  citations:   Citation[],          // optional — if a caller already has them.
+                                    // Otherwise the lightbox self-fetches per
+                                    // image via imageCitations.js (no endpoint
+                                    // serialises them).
   depictions:  Depiction[],         // Otu / CollectionObject / FieldOccurrence — drives the name block + ⓘ
   figure_label: string,             // plain image with no Otu/CO/FO depiction: shown bold …
   caption:      string,             // … plain text, run through the name-italiciser, beneath the label
@@ -72,7 +100,9 @@ Fixed, full-viewport overlay (`fixed inset-0 z-[10000]`, no internal Teleport �
 }
 ```
 
-If `depictions` has an Otu / CO / FO entry the block shows the parsed taxon name (CO/FO also fetch `/…/dwc` for type status + the ⓘ button). Otherwise, if `figure_label` / `caption` / `captionHtml` are set, they render as a bold-label + caption block. Otherwise just attribution / source. In `minimal` mode only that bold-label + caption block renders.
+If `depictions` has an Otu / CO / FO entry the block shows the parsed taxon name (CO/FO also fetch `/…/dwc` for type status + the ⓘ button). Otherwise, if `figure_label` / `caption` / `captionHtml` are set, they render as a bold-label + caption block. Attribution / source / citations always render below when present.
+
+**Citations** are fetched by the lightbox itself (`imageCitations.js`, lazily for the shown image ± 1) unless the caller already put a non-empty `citations` array on the image object. Clicking a citation opens a `Reference` modal with `source.cached`.
 
 **Depended on by:**
 
@@ -83,6 +113,6 @@ If `depictions` has an Otu / CO / FO entry the block shows the parsed taxon name
 | PanelBiologicalAssociationsV2 | `../PanelBiologicalAssociationsV2/PanelBiologicalAssociationsV2.vue` | BA plates (`figure_label` / `caption`, no depiction structure) |
 | PanelSpecimenOccurrences | `../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue` | specimen `associatedMedia` (depictions carry CO/FO type) |
 | DwcTable | `./DwcTable.vue` | the modal's own `associatedMedia` strip (`showInfoButton` off) |
-| keys module | `../../modules/keys/components/LeadFigures.vue` | lead figures / "+N more images" (`minimal`, `captionHtml`) |
+| keys module | `../../modules/keys/components/LeadFigures.vue` | lead figures / "+N more images" — taxon-image fallback carries full `depictions` / `attribution` / `source` / `citations`; a key's own figure uses `captionHtml` |
 
 If you change this file, check all six call sites — the contract is `images` + `index` + the four events; keep it stable.

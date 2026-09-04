@@ -241,9 +241,27 @@ fetch(`https://api.gbif.org/v1/grscicoll/institution?code=${encodeURIComponent(c
 
 ## Image store (useImageStore)
 
-Fetches `/otus/:id/inventory/images.json` with `extend: ['depictions', 'attribution', 'source', 'citations']`. Images already have `citations` array.
+Fetches `/otus/:id/inventory/images.json` with `extend: ['depictions', 'attribution', 'source', 'citations']`.
 
-The subordinate-taxa fallback in `PanelGallery.vue` must also pass `extend: ['depictions', 'attribution', 'source', 'citations']` to carry citation data through.
+**No image endpoint serialises `citations`.** `extend[]=citations` is silently
+ignored by `/otus/:id/inventory/images` (the `image_inventory` helper has never
+rendered a citations array) and by `/images`. The one TW commit that adds it to
+the `/images/:id` show route is unmerged (checked against sfg, 2026-09). All you
+get per image is `attribution`, and `source` **only** when the image has an
+`is_original: true` citation (that origin citation's source label). So
+`image.citations` is always empty from the store; the `'citations'` in the
+`extend` arrays here and in `PanelGallery.vue`'s subordinate fallback are dead
+no-ops (harmless, left in case TW ever ships it).
+
+To show an image's real citation list, fetch it separately:
+`panels/_shared/imageCitations.js` → `fetchImageCitations(imageIds)` does the
+batched `GET /citations?citation_object_type=Image&citation_object_id[]=…&extend[]=source`
+(same call the keys / BA / AD / map panels make for their object types) and
+returns `Map<imageId, Citation[]>`. `panels/_shared/ImageLightbox.vue` calls it
+lazily for the visible image + neighbours, so every lightbox caller
+(PanelGallery, PaneliNaturalist, PanelSpecimenOccurrences,
+PanelBiologicalAssociationsV2, DwcTable's media strip, keys LeadFigures) shows
+citations with no per-caller wiring.
 
 ## OTU route
 

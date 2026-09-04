@@ -46,7 +46,7 @@
     <div class="flex-none text-center text-sm px-6 pb-2 max-h-[40vh] overflow-y-auto">
       <!-- OTU section: badge, name, description -->
       <div
-        v-if="!minimal && (imageDisplay.hasOtu || imageDisplay.name)"
+        v-if="imageDisplay.hasOtu || imageDisplay.name"
         class="my-1"
       >
         <div
@@ -74,7 +74,7 @@
 
       <!-- CO/FO entries: badge + ⓘ, type status, figure label, caption -->
       <div
-        v-for="co in (minimal ? [] : imageDisplay.coEntries)"
+        v-for="co in imageDisplay.coEntries"
         :key="co.objectId"
         class="my-0.5"
       >
@@ -110,8 +110,8 @@
            `figure_label` / `caption` are free-text (often prose that mentions a
            binomial: "…feeding on Achillea millefolium", "rostrum, dorsal view")
            and are rendered verbatim — the name-italiciser greedily italicises
-           the prose that trails a Genus+epithet pair. Both prior renderers (the
-           package ImageViewer, the old keys KeyLightbox) showed these plain.
+           the prose that trails a Genus+epithet pair. The package ImageViewer
+           showed these plain.
            `captionHtml` is pre-sanitised HTML (keys, already linkified). -->
       <div
         v-if="showPlainCaption"
@@ -133,36 +133,30 @@
       </div>
 
       <!-- Attribution + citations (image-level) -->
-      <div
-        v-if="!minimal"
-        class="opacity-60 my-1"
-      >
+      <div class="opacity-60 my-1">
         <span v-if="image.attribution?.label">{{ image.attribution.label }}</span>
         <span
-          v-else-if="!image.citations?.length"
+          v-else-if="!displayCitations.length"
           class="italic"
-        >attribution missing</span><template
-          v-for="(cit, i) in image.citations || []"
+        >attribution missing</span>
+        <span
+          v-for="cit in displayCitations"
           :key="cit.id"
-        > <span
-            class="text-secondary hover:underline cursor-pointer"
-            @click="activeCitation = cit"
-            v-html="cit.citation_source_body"
-          /></template>
+          class="ml-1 text-secondary hover:underline cursor-pointer"
+          @click="activeCitation = cit"
+          v-html="cit.citation_source_body"
+        />
       </div>
 
       <!-- Source -->
       <div
-        v-if="!minimal && image.source?.label"
+        v-if="image.source?.label"
         class="opacity-60 my-1"
         v-html="image.source.label"
       />
 
       <!-- Thumbnail strip -->
-      <div
-        v-if="!minimal"
-        class="flex flex-row overflow-x-auto justify-center gap-1.5 mt-2 pb-2"
-      >
+      <div class="flex flex-row overflow-x-auto justify-center gap-1.5 mt-2 pb-2">
         <div
           v-for="(img, i) in images"
           :key="img.id"
@@ -180,7 +174,7 @@
     </div>
 
     <DwcTable
-      v-if="showInfoButton && !minimal"
+      v-if="showInfoButton"
       ref="dwcTableRef"
       @close="onDwcTableClose"
     />
@@ -207,10 +201,11 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, defineAsyncComp
 import ControlImageNext from '@/components/ImageViewer/ControlImageNext.vue'
 import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.vue'
 import { makeAPIRequest } from '@/utils/request'
+import { fetchImageCitations, imageIdFromOriginalPng } from './imageCitations.js'
 
 // Async both ways: DwcTable imports this file back (its media strip opens this
 // lightbox). Splitting DwcTable into its own chunk also keeps it out of the
-// bundles that use the lightbox in `minimal` mode (keys) or never click ⓘ.
+// initial bundle for consumers that never click ⓘ.
 const DwcTable = defineAsyncComponent(() => import('./DwcTable.vue'))
 
 const props = defineProps({
@@ -221,11 +216,7 @@ const props = defineProps({
   // The ⓘ button opens a DwcTable for a CO/FO depiction. DwcTable opens this
   // lightbox for its own media strip, so that nested instance passes false to
   // stop the loop (DwcTable → lightbox → DwcTable → …).
-  showInfoButton: { type: Boolean, default: true },
-  // Caption-only mode (keys lead figures): render just the bold label + caption
-  // block. No name/OTU block, CO/FO entries, attribution, source, thumbnail
-  // strip, ⓘ button or DWC fetch — those images only ever carry label + caption.
-  minimal: { type: Boolean, default: false }
+  showInfoButton: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['close', 'next', 'previous', 'selectIndex'])
@@ -263,6 +254,39 @@ const dwcCache = reactive({})
 
 // OTU validity cache: rawOtuId → validOtuId (resolved asynchronously)
 const otuValidCache = reactive({})
+
+// Image citations keyed by TaxonWorks image id: Citation[] once loaded, null
+// while in flight. No image endpoint serialises citations (see
+// ./imageCitations.js), so the lightbox fetches them the same lazy way it
+// fetches DWC data — for the visible image and its neighbours.
+const citationCache = reactive({})
+
+// An iNaturalist / GBIF photo has no TW citation record; its numeric `id` is a
+// foreign id and must not be used to query /citations.
+function isExternalImage(img) {
+  if (img?.sourceTag && img.sourceTag !== 'TaxonWorks') return true
+  return /inaturalist\.org|gbif\.org/i.test(img?.source?.label || '')
+}
+
+// The TaxonWorks image id: from `original_png` (the field that still carries it
+// after normalisation — inventory images and key lead figures both key by id
+// upstream but drop it from the object), else a numeric `id` a caller set
+// directly (DwcTable / PanelSpecimenOccurrences `associatedMedia`).
+function twImageId(img) {
+  return imageIdFromOriginalPng(img?.original_png) ??
+    (Number.isInteger(img?.id) && !isExternalImage(img) ? img.id : null)
+}
+
+function fetchCitationsForImage(img) {
+  // A caller that already resolved citations (e.g. a future eager fetch) wins.
+  if (Array.isArray(img?.citations) && img.citations.length) return
+  const id = twImageId(img)
+  if (!id || id in citationCache) return
+  citationCache[id] = null
+  fetchImageCitations([id])
+    .then((byId) => { citationCache[id] = byId.get(id) || [] })
+    .catch(() => { citationCache[id] = [] })
+}
 
 const DWC_ENDPOINTS = {
   CollectionObject: (id) => `/collection_objects/${id}/dwc`,
@@ -332,13 +356,15 @@ watch(
   () => props.index,
   (idx) => {
     isLoading.value = true
-    if (props.minimal) return  // caption-only: no depiction/DWC resolution
     fetchDwcForImage(props.images[idx])
     fetchDwcForImage(props.images[idx + 1])
     fetchDwcForImage(props.images[idx - 1])
     resolveValidOtuForImage(props.images[idx])
     resolveValidOtuForImage(props.images[idx + 1])
     resolveValidOtuForImage(props.images[idx - 1])
+    fetchCitationsForImage(props.images[idx])
+    fetchCitationsForImage(props.images[idx + 1])
+    fetchCitationsForImage(props.images[idx - 1])
   },
   { immediate: true }
 )
@@ -373,6 +399,15 @@ function splitName(name) {
 }
 
 const image = computed(() => props.images[props.index] || {})
+
+// Citations for the current image: whatever the caller supplied, else the
+// lazily-fetched set (empty array while still loading or when there are none).
+const displayCitations = computed(() => {
+  const img = image.value
+  if (Array.isArray(img.citations) && img.citations.length) return img.citations
+  const id = twImageId(img)
+  return (id && citationCache[id]) || []
+})
 
 // Extract the description embedded in an OTU label after ': ', stripping the trailing
 // '. (Type).' marker. Falls back to dep.caption if available.
@@ -477,7 +512,6 @@ const depictionTitle = computed(() => {
 const showPlainCaption = computed(() => {
   const img = image.value
   const hasText = !!(img.figure_label || img.caption || img.captionHtml)
-  if (props.minimal) return hasText
   const d = imageDisplay.value
   if (d.hasOtu || d.name || d.coEntries.length) return false
   return hasText

@@ -46,7 +46,6 @@
           :index="viewer"
           :next="viewer < lightboxItems.length - 1"
           :previous="viewer > 0"
-          minimal
           @select-index="viewer = $event"
           @next="viewer++"
           @previous="viewer--"
@@ -61,7 +60,7 @@
 import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import ImageLightbox from '../../../panels/_shared/ImageLightbox.vue'
-import { pickPreview } from '../lib/images.js'
+import { pickPreview, figureImageId } from '../lib/images.js'
 
 const props = defineProps({
   // A tree.js node (lead). Reads: figures, targetType, targetId, targetLabel.
@@ -130,21 +129,27 @@ function imgSrc(fig) {
   return order.find(Boolean) || ''
 }
 
-// Shape each figure for the shared ImageLightbox (`minimal` mode: it renders
-// only the bold label + caption). Lightbox wants the largest source; captions
-// are HTML (attribution/source folded in for fallback images) so they go
-// through the same sanitiser the citation sites use.
+// Shape each figure for the shared ImageLightbox — the SAME contract every other
+// caller uses. The structured provenance fields (`depictions`, `attribution`,
+// `source`, `citations`) on a normalised fallback image pass straight through so
+// the lightbox renders the taxon heading, attribution, source and citations
+// itself. A key's own lead figure instead carries free-text `figure_label` +
+// HTML `caption`, which the lightbox's plain-caption block shows (run through
+// the same sanitiser the citation sites use).
 function lightboxSrc(fig) {
   if (fig.original_png) return originalPngUrl(fig)
   return fig.original || fig.medium || fig.thumb || ''
 }
 const lightboxItems = computed(() =>
   items.value.map((f, i) => ({
-    id: f.id ?? i,
+    ...f,
+    // A key's own lead figure has no `id`; recover it from `original_png` so the
+    // lightbox can look up the image's citations.
+    id: f.id ?? figureImageId(f) ?? i,
     original: lightboxSrc(f),
     thumb: f.thumb || f.medium || '',
-    figure_label: f.figure_label || f.label || '',
-    captionHtml: sanitizeAndLinkifyHtml(f.caption || '')
+    figure_label: f.figure_label || '',
+    captionHtml: f.caption ? sanitizeAndLinkifyHtml(f.caption) : ''
   }))
 )
 function figTitle(fig) {

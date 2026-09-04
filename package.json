@@ -10,7 +10,7 @@
     "serve": "taxonpages serve",
     "preview": "taxonpages preview",
     "setup": "taxonpages setup",
-    "test": "node --test 'panels/_gbifShared/**/*.test.js' 'panels/PanelMapV2/**/*.test.js' 'modules/keys/**/*.test.js'"
+    "test": "node --test 'panels/_gbifShared/**/*.test.js' 'panels/_shared/**/*.test.js' 'panels/PanelMapV2/**/*.test.js' 'modules/keys/**/*.test.js'"
   },
   "dependencies": {
     "@sfgrp/taxonpages": "^0.6.7"

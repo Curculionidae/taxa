@@ -1,207 +1,63 @@
-// Distribution data for the key geography filter (design spec section 6).
+// Distribution data for the key geography filter (design spec
+// docs/superpowers/specs/2026-09-07-key-geography-lazy-per-country-design.md).
 //
-// Given the key's terminal OTU ids it resolves, on first demand (ensureLoaded):
-//   0. terminal OTU -> taxon-name id + rank
-//   1. asserted distributions stated directly on the terminal OTUs (paged)
-//   2. for terminals above species rank, descendant asserted distributions —
-//      page 1 first (to read the total), then pages 2..N in parallel
-//   2b. for family/subfamily/tribe/genus terminals, a flat-column
-//      dwc_occurrences presence probe instead (see fetchFlatColumnCountries)
-//      — replaces steps 2 and 3 for these terminals. With several such
-//      terminals, one extra presence sweep for the key's own scope taxon
-//      narrows the country list every terminal then probes (see
-//      resolveRootCandidates).
-//   3. GET /otus/:id/inventory/dwc.json for specimen countries, but ONLY for
-//      terminals where that call is cheap (species, small informal OTUs, and
-//      genus/subgenus terminals that aren't huge) — see lib/geoScope.js. A
-//      family/tribe or giant-genus terminal is covered by step 2 alone; its
-//      inventory call would be ~100 MB / minutes for a few specimen-only
-//      countries.
-// normalising every shape / country string with lib/geoNormalize.js.
+// Lazy, per country. Nothing is fetched on key load. Lifecycle:
 //
-// Nothing is fetched until ensureLoaded() is called (the picker opening, or a
-// restored non-empty selection), so a key page the reader never filters pays
-// nothing. Instantiated once in KeyView, provided as `keyGeo`. KeyView is reused
-// across /key/:id navigations, so KeyView.load() must call reset().
+//   1. ensureLoaded(): resolve the key's terminal OTUs to
+//      { rank, name, tnId } (the /otus + /taxon_names calls, plus the
+//      effectiveTaxonNameId synonym redirect). No distribution call.
+//   2. The picker shows the full static country list (allTerritories); every
+//      country is selectable. No fetch.
+//   3. syncSelection(effectiveKeys): on the first non-empty selection, one
+//      "has data anywhere" probe per terminal (a flat dwc_occurrences column +
+//      occurrenceStatus=present + per=1, no country). Then, for every newly
+//      selected country, one presence probe per terminal against that country,
+//      concurrency 8. Removing a country is a pure recompute from cache.
+//   4. probeTaxa(taxa, effectiveKeys): the same per country presence probe for
+//      the completeness pill's expected modal-rank taxa, sharing probeCache so a
+//      taxon that is also an in-key terminal is fetched once.
+//
+// family / subfamily / tribe / genus / species terminals use the flat
+// dwc_occurrences columns (see lib/geoProbe.js). subgenus, nameless and
+// homonym-ambiguous terminals fall back to one /otus/:id/inventory/dwc.json
+// call, client filtered by country.
+//
+// Instantiated once in KeyView, provided as `keyGeo`. KeyView is reused across
+// /key/:id navigations, so KeyView.load() must call reset().
 
 import { ref, computed, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import {
-  normalizeShape,
   normalizeCountryString,
+  countryName,
+  territoryLabel,
   allCountries
 } from '../lib/geoNormalize.js'
-import { needsDescendantAd, needsSpecimenPass, fieldForRank } from '../lib/geoScope.js'
 import { normRank } from '../lib/completeness.js'
 import { effectiveTaxonNameId } from '../lib/validTaxonName.js'
+import { probeParams, PRESENCE_PARAMS } from '../lib/geoProbe.js'
 
-const DWC_CONCURRENCY = 6
-const AD_PER = 1000
-// Safety ceiling only — a real key terminal is far under this. Curculionidae,
-// the worst case seen, is 49 pages.
-const AD_MAX_PAGES = 200
-// Pages of one AD query fetched together. Bounded against step 2's per-terminal
-// pool (AD_TERMINAL_CONCURRENCY) so peak parallel AD requests ≈ the product.
-const AD_PAGE_CONCURRENCY = 5
-// Higher-rank terminals processed at once in step 2. Low, because fetchAllAD
-// already parallelises each terminal's own pages.
-const AD_TERMINAL_CONCURRENCY = 3
-const SPECIMEN_TYPES = new Set(['CollectionObject', 'FieldOccurrence'])
+// One flat presence probe per (terminal, country) at a time, capped here. The
+// spike (design spec section 2) measured ~1 s for 34 requests at this limit.
+const PROBE_CONCURRENCY = 8
 
-// Flat-column pass (see docs/feasibility_key_geography_filter.md, "2026-09-05
-// update"): for a terminal whose rank has a well-populated dwc_occurrences
-// column (family, subfamily, tribe, genus), one presence probe per candidate
-// country replaces both the descendant-AD pass (step 2) and the specimen pass
-// (step 3) for that terminal, measured ~2x faster on the worst case in the
-// system (key 5024, Curculionidae), and it sees specimen-only occurrences too
-// in the same request, unlike the AD-only path those ranks otherwise get.
-const FLAT_COUNTRY_CONCURRENCY = 8
-const FLAT_TERMINAL_CONCURRENCY = 2
-// Below this many flat-pass terminals, the root pre-filter's own sweep
-// (resolveRootCandidates) costs more than it saves — skip it.
-const ROOT_PREFILTER_MIN_TERMINALS = 4
+// The single-column dwc_occurrences fields a bare name string can be probed
+// against. A terminal whose probe reduces to exactly one of these is exposed to
+// the same-rank homonym risk findHomonymTnIds guards (a species probe pins
+// genus= as well, so it is not).
+const FLAT_FIELDS = new Set(['family', 'subfamily', 'tribe', 'genus'])
 
-// An asserted_distributions row links to its OTU via
-// asserted_distribution_object_{type,id}; the top-level `otu_id` is null.
-function adOtuId(row) {
-  return row?.asserted_distribution_object_type === 'Otu'
-    ? row.asserted_distribution_object_id
-    : null
-}
-
-// GET /asserted_distributions for baseParams — every page, a batch at a time so
-// pages come back in parallel. Stops at the first short page (or a page error),
-// so correctness does not depend on the Pagination headers. Paging this endpoint
-// is cheap (a normal indexed query), unlike /inventory/dwc.json.
-// Returns { rows, total } where total is the real fetched row count.
-async function fetchAllAD(baseParams) {
-  const pageUrl = (page) => {
-    const q = new URLSearchParams(baseParams)
-    q.set('per', String(AD_PER))
-    q.set('page', String(page))
-    return `/asserted_distributions?${q}`
-  }
-
-  const first = await makeAPIRequest.get(pageUrl(1))
-  const rows = Array.isArray(first.data) ? [...first.data] : []
-  let done = rows.length < AD_PER
-  let next = 2
-  while (!done && next <= AD_MAX_PAGES) {
-    const batch = []
-    for (
-      let p = next;
-      p < next + AD_PAGE_CONCURRENCY && p <= AD_MAX_PAGES;
-      p++
-    ) {
-      batch.push(p)
-    }
-    const parts = await Promise.all(
-      batch.map((p) =>
-        makeAPIRequest
-          .get(pageUrl(p))
-          .then((r) => (Array.isArray(r.data) ? r.data : []))
-          .catch(() => null)
-      )
-    )
-    for (const part of parts) {
-      if (part === null) {
-        done = true // a page error — stop (keep what we have)
-        continue
-      }
-      rows.push(...part)
-      if (part.length < AD_PER) done = true
-    }
-    next += batch.length
-  }
-  return { rows, total: rows.length }
-}
-
-// One terminal, every candidate country, one presence probe each. Reads
-// presence primarily off the `pagination-total` response header (`per: 1`),
-// falling back to the body's own row count if that header is ever missing —
-// same reasoning as fetchAllAD above: correctness should not depend on the
-// Pagination headers being present.
-// `shouldStop`, when it starts returning true (the key changed mid-load), is
-// checked before each new probe, so a stale terminal stops dispatching further
-// requests rather than running its full country list to completion.
-async function fetchFlatColumnCountries(field, name, candidates, shouldStop) {
-  const hits = []
-  await mapPool(
-    candidates,
-    FLAT_COUNTRY_CONCURRENCY,
-    async ({ key, label }) => {
-      try {
-        const res = await makeAPIRequest.get('/dwc_occurrences', {
-          params: {
-            [field]: name,
-            country: label,
-            occurrenceStatus: 'present',
-            per: 1
-          }
-        })
-        const headerTotal = parseInt(res.headers?.['pagination-total'] ?? '0', 10)
-        const bodyTotal = Array.isArray(res.data) ? res.data.length : 0
-        if (headerTotal > 0 || bodyTotal > 0) hits.push({ key, label })
-      } catch {
-        /* one country short on data is tolerable */
-      }
-    },
-    shouldStop
-  )
-  return hits
-}
-
-// Root-taxon country pre-filter. dwc_occurrences rows carry family/subfamily/
-// tribe/genus together (one specimen, one ancestor walk — see
-// docs/feasibility_key_geography_filter.md), so a descendant terminal's
-// countries are always a subset of its scope taxon's own countries: a genus
-// row can't have a country its family probe didn't also see. One presence
-// sweep (same per=1 mechanics as fetchFlatColumnCountries) over the key's
-// scope taxon narrows the per-terminal candidate list from every country to
-// only the ones the scope actually occurs in. Only worth the extra sweep
-// when there are several flat-pass terminals to amortize it over (gated by
-// ROOT_PREFILTER_MIN_TERMINALS in load()), and only possible when the scope
-// taxon's own rank has a flat column — a superfamily-scoped key (no such
-// column) returns null and callers keep the full candidate list.
-// The scope taxon can itself be a synonym (redirected via
-// effectiveTaxonNameId, same rule the terminal resolution below uses) — an
-// un-redirected synonym probe would either find nothing (safe: falls back to
-// the full list) or, worse, find some unrelated data under that name string
-// and silently mis-narrow every terminal.
-async function resolveRootCandidates(scopeOtuId, candidateCountries, shouldStop) {
-  try {
-    const { data: otu } = await makeAPIRequest.get(`/otus/${scopeOtuId}`)
-    const tnId = otu?.taxon_name_id
-    if (!tnId || shouldStop()) return null
-    const { data: rawTn } = await makeAPIRequest.get(`/taxon_names/${tnId}`)
-    if (shouldStop()) return null
-    const validId = effectiveTaxonNameId(rawTn)
-    const tn =
-      validId === rawTn?.id
-        ? rawTn
-        : (await makeAPIRequest.get(`/taxon_names/${validId}`)).data
-    if (shouldStop()) return null
-    const field = fieldForRank(tn?.rank)
-    const name = tn?.name
-    if (!field || !name) return null
-    const hits = await fetchFlatColumnCountries(field, name, candidateCountries, shouldStop)
-    return hits.length ? hits : null
-  } catch {
-    return null // fall back to the full candidate list rather than block the pass
-  }
-}
-
-// The flat-column pass matches by bare name string (no taxon_name_id
-// scoping — dwc_occurrences' family/genus/subfamily/tribe columns are plain
-// strings, there is nothing else to scope by). A homonym at the same rank
-// elsewhere in this project's data — a different lineage that happens to
-// share the exact name — would have its occurrences misattributed to this
-// terminal. One batched /taxon_names lookup (name_exact + epithet_only, so it
-// matches the bare `name` column the flat probe itself uses) finds any such
-// collision up front; `epithet_only` is required, otherwise name_exact
-// matches against `cached` (the authored name), which the bare epithet here
-// would never match. Returns the set of candidate tnIds that collide with a
-// same-rank different-id taxon_name and so must not use the flat pass.
+// The flat-column probe matches by bare name string (no taxon_name_id scoping
+// is possible: dwc_occurrences' family/genus/subfamily/tribe columns are plain
+// strings). A homonym at the same rank elsewhere in this project's data (a
+// different lineage that happens to share the exact name) would have its
+// occurrences misattributed to this terminal. One batched /taxon_names lookup
+// (name_exact + epithet_only, so it matches the bare `name` column the flat
+// probe itself uses) finds any such collision up front; `epithet_only` is
+// required, otherwise name_exact matches against `cached` (the authored name),
+// which the bare epithet here would never match. Returns the set of candidate
+// tnIds that collide with a same-rank different-id taxon_name and so must not
+// use the flat pass.
 async function findHomonymTnIds(candidates) {
   const names = [...new Set(candidates.map((c) => c.name).filter(Boolean))]
   if (!names.length) return new Set()
@@ -225,13 +81,13 @@ async function findHomonymTnIds(candidates) {
     }
     return homonymTnIds
   } catch {
-    return new Set() // lookup failure — proceed as before rather than block the pass
+    return new Set() // lookup failure: proceed as before rather than block the pass
   }
 }
 
 // `shouldStop`, checked before each item, lets a caller abandon the remaining
-// queue once its result is no longer wanted (see fetchFlatColumnCountries and
-// its caller in load(), both racing a key change against a large batch).
+// queue once its result is no longer wanted (a key change or a newer selection
+// racing a large batch).
 async function mapPool(items, limit, fn, shouldStop) {
   let i = 0
   const worker = async () => {
@@ -243,147 +99,244 @@ async function mapPool(items, limit, fn, shouldStop) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
 }
 
-// scopeOtuIdRef (optional) is the key's own root/scope OTU — see
-// resolveRootCandidates above. A ref/computed, read fresh each load() so a
-// value that resolves after mount (KeyView's own scope inference) still
-// applies to a later ensureLoaded().
-export function useKeyGeography(terminalListRef, scopeOtuIdRef) {
-  const territoriesByOtu = ref(new Map()) // otuId -> Set<territoryKey>
-  const labelByKey = ref(new Map()) // territoryKey -> label
-  const otuToTnRef = ref(new Map()) // terminal otuId -> taxon-name id
-  const loading = ref(false)
-  let gen = 0
-  let started = false // ensureLoaded has been called at least once
-  let loadedFor = null // JSON of the otu id list the current data is for
+// Read presence off a /dwc_occurrences response: the Pagination-Total header
+// first (per=1 keeps the body tiny), body length as the fallback, so
+// correctness never depends on the header being present.
+function readPresence(res) {
+  const headerTotal = parseInt(res?.headers?.['pagination-total'] ?? '0', 10)
+  const bodyTotal = Array.isArray(res?.data) ? res.data.length : 0
+  return headerTotal > 0 || bodyTotal > 0
+}
 
-  function reset() {
-    gen++
-    territoriesByOtu.value = new Map()
-    labelByKey.value = new Map()
-    otuToTnRef.value = new Map()
-    loading.value = false
-    loadedFor = null
-    // The re-fetch for the new key is driven by the terminalListRef watch once
-    // the new key's nodes populate (calling reset here would race stale nodes).
+// The static country list, built once: allCountries() returns canonical entries
+// first, then the alias spellings, so a dedupe by key keeps the canonical
+// { key, label } for every ISO code and drops the alias-only rows (those existed
+// solely as probe targets for the removed eager sweep; the lazy probe sends
+// countryName(iso)). Sorted by label.
+const STATIC_COUNTRIES = (() => {
+  const seen = new Set()
+  const out = []
+  for (const c of allCountries()) {
+    if (!c?.key || seen.has(c.key)) continue
+    seen.add(c.key)
+    out.push({ key: c.key, label: c.label || c.key })
   }
+  return out.sort((a, b) => a.label.localeCompare(b.label))
+})()
+
+export function useKeyGeography(terminalListRef) {
+  // Per terminal, the SELECTED countries it probed present in. Kept as a plain
+  // Map<number, Set<string>> keyed by OTU id: GuidedView / TaxonLink / FullKeyView
+  // inject this and call .get(Number(id)).
+  const territoriesByOtu = ref(new Map())
+  // Per terminal, whether it has any present record in ANY country (the
+  // one-time no-country probe). Distinguishes "unknown" from "out of area".
+  const hasDataByOtu = ref(new Map())
+  const loading = ref(false)
+
+  let gen = 0 // bumped by reset() and by every terminal re-resolve
+  let syncSeq = 0 // "latest selection wins" guard for rapid country toggling
+  let started = false // ensureLoaded has been called at least once
+  let loadedFor = null // JSON of the OTU id list the current `terminals` is for
+  let resolvePromise = Promise.resolve() // in-flight ensureLoaded resolution
+
+  // Terminal descriptors (from ensureLoaded). Keyed by Number(otuId).
+  let terminals = new Map() // otuId -> { rank, name, tnId, forceInventory? }
+  // Shared presence caches. probeCache is keyed by country then probe signature;
+  // probeTaxa reuses it so an in-key terminal that is also a completeness target
+  // is fetched once.
+  let probeCache = new Map() // countryKey -> Map<sig, boolean>
+  let hasDataBySig = new Map() // sig -> boolean (no-country probe)
+  let inventoryCountryCache = new Map() // otuId -> Set<countryKey> (fallback terminals)
+  let hasDataDone = false // the no-country batch has run for this gen
+  let selectedKeys = new Set() // the countries the last syncSelection applied
 
   function currentOtuIds() {
     return [
-      ...new Set((terminalListRef.value || []).map((t) => t.id).filter(Boolean))
+      ...new Set(
+        (terminalListRef.value || [])
+          .map((t) => Number(t?.id))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
     ]
   }
 
-  // Fetch on first demand (picker opened, or a restored non-empty selection),
-  // and re-fetch whenever the key's terminals change after that.
-  function ensureLoaded() {
-    started = true
-    const ids = currentOtuIds()
-    const sig = JSON.stringify(ids)
-    if (sig === loadedFor) return
-    load(ids, sig)
+  // probeParams for a resolved terminal, honouring the homonym / fallback flag.
+  function descriptorFor(t) {
+    if (!t || t.forceInventory) return { fallback: 'inventory' }
+    return probeParams({ rank: t.rank, name: t.name })
   }
-  watch(terminalListRef, () => {
-    if (started) ensureLoaded()
-  })
-  // The scope OTU (KeyView's geoScopeOtuId) can resolve asynchronously after
-  // ensureLoaded() has already run once (e.g. the picker was opened before
-  // resolveScope()'s ancestor walk finished). Without this, the root
-  // pre-filter would silently stay disabled for the rest of the session even
-  // after the scope becomes known, since ensureLoaded() only reacts to the
-  // terminal list. Force one reload the first time the scope actually
-  // resolves; loadedFor is cleared so the (otherwise unchanged) id signature
-  // doesn't short-circuit it.
-  if (scopeOtuIdRef) {
-    watch(scopeOtuIdRef, (v, old) => {
-      if (started && v && !old) {
-        loadedFor = null
-        ensureLoaded()
+
+  // Is `countryKey` fully covered by cache for the current terminal set? (a flat
+  // descriptor: its sig cached for that country; a fallback terminal: its
+  // inventory set cached, which is country independent.)
+  function countryCovered(ck, descByOtu) {
+    const bucket = probeCache.get(ck)
+    for (const [otuId, desc] of descByOtu) {
+      if (desc.fallback === 'inventory') {
+        if (!inventoryCountryCache.has(otuId)) return false
+      } else if (!bucket || !bucket.has(desc.sig)) {
+        return false
       }
-    })
-  }
-
-  function add(otuId, territory) {
-    // otuId is null for a BiologicalAssociation-linked asserted distribution
-    // (asserted_distribution_object_type !== 'Otu'); those describe an
-    // interaction, not a terminal's range, so they must not count.
-    if (otuId == null || !territory) return
-    const map = territoriesByOtu.value
-    if (!map.has(otuId)) map.set(otuId, new Set())
-    map.get(otuId).add(territory.key)
-    if (!labelByKey.value.has(territory.key)) {
-      labelByKey.value.set(territory.key, territory.label || territory.key)
     }
-  }
-  // One reactive replacement per pass, not per pooled task.
-  function bump() {
-    territoriesByOtu.value = new Map(territoriesByOtu.value)
-    labelByKey.value = new Map(labelByKey.value)
+    return true
   }
 
-  async function load(otuIds, sig) {
+  function presentIn(desc, otuId, ck) {
+    if (desc.fallback === 'inventory') {
+      return inventoryCountryCache.get(otuId)?.has(ck) ?? false
+    }
+    return probeCache.get(ck)?.get(desc.sig) ?? false
+  }
+
+  // Rebuild territoriesByOtu from cache: for each terminal, the subset of the
+  // current selection it is present in. A fresh Map each call so Vue re-renders
+  // (the "bump" of the old design).
+  function recomputeTerritories() {
+    const out = new Map()
+    for (const [otuId, t] of terminals) {
+      const desc = descriptorFor(t)
+      const set = new Set()
+      for (const ck of selectedKeys) {
+        if (presentIn(desc, otuId, ck)) set.add(ck)
+      }
+      out.set(otuId, set)
+    }
+    territoriesByOtu.value = out
+  }
+
+  // Rebuild hasDataByOtu from the no-country cache. Country independent, so this
+  // only needs to run after the has-data batch.
+  function recomputeHasData() {
+    const out = new Map()
+    for (const [otuId, t] of terminals) {
+      const desc = descriptorFor(t)
+      if (desc.fallback === 'inventory') {
+        out.set(otuId, (inventoryCountryCache.get(otuId)?.size ?? 0) > 0)
+      } else {
+        out.set(otuId, hasDataBySig.get(desc.sig) ?? false)
+      }
+    }
+    hasDataByOtu.value = out
+  }
+
+  // --- probes -------------------------------------------------------------
+
+  // Present? for one (probe signature, country). Cached in probeCache. Any error
+  // is a false ("one country short on data is tolerable").
+  async function probeOne(sig, params, countryKey, shouldStop) {
+    const bucket = probeCache.get(countryKey)
+    if (bucket && bucket.has(sig)) return bucket.get(sig)
+    if (shouldStop?.()) return false
+    let present = false
+    try {
+      const country = countryName(countryKey) ?? territoryLabel(countryKey)
+      const res = await makeAPIRequest.get('/dwc_occurrences', {
+        params: { ...params, country, ...PRESENCE_PARAMS }
+      })
+      present = readPresence(res)
+    } catch {
+      present = false
+    }
+    if (!probeCache.has(countryKey)) probeCache.set(countryKey, new Map())
+    probeCache.get(countryKey).set(sig, present)
+    return present
+  }
+
+  // Present anywhere? for one probe signature (no country). Cached in hasDataBySig.
+  async function probeHasData(sig, params, shouldStop) {
+    if (hasDataBySig.has(sig)) return hasDataBySig.get(sig)
+    if (shouldStop?.()) return false
+    let present = false
+    try {
+      const res = await makeAPIRequest.get('/dwc_occurrences', {
+        params: { ...params, ...PRESENCE_PARAMS }
+      })
+      present = readPresence(res)
+    } catch {
+      present = false
+    }
+    hasDataBySig.set(sig, present)
+    return present
+  }
+
+  // Fallback path (subgenus / nameless / homonym terminals): one
+  // /otus/:id/inventory/dwc.json, collect the country of every row that has one.
+  // Cached per OTU; one fetch covers has-data (non-empty) and every country
+  // (membership). Cheap only because this path is restricted to small taxa.
+  async function inventoryCountries(otuId, shouldStop) {
+    const cached = inventoryCountryCache.get(otuId)
+    if (cached) return cached
+    const set = new Set()
+    if (shouldStop?.()) return set
+    try {
+      const { data } = await makeAPIRequest.get(
+        `/otus/${otuId}/inventory/dwc.json`
+      )
+      const rows = data?.data || data?.rows || (Array.isArray(data) ? data : [])
+      for (const r of rows) {
+        const c = r?.country
+        if (!c) continue
+        const norm = normalizeCountryString(c)
+        if (norm?.key) set.add(norm.key)
+      }
+    } catch {
+      /* one terminal short on data is tolerable */
+    }
+    inventoryCountryCache.set(otuId, set)
+    return set
+  }
+
+  // --- terminal resolution ---------------------------------------------------
+
+  // Resolve terminal OTUs to { rank, name, tnId }. No distribution fetch.
+  async function resolveTerminals(otuIds, sig) {
     const myGen = ++gen
-    territoriesByOtu.value = new Map()
-    labelByKey.value = new Map()
     loadedFor = sig
+    terminals = new Map()
+    hasDataDone = false
     if (!otuIds.length) {
       loading.value = false
       return
     }
     loading.value = true
-
-    // 0. terminal OTU -> taxon-name id + rank
-    const otuToTn = new Map()
-    otuToTnRef.value = new Map()
-    const rankByTn = new Map()
-    const nameByTn = new Map()
-    const higherRankOtus = []
-    // Higher-rank terminals whose rank has a flat dwc_occurrences column --
-    // handled by the flat-column pass instead of higherRankOtus's AD walk.
-    const flatFieldOtus = []
-    // step 2 fills this: terminal otuId -> its descendant-AD row count, the
-    // "how big is this taxon" signal step 3 gates on.
-    const adTotalByOtu = new Map()
-    // Only true once ranks are actually known. If it stays false the rank-based
-    // gate in step 3 has nothing to work with, so step 3 is skipped rather than
-    // risk a family-sized /inventory/dwc.json call for every terminal.
-    let ranksResolved = false
     try {
       const q = new URLSearchParams()
       otuIds.forEach((id) => q.append('otu_id[]', id))
       q.set('per', '1000')
-      const { data } = await makeAPIRequest.get(`/otus?${q}`)
+      const { data: otus } = await makeAPIRequest.get(`/otus?${q}`)
       if (myGen !== gen) return
-      for (const o of Array.isArray(data) ? data : []) {
-        if (o?.id && o.taxon_name_id) otuToTn.set(o.id, o.taxon_name_id)
+
+      const otuToTn = new Map()
+      for (const o of Array.isArray(otus) ? otus : []) {
+        if (o?.id && o.taxon_name_id) otuToTn.set(Number(o.id), o.taxon_name_id)
       }
-      otuToTnRef.value = new Map(otuToTn)
+
+      const rankByTn = new Map()
+      const nameByTn = new Map()
       const tnIds = [...new Set(otuToTn.values())]
-      if (!tnIds.length) {
-        ranksResolved = true // nothing to resolve — every terminal is name-less
-      } else {
+      if (tnIds.length) {
         const tq = new URLSearchParams()
         tnIds.forEach((id) => tq.append('taxon_name_id[]', id))
         tq.set('per', '1000')
         const { data: tns } = await makeAPIRequest.get(`/taxon_names?${tq}`)
         if (myGen !== gen) return
-        for (const t of Array.isArray(tns) ? tns : []) {
+        const rows = Array.isArray(tns) ? tns : []
+        for (const t of rows) {
           rankByTn.set(t.id, t.rank)
           nameByTn.set(t.id, t.name)
         }
 
-        // A key terminal can be linked to a synonym taxon_name rather than
-        // the valid one (KeyView.vue's completeness pass resolves the same
-        // case, via the same effectiveTaxonNameId rule — proof this is a
-        // real, recurring situation in this project's keys). Both the
-        // flat-column probe and the descendant-AD walk below are built from
-        // the VALID name's own name string / lineage, so redirect every
-        // synonym-linked terminal to its valid taxon_name id up front.
-        // Otherwise it silently probes/walks a name with no distribution
-        // data of its own and reports as absent everywhere.
+        // A key terminal can be linked to a synonym taxon_name rather than the
+        // valid one (KeyView's completeness pass resolves the same case, via the
+        // same effectiveTaxonNameId rule). Every flat probe is built from the
+        // VALID name string, so redirect synonym-linked terminals up front, or
+        // they probe a name with no distribution data of its own and read as
+        // absent everywhere.
         const validIdByTn = new Map()
-        for (const t of Array.isArray(tns) ? tns : []) {
+        for (const t of rows) {
           const validId = effectiveTaxonNameId(t)
-          if (validId !== t.id) validIdByTn.set(t.id, validId)
+          if (validId && validId !== t.id) validIdByTn.set(t.id, validId)
         }
         if (validIdByTn.size) {
           const missing = [...new Set(validIdByTn.values())].filter(
@@ -393,7 +346,9 @@ export function useKeyGeography(terminalListRef, scopeOtuIdRef) {
             const vq = new URLSearchParams()
             missing.forEach((id) => vq.append('taxon_name_id[]', id))
             vq.set('per', '1000')
-            const { data: validTns } = await makeAPIRequest.get(`/taxon_names?${vq}`)
+            const { data: validTns } = await makeAPIRequest.get(
+              `/taxon_names?${vq}`
+            )
             if (myGen !== gen) return
             for (const t of Array.isArray(validTns) ? validTns : []) {
               rankByTn.set(t.id, t.rank)
@@ -404,216 +359,241 @@ export function useKeyGeography(terminalListRef, scopeOtuIdRef) {
             const validId = validIdByTn.get(tnId)
             if (validId) otuToTn.set(otuId, validId)
           }
-          otuToTnRef.value = new Map(otuToTn)
-        }
-
-        ranksResolved = true
-        for (const [otuId, tnId] of otuToTn) {
-          if (!needsDescendantAd(rankByTn.get(tnId))) continue
-          const field = fieldForRank(rankByTn.get(tnId))
-          const name = nameByTn.get(tnId)
-          if (field && name) {
-            flatFieldOtus.push({ otuId, tnId, field, name, rank: normRank(rankByTn.get(tnId)) })
-          } else {
-            higherRankOtus.push(otuId)
-          }
-        }
-
-        // Homonym guard (see findHomonymTnIds): a candidate whose name+rank
-        // collides with a different taxon_name elsewhere in the project falls
-        // back to the ID-scoped descendant-AD walk instead of the flat probe.
-        if (flatFieldOtus.length) {
-          const homonymTnIds = await findHomonymTnIds(flatFieldOtus)
-          if (myGen !== gen) return
-          if (homonymTnIds.size) {
-            const kept = []
-            for (const c of flatFieldOtus) {
-              if (homonymTnIds.has(c.tnId)) higherRankOtus.push(c.otuId)
-              else kept.push(c)
-            }
-            flatFieldOtus.length = 0
-            flatFieldOtus.push(...kept)
-          }
         }
       }
-    } catch {
-      /* fall back to the otu_id[] AD call only; step 3 is skipped */
-    }
 
-    // 1. asserted distributions stated directly on the terminal OTUs.
-    try {
-      const base = new URLSearchParams()
-      otuIds.forEach((id) => base.append('otu_id[]', id))
-      const { rows } = await fetchAllAD(base)
-      if (myGen !== gen) return
-      for (const row of rows) {
-        if (row?.is_absent) continue
-        add(adOtuId(row), normalizeShape(row.asserted_distribution_shape))
-      }
-      bump()
-    } catch {
-      /* the descendant / specimen passes may still populate it */
-    }
-
-    // 2. descendant distributions for the higher-rank terminals.
-    await mapPool(higherRankOtus, AD_TERMINAL_CONCURRENCY, async (otuId) => {
-      const tnId = otuToTn.get(otuId)
-      if (!tnId) return
-      try {
-        const base = new URLSearchParams()
-        base.append('taxon_name_id[]', tnId)
-        base.set('descendants', 'true')
-        const { rows, total } = await fetchAllAD(base)
-        if (myGen !== gen) return
-        adTotalByOtu.set(otuId, total)
-        for (const row of rows) {
-          if (row?.is_absent) continue
-          if (row.asserted_distribution_object_type !== 'Otu') continue
-          add(otuId, normalizeShape(row.asserted_distribution_shape))
-        }
-      } catch {
-        /* tolerate */
-      }
-    })
-    if (myGen !== gen) return
-    bump()
-
-    // 2b. flat-column pass: family / subfamily / tribe / genus terminals. One
-    // request per candidate country (per=1, occurrenceStatus=present), reading
-    // presence off pagination-total. Replaces both the descendant-AD walk
-    // above and the specimen pass below for these terminals: it already
-    // returns a mix of AssertedDistribution- and specimen-sourced rows (the
-    // cache is a union of both), so nothing further is needed for them.
-    const candidateCountries = allCountries()
-    const isStale = () => myGen !== gen
-    // Root pre-filter (see resolveRootCandidates): narrows the per-terminal
-    // country list to the scope taxon's own countries when there are enough
-    // flat-pass terminals to make the extra sweep worth it. Runs CONCURRENTLY
-    // with the terminal mapPool below, not before it — awaiting it first
-    // would serialize every terminal behind one extra full sweep, front-
-    // loading a stall with zero territory data landing until the root probe
-    // (~as long as a single terminal's own full sweep) finishes. Terminals
-    // already in flight when root resolves keep the full list they started
-    // with; only terminals that haven't started yet pick up the narrowed one.
-    let rootCandidates = null
-    const rootPromise =
-      flatFieldOtus.length >= ROOT_PREFILTER_MIN_TERMINALS && scopeOtuIdRef?.value
-        ? resolveRootCandidates(scopeOtuIdRef.value, candidateCountries, isStale).then((r) => {
-            rootCandidates = r
-          })
-        : null
-    await Promise.all([
-      rootPromise,
-      mapPool(
-        flatFieldOtus,
-        FLAT_TERMINAL_CONCURRENCY,
-        async ({ otuId, field, name }) => {
-          const hits = await fetchFlatColumnCountries(
-            field,
-            name,
-            rootCandidates || candidateCountries,
-            isStale
-          )
-          if (isStale()) return
-          for (const territory of hits) add(otuId, territory)
-        },
-        isStale
-      )
-    ])
-    if (myGen !== gen) return
-    bump()
-    const flatFieldOtuIds = new Set(flatFieldOtus.map((f) => f.otuId))
-
-    // 3. specimen countries. dwc.json also returns AssertedDistribution rows
-    //    (individualCount null) — allow-list the two specimen types so this pass
-    //    is specimen-only. Skip terminals where the call is expensive
-    //    (family/tribe, or a giant genus): step 2 already covers them, and the
-    //    inventory endpoint rebuilds the whole DWC set server-side per request
-    //    so there is no cheap way to probe size first. Skip the whole pass when
-    //    ranks never resolved — without them we cannot tell a family terminal
-    //    (a ~100 MB call) from a species one.
-    const specimenOtus = ranksResolved
-      ? otuIds.filter((otuId) => {
-          if (flatFieldOtuIds.has(otuId)) return false // already covered above
-          const tnId = otuToTn.get(otuId)
-          return needsSpecimenPass({
-            rank: tnId == null ? undefined : rankByTn.get(tnId),
-            hasName: tnId != null,
-            adTotal: adTotalByOtu.get(otuId) || 0
-          })
+      for (const otuId of otuIds) {
+        const tnId = otuToTn.get(Number(otuId))
+        terminals.set(Number(otuId), {
+          tnId: tnId ?? null,
+          rank: tnId != null ? normRank(rankByTn.get(tnId)) : null,
+          name: tnId != null ? nameByTn.get(tnId) || '' : ''
         })
-      : []
-    await mapPool(specimenOtus, DWC_CONCURRENCY, async (otuId) => {
-      try {
-        const { data } = await makeAPIRequest.get(
-          `/otus/${otuId}/inventory/dwc.json`
-        )
-        if (myGen !== gen) return
-        const rows = data?.data || data?.rows || (Array.isArray(data) ? data : [])
-        const seen = new Set()
-        for (const r of rows) {
-          if (!SPECIMEN_TYPES.has(r?.dwc_occurrence_object_type)) continue
-          const c = r?.country
-          if (!c || seen.has(c)) continue
-          seen.add(c)
-          add(otuId, normalizeCountryString(c))
-        }
-      } catch {
-        /* one terminal short on data is tolerable */
       }
-    })
-    if (myGen !== gen) return
-    bump()
 
-    loading.value = false
+      // Homonym guard: a bare-name flat probe (family/subfamily/tribe/genus)
+      // whose name+rank collides with a different taxon_name elsewhere in the
+      // project is forced onto the inventory fallback (ID exact) instead.
+      const flatCandidates = []
+      for (const [otuId, t] of terminals) {
+        const desc = descriptorFor(t)
+        if (desc.fallback) continue
+        const fields = Object.keys(desc.params)
+        if (fields.length === 1 && FLAT_FIELDS.has(fields[0])) {
+          flatCandidates.push({
+            otuId,
+            tnId: t.tnId,
+            rank: t.rank,
+            name: desc.params[fields[0]]
+          })
+        }
+      }
+      if (flatCandidates.length) {
+        const homonymTnIds = await findHomonymTnIds(flatCandidates)
+        if (myGen !== gen) return
+        for (const c of flatCandidates) {
+          if (c.tnId != null && homonymTnIds.has(c.tnId)) {
+            const t = terminals.get(c.otuId)
+            if (t) t.forceInventory = true
+          }
+        }
+      }
+    } catch {
+      /* leave `terminals` as best effort; an unresolved terminal probes via
+         the inventory fallback (no name -> { fallback: 'inventory' }) */
+    } finally {
+      if (myGen === gen) loading.value = false
+    }
   }
 
-  // Picker options: every territory at least one terminal is recorded from.
-  const allTerritories = computed(() => {
-    const count = new Map()
-    for (const set of territoriesByOtu.value.values()) {
-      for (const k of set) count.set(k, (count.get(k) || 0) + 1)
-    }
-    return [...count.entries()]
-      .map(([key, otuCount]) => ({
-        key,
-        label: labelByKey.value.get(key) || key,
-        otuCount
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label))
+  // Fetch on first demand (picker opened, or a restored non-empty selection),
+  // and re-resolve whenever the key's terminals change after that.
+  function ensureLoaded() {
+    started = true
+    const ids = currentOtuIds()
+    const sig = JSON.stringify(ids)
+    if (sig === loadedFor) return
+    resolvePromise = resolveTerminals(ids, sig)
+  }
+  watch(terminalListRef, () => {
+    if (started) ensureLoaded()
   })
 
-  const unknownOtuIds = computed(() => {
-    const s = new Set()
-    for (const t of terminalListRef.value || []) {
-      const set = territoriesByOtu.value.get(t.id)
-      if (!set || set.size === 0) s.add(t.id)
-    }
-    return s
-  })
+  // --- selection sync ------------------------------------------------------
 
-  // Same data as territoriesByOtu, keyed by the terminal's taxon-name id, so the
-  // completeness pass can reuse it for the taxa that are in the key (no second
-  // fetch).
-  const territoriesByTn = computed(() => {
-    const out = new Map()
-    const o2t = otuToTnRef.value
-    for (const [otuId, set] of territoriesByOtu.value) {
-      const tn = o2t.get(otuId)
-      if (tn == null) continue
-      if (!out.has(tn)) out.set(tn, new Set())
-      for (const k of set) out.get(tn).add(k)
+  // Called by KeyView whenever the effective country selection changes. Runs the
+  // one-time has-data batch (first non-empty selection) and a presence batch for
+  // any newly selected country; a removal is a pure recompute from cache.
+  async function syncSelection(effectiveKeys) {
+    const mySeq = ++syncSeq
+    const keys =
+      effectiveKeys instanceof Set
+        ? new Set(effectiveKeys)
+        : new Set(effectiveKeys || [])
+
+    ensureLoaded()
+    try {
+      await resolvePromise
+    } catch {
+      /* resolveTerminals swallows its own errors */
     }
-    return out
-  })
+    const myGen = gen
+    const stale = () => myGen !== gen || mySeq !== syncSeq
+    if (stale()) return
+
+    selectedKeys = new Set(keys)
+    recomputeTerritories() // immediate feedback (a removal needs nothing more)
+
+    if (!terminals.size || !keys.size) return
+
+    const descByOtu = new Map()
+    for (const [otuId, t] of terminals) descByOtu.set(otuId, descriptorFor(t))
+
+    loading.value = true
+    try {
+      // has-data batch, once per gen.
+      if (!hasDataDone) {
+        await mapPool(
+          [...terminals.keys()],
+          PROBE_CONCURRENCY,
+          async (otuId) => {
+            const desc = descByOtu.get(otuId)
+            if (desc.fallback === 'inventory') {
+              await inventoryCountries(otuId, stale)
+            } else {
+              await probeHasData(desc.sig, desc.params, stale)
+            }
+          },
+          stale
+        )
+        if (stale()) return
+        hasDataDone = true
+        recomputeHasData()
+      }
+
+      // presence batch: only countries not already covered by cache.
+      const newCountries = [...keys].filter((ck) => !countryCovered(ck, descByOtu))
+      if (newCountries.length) {
+        const remaining = new Map(newCountries.map((ck) => [ck, descByOtu.size]))
+        const pairs = []
+        for (const ck of newCountries) {
+          for (const [otuId, desc] of descByOtu) pairs.push({ ck, otuId, desc })
+        }
+        await mapPool(
+          pairs,
+          PROBE_CONCURRENCY,
+          async ({ ck, otuId, desc }) => {
+            if (desc.fallback === 'inventory') {
+              await inventoryCountries(otuId, stale)
+            } else {
+              await probeOne(desc.sig, desc.params, ck, stale)
+            }
+            const left = (remaining.get(ck) || 1) - 1
+            remaining.set(ck, left)
+            if (left <= 0 && !stale()) recomputeTerritories() // progressive fill
+          },
+          stale
+        )
+        if (stale()) return
+      }
+      recomputeTerritories()
+    } finally {
+      if (!stale()) loading.value = false
+    }
+  }
+
+  // --- completeness pill -------------------------------------------------
+
+  // Probe a set of expected modal-rank taxa (in-key targets and gaps) the same
+  // way, sharing probeCache / hasDataBySig. Does NOT mutate territoriesByOtu /
+  // hasDataByOtu (those are terminal scoped). A taxon with no flat column
+  // (subgenus / no name) has no OTU id here, so it is left as unknown.
+  async function probeTaxa(taxa, effectiveKeys) {
+    const keys =
+      effectiveKeys instanceof Set
+        ? new Set(effectiveKeys)
+        : new Set(effectiveKeys || [])
+    const myGen = gen
+    const shouldStop = () => myGen !== gen
+
+    const territoriesByTaxonId = new Map()
+    const hasDataByTaxonId = new Set()
+    const list = (taxa || []).filter((t) => t && t.tnId != null)
+    if (!list.length || shouldStop()) {
+      return { territoriesByTaxonId, hasDataByTaxonId }
+    }
+
+    const descByTn = new Map()
+    for (const t of list) {
+      descByTn.set(t.tnId, probeParams({ rank: t.rank, name: t.name }))
+      territoriesByTaxonId.set(t.tnId, new Set())
+    }
+
+    // has-data per taxon (once, shared cache).
+    await mapPool(
+      list,
+      PROBE_CONCURRENCY,
+      async (t) => {
+        const desc = descByTn.get(t.tnId)
+        if (desc.fallback) return
+        const present = await probeHasData(desc.sig, desc.params, shouldStop)
+        if (present) hasDataByTaxonId.add(t.tnId)
+      },
+      shouldStop
+    )
+    if (shouldStop()) return { territoriesByTaxonId, hasDataByTaxonId }
+
+    // presence per (taxon, country), shared cache.
+    const pairs = []
+    for (const t of list) {
+      for (const ck of keys) pairs.push({ t, ck })
+    }
+    await mapPool(
+      pairs,
+      PROBE_CONCURRENCY,
+      async ({ t, ck }) => {
+        const desc = descByTn.get(t.tnId)
+        if (desc.fallback) return
+        const present = await probeOne(desc.sig, desc.params, ck, shouldStop)
+        if (present) territoriesByTaxonId.get(t.tnId).add(ck)
+      },
+      shouldStop
+    )
+
+    return { territoriesByTaxonId, hasDataByTaxonId }
+  }
+
+  // --- lifecycle ----------------------------------------------------------
+
+  function reset() {
+    gen++
+    syncSeq++
+    terminals = new Map()
+    probeCache = new Map()
+    hasDataBySig = new Map()
+    inventoryCountryCache = new Map()
+    selectedKeys = new Set()
+    hasDataDone = false
+    loading.value = false
+    loadedFor = null
+    territoriesByOtu.value = new Map()
+    hasDataByOtu.value = new Map()
+    // The re-resolve for the new key is driven by the terminalListRef watch once
+    // the new key's nodes populate.
+  }
+
+  // Static country list, every ISO code, sorted by label. Region presets are
+  // added by KeyView, not here. Exposed as a computed for API stability.
+  const allTerritories = computed(() => STATIC_COUNTRIES)
 
   return {
-    territoriesByOtu,
-    territoriesByTn,
     allTerritories,
-    unknownOtuIds,
+    territoriesByOtu,
+    hasDataByOtu,
     loading,
     reset,
-    ensureLoaded
+    ensureLoaded,
+    syncSelection,
+    probeTaxa
   }
 }

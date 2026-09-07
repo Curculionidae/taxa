@@ -219,3 +219,12 @@ it is already correct and cheap at that scale.
 - `is_absent` ADs and Gazetteer shapes without ISO codes need explicit handling.
 - Distribution data completeness varies wildly by taxon — a "no countries known" terminal
   should be shown as *unknown*, not *out of area*.
+
+## 2026-09-07: superseded by the lazy per-country redesign
+
+The "replace the family/tribe pass with a per-country flat probe" recommendation
+above was generalised: EVERY terminal rank now uses the per-country flat probe
+(species via `genus` + `specificEpithet`), fired lazily only after the reader
+selects a country. The eager all-country sweep, the `/asserted_distributions`
+descendant walk and the eager `inventory/dwc.json` pass are gone.
+See `docs/superpowers/specs/2026-09-07-key-geography-lazy-per-country-design.md`.

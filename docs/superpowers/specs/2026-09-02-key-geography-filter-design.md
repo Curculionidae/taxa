@@ -1,5 +1,10 @@
 # Filter a dichotomous key by geography
 
+> **Loading strategy superseded 2026-09-07** by
+> `2026-09-07-key-geography-lazy-per-country-design.md` (lazy per-country probe).
+> The UI, selection model, presets and the two completeness measures below are
+> still current.
+
 Design for the "Task Scope by Geography" item in `docs/Task_toDo.md`. Builds on
 the feasibility probe in `docs/feasibility_key_geography_filter.md` (2026-08-30).
 

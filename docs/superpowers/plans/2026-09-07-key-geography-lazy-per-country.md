@@ -556,8 +556,8 @@ git commit -m "feat(keys): territoryStatus takes an explicit has-data-anywhere f
 
 Under lazy per-country probing an empty territory set means 'not in any
 selected country', which is 'out' when the taxon has data somewhere and only
-'unknown' when it has none. New optional arg, defaulted true so existing
-callers are unchanged until wired up.
+'unknown' when it has none. New optional arg, defaulted false so existing
+callers stay unchanged until wired up.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_012Z8okD4WPviUoryHTuHjaa"

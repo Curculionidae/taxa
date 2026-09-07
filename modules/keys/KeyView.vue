@@ -105,7 +105,7 @@ provide('keyImages', keyImages)
 const keyTaxonNames = useKeyTaxonNames(terminalOtuList)
 provide('keyTaxonNames', keyTaxonNames)
 
-// Geography filter (design spec 2026-09-07 — lazy, per country). The picker
+// Geography filter (design spec 2026-09-07, lazy per country). The picker
 // shows the full static country list (geoTerritories, now [{ key, label }]);
 // nothing is fetched until a selection is restored or the picker is opened.
 const geo = useKeyGeography(terminalOtuList)
@@ -208,7 +208,7 @@ watch(
     // geoExpectedGen: a newer watch run supersedes this one. loadGen (captured
     // separately): a key navigation happened during the await. probeTaxa reads
     // the composable's own `gen` but never bumps it, so it cannot self-invalidate
-    // a stale full result — this guard is what discards one. (The brief specified
+    // a stale full result; this guard is what discards one. (The brief specified
     // `myGen !== loadGen`, which compares this sequence number against an
     // unrelated counter and would discard every result after the first key load;
     // main confirmed the separate-capture form below on 2026-09-07.)

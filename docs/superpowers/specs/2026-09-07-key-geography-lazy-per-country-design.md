@@ -163,23 +163,38 @@ The `completeness` computed's `territoriesByTaxonId` input is rebuilt from
 | **Unknown vs out-of-area** | The one-time no-country has-data probe per in-key terminal. Data somewhere but not in any selected country -> *out of area*; no data anywhere -> *unknown*. |
 | **Key switch / restored selection** | `probeCache` + `hasDataByOtu` reset on key change (`myGen` guard). A persisted non-empty selection on mount triggers the probe batch for those countries. |
 
-## 7. Data-fidelity tradeoff
+## 7. Region-only records: conservative, not expanded (resolved)
 
 The flat `dwc_occurrences.country` column is populated by the cache's own
 upsert-time shape resolution. It resolves ISO countries and country-resolvable
 TDWG / gazetteer shapes (the spike saw 47 AssertedDistribution rows for
 `family=Curculionidae&country=Germany`). It does **not** expand a vague
 higher-level shape: an AD stated only for TDWG L2 `"Caucasus"` has no single
-`country`, so it is invisible to a `country=` probe.
+`country`, so it is invisible to a `country=` probe, and such a terminal reads
+as *unknown* for those countries.
 
-The current (removed) path normalises `"Caucasus"` client-side to
-{Armenia, Azerbaijan, Georgia, Russia, ...} via `geoNormalize`. The new path
-does not: such a terminal reads as *unknown* for those countries rather than
-*present*. Given the current expansion is itself flagged as approximate ("a
-species stated only for 'Caucasus' will match a filter for any Caucasus
-country"), this is a defensible change from over-broad to conservative, but it
-**is** a visible behaviour difference on region-only records and should be
-called out in review.
+**This is the intended behaviour.** The removed path silently normalised
+`"Caucasus"` client-side to {Armenia, Azerbaijan, Georgia, Russia, ...}; per
+user direction (2026-09-07) that expansion was *unacceptable and not
+transparent* — inferring a country-level claim the data never made. No
+client-side TDWG expansion is added back. A record that names only a region is
+reported as what it is: not a country-level presence statement.
+
+## 7a. Hard-coded geographic sets live in exactly one file
+
+Per user direction (2026-09-07): every hard-coded geographic set — the region
+presets (currently `panels/PanelKeys/geographyCategories.js`), the canonical
+country list and the alias / alternate-spelling map (currently inside
+`modules/keys/lib/geoNormalize.js`) — must live in **one module only**. Pure
+consumer functions (`normalizeCountryString`, `probeParams`, preset expansion)
+may live elsewhere and import from it, but no second file may define
+country names, codes, aliases, or groupings.
+
+Target: a single `modules/keys/lib/geoData.js` (co-located with the other key
+libs, importable by both the module and `PanelKeys`). `geographyCategories.js`
+is re-exported from there or deleted and its importers repointed. This
+consolidation is a discrete first step in the plan, done and verified before
+the probe rewrite.
 
 ## 8. Removed / kept
 
@@ -191,12 +206,13 @@ collapses to the static list (its `otuCount` pending Q3); `KeyView`'s
 `territoriesByExpectedId`, `geoScopeOtuId`, and the hoisted `resolvedScopeOtuId`
 (it can move back down next to `resolveScope()`).
 
-**Kept:** `geoNormalize.js` (country list + alias grouping + `normalizeCountryString`),
-`geoScope.js` (`needsDescendantAd` / `needsSpecimenPass` become unused but
-`fieldForRank` is reused by `geoProbe.js` for the single-column ranks),
-`findHomonymTnIds`, `effectiveTaxonNameId`, `mapPool`, the `myGen` generation
-guard, the persisted-selection flow, `GeoFilter` / `KeyHeader` / `TaxonLink` /
-`GuidedView` interfaces.
+**Kept:** `geoNormalize.js` as *functions only* (`normalizeCountryString`,
+`normalizeShape`) — its country list and `NAME_ALIASES` move to `geoData.js`
+(section 7a); `geoScope.js` (`needsDescendantAd` / `needsSpecimenPass` become
+unused but `fieldForRank` is reused by `geoProbe.js` for the single-column
+ranks); `findHomonymTnIds`, `effectiveTaxonNameId`, `mapPool`, the `myGen`
+generation guard, the persisted-selection flow, `GeoFilter` / `KeyHeader` /
+`TaxonLink` / `GuidedView` interfaces.
 
 ## 9. Testing
 
@@ -205,7 +221,11 @@ Pure units (`node --test`, matching the repo's existing `modules/keys/lib/*.test
 - `geoProbe.test.js` — `probeParams` for each rank; species name splitting
   (with and without subgenus parenthetical); synonym-redirected name; homonym ->
   `inventory` fallback; missing name -> `inventory` fallback.
-- `geoNormalize.test.js` — extend for the exact cache spellings once reconciled.
+- `geoData.test.js` — the consolidated list/alias/preset module: preset codes
+  all resolve to known countries; alias map keys are unique; the exact cache
+  spellings once reconciled.
+- `geoNormalize.test.js` — repoint to import list/alias data from `geoData.js`;
+  keep the `normalizeCountryString` / `normalizeShape` cases.
 
 `useKeyGeography` and the `KeyView` pill are integration-tested by hand against
 key 3605 (genus key, fast baseline) and key 5024 (families, the worst case):
@@ -213,13 +233,13 @@ verify one country selection settles in ~1-2 s, country switching is
 incremental, out-of-scope and subgenus terminals still resolve, and the pill's
 gap count matches the pre-redesign result for a country with known coverage.
 
-## 10. Open questions for review
+## 10. Decisions (resolved 2026-09-07)
 
-1. **Region-only records (section 7)** — accept the over-broad -> conservative
-   change, or keep a client-side TDWG expansion as a fallback for terminals that
-   probe empty in every selected country but have data via a region shape?
-2. **Has-data probe timing** — eager for all in-key terminals on first
-   selection (adds ~0.5 s once), or lazy per terminal only when it first probes
-   empty in a selected country?
-3. **Picker "N terminals here" count** — drop it, or fill it in per selected
-   country after the probe batch?
+1. **Region-only records** — conservative, no client-side TDWG expansion. See
+   section 7.
+2. **Hard-coded geographic sets** — consolidate to one module. See section 7a.
+3. **Has-data probe timing** — **eager** for all in-key terminals on first
+   selection (one ~0.5 s batch at concurrency 8). Keeps the unknown / out-of-area
+   distinction correct from the first render; simpler than lazy bookkeeping.
+4. **Picker "N terminals here" count** — **dropped** for v1. The picker shows a
+   plain country list. Revisit only if the count is missed in use.

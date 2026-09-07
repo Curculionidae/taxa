@@ -414,9 +414,12 @@ Claude-Session: https://claude.ai/code/session_012Z8okD4WPviUoryHTuHjaa"
 
 Lazy probing only ever populates a taxon's territory set with *selected*
 countries, so an empty set no longer means "no data anywhere". Give
-`territoryStatus` and `leadGeoStatus` an explicit "has data somewhere" input;
-default it to `true` so untouched callers keep today's behaviour until Task 6/7
-wire the real value.
+`territoryStatus` and `leadGeoStatus` an explicit "has data somewhere" input.
+**Default it to `false`** (`hasDataAnywhere` unknown => empty set stays
+`'unknown'`, exactly today's behaviour): a `true` default would flip every
+existing empty-set case from `'unknown'` to `'out'` and break the current
+`geoMatch.test.js` cases. Callers with real knowledge (Task 4 completeness,
+Task 6/7 consumers) pass the actual boolean.
 
 **Files:**
 - Modify: `modules/keys/lib/geoMatch.js`
@@ -424,8 +427,9 @@ wire the real value.
 
 **Interfaces:**
 - Produces:
-  - `territoryStatus(set: Set<string>|null, effectiveKeys: Set<string>, hasDataAnywhere = true) -> 'in' | 'out' | 'unknown'`
+  - `territoryStatus(set: Set<string>|null, effectiveKeys: Set<string>, hasDataAnywhere = false) -> 'in' | 'out' | 'unknown'`
   - `leadGeoStatus(reachableOtuIds, territoriesByOtu: Map, effectiveKeys: Set<string>, hasDataByOtu: Map<number,boolean> | null = null) -> 'in' | 'out' | 'unknown'`
+    (when `hasDataByOtu` is null, calls `territoryStatus` with only two args, letting its default apply)
 
 - [ ] **Step 1: Update the tests**
 
@@ -440,16 +444,16 @@ test('territoryStatus: empty set + hasDataAnywhere=true -> out', () => {
   assert.equal(territoryStatus(new Set(), new Set(['DE']), true), 'out')
 })
 
-test('territoryStatus: default hasDataAnywhere is true (back-compat)', () => {
-  assert.equal(territoryStatus(new Set(), new Set(['DE'])), 'out')
+test('territoryStatus: default hasDataAnywhere is false -> empty set stays unknown', () => {
+  assert.equal(territoryStatus(new Set(), new Set(['DE'])), 'unknown')
 })
 
-test('territoryStatus: a selected-country hit still wins -> in', () => {
+test('territoryStatus: a selected-country hit still wins over hasDataAnywhere -> in', () => {
   assert.equal(territoryStatus(new Set(['DE']), new Set(['DE', 'FR']), false), 'in')
 })
 
-test('territoryStatus: no active selection -> in regardless', () => {
-  assert.equal(territoryStatus(null, new Set(), false), 'in')
+test('territoryStatus: non-empty disjoint set -> out regardless of hasDataAnywhere', () => {
+  assert.equal(territoryStatus(new Set(['MG']), new Set(['DE', 'FR']), false), 'out')
 })
 
 test('leadGeoStatus: all reachable terminals lack data anywhere -> unknown', () => {
@@ -469,15 +473,24 @@ test('leadGeoStatus: a reachable terminal is in area -> in', () => {
   const has = new Map([[1, true]])
   assert.equal(leadGeoStatus([1], terr, new Set(['DE']), has), 'in')
 })
+
+test('leadGeoStatus: no hasDataByOtu map -> empty set is unknown (today behaviour)', () => {
+  const terr = new Map([[1, new Set()]])
+  assert.equal(leadGeoStatus([1], terr, new Set(['DE'])), 'unknown')
+})
 ```
 
-Note: the existing `territoryStatus`/`leadGeoStatus` tests in this file that
-pass a non-empty set, or no selection, must still pass unchanged.
+Note: EVERY existing `territoryStatus` / `leadGeoStatus` test in this file must
+still pass unchanged. The `false` default is chosen precisely so they do (the
+existing `territoryStatus(new Set(), EFF) -> 'unknown'` and
+`leadGeoStatus([1,2], {1:['MG'],2:Set()}, EFF) -> 'unknown'` cases rely on it).
 
 - [ ] **Step 2: Run, expect FAIL**
 
 Run: `node --test modules/keys/lib/geoMatch.test.js`
-Expected: the new `hasDataAnywhere=false -> unknown` cases FAIL (current code returns 'unknown' for any empty set, so `false` passes by luck but `true -> out` FAILS).
+Expected: the two new `hasDataAnywhere=true -> out` cases FAIL (current code
+ignores the third arg and returns `'unknown'` for any empty set). Every other
+case, new and existing, PASSES already.
 
 - [ ] **Step 3: Implement**
 
@@ -489,8 +502,10 @@ Replace `territoryStatus` and `leadGeoStatus` in `modules/keys/lib/geoMatch.js`:
 //   'out'     not in any selected territory, but recorded somewhere
 //   'unknown' no distribution data at all (or no filter active)
 // `set` under the lazy probe model only ever holds SELECTED countries, so an
-// empty set is disambiguated by `hasDataAnywhere` (the no-country has-data probe).
-export function territoryStatus(set, effectiveKeys, hasDataAnywhere = true) {
+// empty set is disambiguated by `hasDataAnywhere` (the no-country has-data
+// probe). Default false: without that signal, an empty set stays 'unknown',
+// matching the pre-lazy behaviour.
+export function territoryStatus(set, effectiveKeys, hasDataAnywhere = false) {
   if (!effectiveKeys || effectiveKeys.size === 0) return 'in'
   if (set && set.size) {
     for (const k of set) if (effectiveKeys.has(k)) return 'in'
@@ -509,10 +524,13 @@ export function leadGeoStatus(reachableOtuIds, territoriesByOtu, effectiveKeys, 
   for (const id of reachableOtuIds || []) {
     sawAny = true
     const set = territoriesByOtu.get(id) ?? territoriesByOtu.get(Number(id)) ?? null
-    const hasData = hasDataByOtu
-      ? (hasDataByOtu.get(id) ?? hasDataByOtu.get(Number(id)) ?? false)
-      : true
-    const st = territoryStatus(set, effectiveKeys, hasData)
+    const st = hasDataByOtu
+      ? territoryStatus(
+          set,
+          effectiveKeys,
+          hasDataByOtu.get(id) ?? hasDataByOtu.get(Number(id)) ?? false
+        )
+      : territoryStatus(set, effectiveKeys)
     if (st === 'in') return 'in'
     if (st === 'unknown') sawUnknown = true
   }
@@ -557,8 +575,10 @@ Claude-Session: https://claude.ai/code/session_012Z8okD4WPviUoryHTuHjaa"
 - Consumes: `territoryStatus(set, eff, hasDataAnywhere)` from Task 3.
 - Produces: `buildCompletenessReport`'s `geoScope` input gains an optional field:
   `geoScope.hasDataByTaxonId: Set<number> | null` — taxon-name ids known to have
-  a present record somewhere (any country). Absent / null => treat every taxon
-  as having data (today's behaviour).
+  a present record somewhere (any country). Absent / null => `geoStatusOf` calls
+  `territoryStatus` with its default (`hasDataAnywhere = false`), so an expected
+  taxon with an empty territory set stays `'unknown'`, exactly today's behaviour.
+  In the real Task 6 flow the Set is always supplied.
 
 - [ ] **Step 1: Update tests**
 
@@ -606,7 +626,7 @@ In `buildCompletenessReport`, extend the `geoScope` read:
       ? territoryStatus(
           geoByTid ? geoByTid.get(id) : null,
           geoEff,
-          geoHasData ? geoHasData.has(id) : true
+          geoHasData ? geoHasData.has(id) : false
         )
       : undefined
 ```

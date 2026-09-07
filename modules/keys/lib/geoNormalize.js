@@ -56,28 +56,37 @@ const ISO_NAME = {
   ZW: 'Zimbabwe'
 }
 
-// Common name variants that are not the canonical ISO_NAME value. Lowercased.
-const NAME_ALIASES = {
-  usa: 'US', 'u.s.a.': 'US', 'u.s.a': 'US', 'united states of america': 'US',
-  'great britain': 'GB', england: 'GB', scotland: 'GB', wales: 'GB',
-  'northern ireland': 'GB', 'u.k.': 'GB', uk: 'GB', britain: 'GB',
-  czechia: 'CZ', 'czech rep.': 'CZ',
-  macedonia: 'MK', 'republic of macedonia': 'MK', 'fyr macedonia': 'MK',
-  'bosnia-herzegovina': 'BA', 'bosnia herzegovina': 'BA', bosnia: 'BA',
-  holland: 'NL', 'the netherlands': 'NL',
-  'russian federation': 'RU', russia: 'RU',
-  'republic of ireland': 'IE',
-  'vatican': 'VA', 'vatican city state': 'VA', 'holy see': 'VA',
-  'ivory coast': 'CI',
-  'south korea': 'KR', 'korea, south': 'KR', 'republic of korea': 'KR',
-  'north korea': 'KP', 'korea, north': 'KP',
-  moldavia: 'MD', 'republic of moldova': 'MD',
-  'slovak republic': 'SK',
-  'turkiye': 'TR', türkiye: 'TR',
-  'swiss confederation': 'CH',
-  'kirghizia': 'KG', kirgizia: 'KG',
-  'white russia': 'BY', byelorussia: 'BY'
+// Common name variants that are not the canonical ISO_NAME value, in their
+// natural display casing (this is also the literal string a flat-column
+// probe sends the API — see allCountries() below — so the casing here has to
+// be a plausible match for what a specimen record actually spells).
+const NAME_ALIASES_DISPLAY = {
+  USA: 'US', 'U.S.A.': 'US', 'U.S.A': 'US', 'United States of America': 'US',
+  'Great Britain': 'GB', England: 'GB', Scotland: 'GB', Wales: 'GB',
+  'Northern Ireland': 'GB', 'U.K.': 'GB', UK: 'GB', Britain: 'GB',
+  Czechia: 'CZ', 'Czech Rep.': 'CZ',
+  Macedonia: 'MK', 'Republic of Macedonia': 'MK', 'FYR Macedonia': 'MK',
+  'Bosnia-Herzegovina': 'BA', 'Bosnia Herzegovina': 'BA', Bosnia: 'BA',
+  Holland: 'NL', 'The Netherlands': 'NL',
+  'Russian Federation': 'RU', Russia: 'RU',
+  'Republic of Ireland': 'IE',
+  Vatican: 'VA', 'Vatican City State': 'VA', 'Holy See': 'VA',
+  'Ivory Coast': 'CI',
+  'South Korea': 'KR', 'Korea, South': 'KR', 'Republic of Korea': 'KR',
+  'North Korea': 'KP', 'Korea, North': 'KP',
+  Moldavia: 'MD', 'Republic of Moldova': 'MD',
+  'Slovak Republic': 'SK',
+  Turkiye: 'TR', Türkiye: 'TR',
+  'Swiss Confederation': 'CH',
+  Kirghizia: 'KG', Kirgizia: 'KG',
+  'White Russia': 'BY', Byelorussia: 'BY'
 }
+
+// Lowercased lookup used by nameToIso() below — derived from the display
+// table above so the two never drift apart.
+const NAME_ALIASES = Object.fromEntries(
+  Object.entries(NAME_ALIASES_DISPLAY).map(([display, iso]) => [norm(display), iso])
+)
 
 // Russian WGSRPD units east of the Urals (Siberia + Russian Far East). Each keeps
 // its own key and stays out of the "Europe" grouping.
@@ -112,6 +121,22 @@ export function nameToIso(name) {
 
 export function countryName(iso) {
   return ISO_NAME[String(iso || '').toUpperCase()] || null
+}
+
+// Every country this module knows how to normalize, as { key, label } pairs --
+// the module's single source of truth for a geography-probe candidate list
+// (see composables/useKeyGeography.js's flat-column pass), so results key
+// identically to shapes/specimen strings normalized elsewhere in the module.
+// Includes the alias spellings too (canonical labels first, so labelByKey in
+// useKeyGeography.js keeps the canonical label when both hit): the flat-pass
+// probe does an exact string match against whatever the specimen record
+// actually spelled, and specimen data is confirmed to use these alternate
+// spellings (that's why NAME_ALIASES exists), so the canonical label alone
+// would silently miss them.
+export function allCountries() {
+  const canonical = Object.entries(ISO_NAME).map(([key, label]) => ({ key, label }))
+  const aliases = Object.entries(NAME_ALIASES_DISPLAY).map(([label, key]) => ({ key, label }))
+  return [...canonical, ...aliases]
 }
 
 // A display label for any territory key, independent of which key is loaded

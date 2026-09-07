@@ -114,6 +114,102 @@ Needs a small normalization layer:
    restrict the `expected` set in `buildCompletenessReport` to descendants that occur in the
    selected countries; mark in-key-but-out-of-area terminals.
 
+## 2026-09-05 update: a faster, single-endpoint replacement for the family/tribe pass
+
+Measured live against key 5024 ("Key to Families of Weevils", the worst case in the
+system: Curculionidae alone is 48,407 descendant AD rows / 49 pages).
+
+**Current shipped method** (`modules/keys/composables/useKeyGeography.js`,
+`AD_PAGE_CONCURRENCY=5`, `AD_TERMINAL_CONCURRENCY=3`), replicated exactly and timed:
+
+| Step | Time |
+|---|---|
+| Step 1, direct-on-OTU AD, all 11 terminals in one call | 2.4s |
+| Step 2, descendant AD, 8 higher-rank terminals | 59.8s |
+| **Total** | **62.2s** |
+
+**Alternative**, using `dwc_occurrences`'s denormalized rank columns instead of
+`asserted_distributions` + `descendants=true`, one presence probe per terminal per
+country:
+
+```
+GET /dwc_occurrences
+  ?family=<Name>              (or subfamily=, genus=, tribe=, matching the terminal's rank)
+  &country=<CountryName>
+  &occurrenceStatus=present   (excludes explicit "not found here" statements, see caveats)
+  &per=1
+```
+Read presence from the `pagination-total` response header, not body length.
+
+Same 8 higher-rank terminals of key 5024, all 197 countries, 8-way concurrency:
+**31.4 to 36 seconds total** (measured for 7 terminals at 31.4s, the 8th extrapolated
+at the same per-terminal rate). Close to twice as fast as the current method.
+
+**It also sees more data, in the same request.** `dwc_occurrences` is a cache built
+from a union of three source tables (`asserted_distribution`, `collection_object`,
+`field_occurrence`, see `Queries::DwcOccurrence::Filter::OCCURRENCE_SOURCES`), so one
+family/country probe returns a natural mix of both kinds of evidence. Confirmed live:
+
+```
+family=Curculionidae&country=Germany&occurrenceStatus=present&per=50
+  -> Counter({'AssertedDistribution': 47, 'CollectionObject': 3})
+```
+
+The current shipped method only gets this mix for species and non-huge genus
+terminals; `needsSpecimenPass` in `lib/geoScope.js` deliberately skips the specimen
+pass for family/tribe/superfamily rank, because the naive way to get specimen data at
+that scale (`/otus/:id/inventory/dwc.json`, no server-side country filter) is
+prohibitively expensive there (confirmed: 172s / 107MB / 76,554 rows for the
+Curculionoidea-scale case). The flat-column probe above does not have that problem,
+so it can replace the family/tribe branch of `needsSpecimenPass` outright rather than
+skipping it.
+
+**Why the flat columns are cheap and correct at any specimen count:** each
+`dwc_occurrences` row's `family`/`genus`/`subfamily`/`tribe` fields are resolved once,
+per row, at cache build time (`Shared::Taxonomy#ancestor_at_rank`, walked from the
+specimen's own identified taxon name up to the target rank, in
+`dwc_occurrence_upsert_job.rb`), not at query time. A query against them is a flat,
+indexed string match, never a live taxonomic join, so its cost does not grow with how
+many specimens the taxon has (confirmed: Anthribidae and Curculionidae, the smallest
+and largest families in the key, both cost about the same per country, roughly 25ms).
+
+### Caveats specific to this method (established this session)
+
+- Only safe for ranks with a populated flat column on this project. Measured
+  population rates: family 99.7%, genus 98.2%, subfamily 99.3%, tribe 95.5%. Subgenus
+  is 0% populated (nobody in this project records an explicit subgenus), so this
+  method silently returns nothing for a subgenus-rank terminal; use the
+  `/otus/:id/inventory/dwc.json` rollup on that terminal's own OTU instead (correct at
+  any rank, but only cheap while that specific clade stays small).
+- Must include `occurrenceStatus=present`. The same cache stores explicit "does not
+  occur here" statements (`occurrenceStatus: absent`, 24 rows project-wide,
+  confirmed); omitting this filter risks a terminal reading present on the strength of
+  a documented absence.
+- The API's generic field-exclusion mechanism (`attribute_value_negator`) does not
+  work, confirmed twice on two different fields (`occurrenceStatus`, `subfamily`) via
+  otherwise-correct parameter shapes. So a compound terminal like key 5024's
+  "Brentidae (except Nanophyinae)" cannot be queried exactly this way. Decision
+  2026-09-05: accepted as a known limitation, not special-cased. There is also no
+  structured signal for such an OTU anywhere in the API, the exclusion exists only in
+  its free-text `name` field, so automatic detection was never reliable either.
+- No server-side country aggregation exists. "Every country a taxon occurs in" always
+  means probing a candidate list one country at a time (this method), or fetching
+  every matching row and deduping client-side, there is no cheaper third option.
+- Do not use `taxon_name_id[]` + `descendants=true` on `/dwc_occurrences` for this or
+  anything else: `descendants` is silently ignored there
+  (`Queries::DwcOccurrence::Filter#taxon_name_id_facet` hardcodes `descendants: false`),
+  and even the resulting self-only match costs a fixed ~2.8s and scales badly with the
+  id-array size (34s measured at 100 ids). This is unrelated to, and much worse than,
+  both the shipped method and the one documented here.
+
+### Recommendation
+
+Replace the family/tribe/subfamily branch of `needsDescendantAd`'s AD pass (and the
+skipped branch of `needsSpecimenPass`) in `useKeyGeography.js` with the flat-column
+probe above, looped over the key's candidate country list with modest concurrency.
+Leave the species / small-genus path (the existing `inventory/dwc.json` pass) as is,
+it is already correct and cheap at that scale.
+
 ## Caveats to accept up front
 
 - All filtering is client-side over a full fetch (no server geo filter).

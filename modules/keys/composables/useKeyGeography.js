@@ -20,8 +20,13 @@
 
 import { ref, computed, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
-import { normalizeShape, normalizeCountryString } from '../lib/geoNormalize.js'
-import { needsDescendantAd, needsSpecimenPass } from '../lib/geoScope.js'
+import {
+  normalizeShape,
+  normalizeCountryString,
+  allCountries
+} from '../lib/geoNormalize.js'
+import { needsDescendantAd, needsSpecimenPass, fieldForRank } from '../lib/geoScope.js'
+import { normRank } from '../lib/completeness.js'
 
 const DWC_CONCURRENCY = 6
 const AD_PER = 1000
@@ -35,6 +40,16 @@ const AD_PAGE_CONCURRENCY = 5
 // already parallelises each terminal's own pages.
 const AD_TERMINAL_CONCURRENCY = 3
 const SPECIMEN_TYPES = new Set(['CollectionObject', 'FieldOccurrence'])
+
+// Flat-column pass (see docs/feasibility_key_geography_filter.md, "2026-09-05
+// update"): for a terminal whose rank has a well-populated dwc_occurrences
+// column (family, subfamily, tribe, genus), one presence probe per candidate
+// country replaces both the descendant-AD pass (step 2) and the specimen pass
+// (step 3) for that terminal, measured ~2x faster on the worst case in the
+// system (key 5024, Curculionidae), and it sees specimen-only occurrences too
+// in the same request, unlike the AD-only path those ranks otherwise get.
+const FLAT_COUNTRY_CONCURRENCY = 8
+const FLAT_TERMINAL_CONCURRENCY = 2
 
 // An asserted_distributions row links to its OTU via
 // asserted_distribution_object_{type,id}; the top-level `otu_id` is null.
@@ -91,10 +106,89 @@ async function fetchAllAD(baseParams) {
   return { rows, total: rows.length }
 }
 
-async function mapPool(items, limit, fn) {
+// One terminal, every candidate country, one presence probe each. Reads
+// presence primarily off the `pagination-total` response header (`per: 1`),
+// falling back to the body's own row count if that header is ever missing —
+// same reasoning as fetchAllAD above: correctness should not depend on the
+// Pagination headers being present.
+// `shouldStop`, when it starts returning true (the key changed mid-load), is
+// checked before each new probe, so a stale terminal stops dispatching further
+// requests rather than running its full country list to completion.
+async function fetchFlatColumnCountries(field, name, candidates, shouldStop) {
+  const hits = []
+  await mapPool(
+    candidates,
+    FLAT_COUNTRY_CONCURRENCY,
+    async ({ key, label }) => {
+      try {
+        const res = await makeAPIRequest.get('/dwc_occurrences', {
+          params: {
+            [field]: name,
+            country: label,
+            occurrenceStatus: 'present',
+            per: 1
+          }
+        })
+        const headerTotal = parseInt(res.headers?.['pagination-total'] ?? '0', 10)
+        const bodyTotal = Array.isArray(res.data) ? res.data.length : 0
+        if (headerTotal > 0 || bodyTotal > 0) hits.push({ key, label })
+      } catch {
+        /* one country short on data is tolerable */
+      }
+    },
+    shouldStop
+  )
+  return hits
+}
+
+// The flat-column pass matches by bare name string (no taxon_name_id
+// scoping — dwc_occurrences' family/genus/subfamily/tribe columns are plain
+// strings, there is nothing else to scope by). A homonym at the same rank
+// elsewhere in this project's data — a different lineage that happens to
+// share the exact name — would have its occurrences misattributed to this
+// terminal. One batched /taxon_names lookup (name_exact + epithet_only, so it
+// matches the bare `name` column the flat probe itself uses) finds any such
+// collision up front; `epithet_only` is required, otherwise name_exact
+// matches against `cached` (the authored name), which the bare epithet here
+// would never match. Returns the set of candidate tnIds that collide with a
+// same-rank different-id taxon_name and so must not use the flat pass.
+async function findHomonymTnIds(candidates) {
+  const names = [...new Set(candidates.map((c) => c.name).filter(Boolean))]
+  if (!names.length) return new Set()
+  const q = new URLSearchParams()
+  names.forEach((n) => q.append('name[]', n))
+  q.set('name_exact', 'true')
+  q.set('epithet_only', 'true')
+  q.set('per', '1000')
+  try {
+    const { data } = await makeAPIRequest.get(`/taxon_names?${q}`)
+    const idsByKey = new Map() // `${rank}|${name}` -> Set<taxon_name id>
+    for (const t of Array.isArray(data) ? data : []) {
+      const key = `${normRank(t.rank)}|${t.name}`
+      if (!idsByKey.has(key)) idsByKey.set(key, new Set())
+      idsByKey.get(key).add(t.id)
+    }
+    const homonymTnIds = new Set()
+    for (const c of candidates) {
+      const ids = idsByKey.get(`${c.rank}|${c.name}`)
+      if (ids && ids.size > 1) homonymTnIds.add(c.tnId)
+    }
+    return homonymTnIds
+  } catch {
+    return new Set() // lookup failure — proceed as before rather than block the pass
+  }
+}
+
+// `shouldStop`, checked before each item, lets a caller abandon the remaining
+// queue once its result is no longer wanted (see fetchFlatColumnCountries and
+// its caller in load(), both racing a key change against a large batch).
+async function mapPool(items, limit, fn, shouldStop) {
   let i = 0
   const worker = async () => {
-    while (i < items.length) await fn(items[i++])
+    while (i < items.length) {
+      if (shouldStop?.()) return
+      await fn(items[i++])
+    }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
 }
@@ -171,7 +265,11 @@ export function useKeyGeography(terminalListRef) {
     const otuToTn = new Map()
     otuToTnRef.value = new Map()
     const rankByTn = new Map()
+    const nameByTn = new Map()
     const higherRankOtus = []
+    // Higher-rank terminals whose rank has a flat dwc_occurrences column --
+    // handled by the flat-column pass instead of higherRankOtus's AD walk.
+    const flatFieldOtus = []
     // step 2 fills this: terminal otuId -> its descendant-AD row count, the
     // "how big is this taxon" signal step 3 gates on.
     const adTotalByOtu = new Map()
@@ -198,10 +296,75 @@ export function useKeyGeography(terminalListRef) {
         tq.set('per', '1000')
         const { data: tns } = await makeAPIRequest.get(`/taxon_names?${tq}`)
         if (myGen !== gen) return
-        for (const t of Array.isArray(tns) ? tns : []) rankByTn.set(t.id, t.rank)
+        for (const t of Array.isArray(tns) ? tns : []) {
+          rankByTn.set(t.id, t.rank)
+          nameByTn.set(t.id, t.name)
+        }
+
+        // A key terminal can be linked to a synonym taxon_name rather than
+        // the valid one (KeyView.vue's completeness pass resolves the same
+        // case via cached_valid_taxon_name_id — proof this is a real,
+        // recurring situation in this project's keys). Both the flat-column
+        // probe and the descendant-AD walk below are built from the VALID
+        // name's own name string / lineage, so redirect every synonym-linked
+        // terminal to its valid taxon_name id up front. Otherwise it
+        // silently probes/walks a name with no distribution data of its own
+        // and reports as absent everywhere.
+        const validIdByTn = new Map()
+        for (const t of Array.isArray(tns) ? tns : []) {
+          if (t?.cached_is_valid === false && t.cached_valid_taxon_name_id) {
+            validIdByTn.set(t.id, t.cached_valid_taxon_name_id)
+          }
+        }
+        if (validIdByTn.size) {
+          const missing = [...new Set(validIdByTn.values())].filter(
+            (id) => !rankByTn.has(id)
+          )
+          if (missing.length) {
+            const vq = new URLSearchParams()
+            missing.forEach((id) => vq.append('taxon_name_id[]', id))
+            vq.set('per', '1000')
+            const { data: validTns } = await makeAPIRequest.get(`/taxon_names?${vq}`)
+            if (myGen !== gen) return
+            for (const t of Array.isArray(validTns) ? validTns : []) {
+              rankByTn.set(t.id, t.rank)
+              nameByTn.set(t.id, t.name)
+            }
+          }
+          for (const [otuId, tnId] of otuToTn) {
+            const validId = validIdByTn.get(tnId)
+            if (validId) otuToTn.set(otuId, validId)
+          }
+          otuToTnRef.value = new Map(otuToTn)
+        }
+
         ranksResolved = true
         for (const [otuId, tnId] of otuToTn) {
-          if (needsDescendantAd(rankByTn.get(tnId))) higherRankOtus.push(otuId)
+          if (!needsDescendantAd(rankByTn.get(tnId))) continue
+          const field = fieldForRank(rankByTn.get(tnId))
+          const name = nameByTn.get(tnId)
+          if (field && name) {
+            flatFieldOtus.push({ otuId, tnId, field, name, rank: normRank(rankByTn.get(tnId)) })
+          } else {
+            higherRankOtus.push(otuId)
+          }
+        }
+
+        // Homonym guard (see findHomonymTnIds): a candidate whose name+rank
+        // collides with a different taxon_name elsewhere in the project falls
+        // back to the ID-scoped descendant-AD walk instead of the flat probe.
+        if (flatFieldOtus.length) {
+          const homonymTnIds = await findHomonymTnIds(flatFieldOtus)
+          if (myGen !== gen) return
+          if (homonymTnIds.size) {
+            const kept = []
+            for (const c of flatFieldOtus) {
+              if (homonymTnIds.has(c.tnId)) higherRankOtus.push(c.otuId)
+              else kept.push(c)
+            }
+            flatFieldOtus.length = 0
+            flatFieldOtus.push(...kept)
+          }
         }
       }
     } catch {
@@ -246,6 +409,28 @@ export function useKeyGeography(terminalListRef) {
     if (myGen !== gen) return
     bump()
 
+    // 2b. flat-column pass: family / subfamily / tribe / genus terminals. One
+    // request per candidate country (per=1, occurrenceStatus=present), reading
+    // presence off pagination-total. Replaces both the descendant-AD walk
+    // above and the specimen pass below for these terminals: it already
+    // returns a mix of AssertedDistribution- and specimen-sourced rows (the
+    // cache is a union of both), so nothing further is needed for them.
+    const candidateCountries = allCountries()
+    const isStale = () => myGen !== gen
+    await mapPool(
+      flatFieldOtus,
+      FLAT_TERMINAL_CONCURRENCY,
+      async ({ otuId, field, name }) => {
+        const hits = await fetchFlatColumnCountries(field, name, candidateCountries, isStale)
+        if (isStale()) return
+        for (const territory of hits) add(otuId, territory)
+      },
+      isStale
+    )
+    if (myGen !== gen) return
+    bump()
+    const flatFieldOtuIds = new Set(flatFieldOtus.map((f) => f.otuId))
+
     // 3. specimen countries. dwc.json also returns AssertedDistribution rows
     //    (individualCount null) — allow-list the two specimen types so this pass
     //    is specimen-only. Skip terminals where the call is expensive
@@ -256,6 +441,7 @@ export function useKeyGeography(terminalListRef) {
     //    (a ~100 MB call) from a species one.
     const specimenOtus = ranksResolved
       ? otuIds.filter((otuId) => {
+          if (flatFieldOtuIds.has(otuId)) return false // already covered above
           const tnId = otuToTn.get(otuId)
           return needsSpecimenPass({
             rank: tnId == null ? undefined : rankByTn.get(tnId),

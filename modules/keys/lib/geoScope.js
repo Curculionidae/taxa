@@ -40,5 +40,30 @@ export function needsSpecimenPass(
   if (i < 0) return true // unknown rank — don't over-filter
   if (i >= SPECIES_IDX) return true // species / subspecies / ...
   if (i < GENUS_IDX) return false // tribe, family, superfamily — AD-only
+  // A named genus is normally pre-routed to the flat-column pass by
+  // fieldForRank (see useKeyGeography.js) and never reaches this function.
+  // But that routing depends on the taxon_name actually carrying a name
+  // string; an edge case that reaches here (empty/missing name) still needs
+  // the same size gate subgenus gets below, not an unconditional pass — a
+  // giant genus is exactly the /inventory/dwc.json call this gate exists to
+  // block (see docs/feasibility_key_geography_filter.md).
   return adTotal <= largeTaxonAdTotal // genus / subgenus — only if not huge
+}
+
+// Ranks `dwc_occurrences` carries as its own flat, indexed column, restricted to
+// the ones confirmed well populated on this project (checked live, 2026-09-05):
+// family 99.7%, subfamily 99.3%, genus 98.2%, tribe 95.5%. Notably NOT subgenus
+// (0% populated, the column exists but nobody in this project uses it), so a
+// terminal at that rank must keep using the descendant-AD / inventory passes.
+// See docs/feasibility_key_geography_filter.md, "2026-09-05 update".
+const RANK_TO_DWC_FIELD = {
+  family: 'family',
+  subfamily: 'subfamily',
+  tribe: 'tribe',
+  genus: 'genus'
+}
+
+export function fieldForRank(rank) {
+  const i = rankIndex(rank)
+  return i < 0 ? null : RANK_TO_DWC_FIELD[RANK_ORDER[i]] || null
 }

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import {
   normalizeShape,
   normalizeCountryString,
-  nameToIso
+  nameToIso,
+  allCountries
 } from './geoNormalize.js'
 
 // Shapes below are trimmed captures of real
@@ -297,4 +298,20 @@ test('nameToIso is case- and whitespace-insensitive', () => {
   assert.equal(nameToIso('  ukraine '), 'UA')
   assert.equal(nameToIso('SPAIN'), 'ES')
   assert.equal(nameToIso('nowhere'), null)
+})
+
+test('allCountries: every entry round-trips through nameToIso', () => {
+  const list = allCountries()
+  assert.ok(list.length > 150)
+  for (const { key, label } of list) {
+    assert.equal(nameToIso(label), key)
+  }
+})
+
+test('allCountries: includes a known country by key and label', () => {
+  const list = allCountries()
+  assert.deepEqual(
+    list.find((c) => c.key === 'DE'),
+    { key: 'DE', label: 'Germany' }
+  )
 })

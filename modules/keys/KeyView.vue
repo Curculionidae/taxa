@@ -65,7 +65,7 @@ import { buildCompletenessReport, finestRank } from './lib/completeness.js'
 import { effectiveTaxonNameId } from './lib/validTaxonName.js'
 import { normalizeShape, territoryLabel } from './lib/geoNormalize.js'
 import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
-import geoCategories from '../../panels/PanelKeys/geographyCategories.js'
+import { GEOGRAPHY_PRESETS as geoCategories } from './lib/geoData.js'
 
 const route = useRoute()
 

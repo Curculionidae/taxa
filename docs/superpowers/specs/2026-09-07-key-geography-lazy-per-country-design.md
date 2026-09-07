@@ -180,6 +180,14 @@ transparent* — inferring a country-level claim the data never made. No
 client-side TDWG expansion is added back. A record that names only a region is
 reported as what it is: not a country-level presence statement.
 
+The same rule retires the `russia-european` slug from the region presets
+(previously in `geographyCategories.js`'s "Europe" list). `dwc_occurrences` has
+no "European Russia" country value, so a probe for it always returns zero; a
+distribution known only via a TDWG / gazetteer "European Russia" shape is now
+reported as not-in-the-selected-countries rather than force-mapped to Russia
+(which would pull all of Russia into a "Europe" filter). `RU` stays out of the
+Europe preset as before.
+
 ## 7a. Hard-coded geographic sets live in exactly one file
 
 Per user direction (2026-09-07): every hard-coded geographic set — the region

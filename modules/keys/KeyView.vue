@@ -62,6 +62,7 @@ import FormatToggle from './components/FormatToggle.vue'
 import CoupletCitation from './components/CoupletCitation.vue'
 import { readFormat, writeFormat } from './lib/format.js'
 import { buildCompletenessReport, finestRank } from './lib/completeness.js'
+import { effectiveTaxonNameId } from './lib/validTaxonName.js'
 import { normalizeShape, territoryLabel } from './lib/geoNormalize.js'
 import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
 import geoCategories from '../../panels/PanelKeys/geographyCategories.js'
@@ -89,6 +90,14 @@ const error = ref(false)
 const rawMeta = ref({})
 const listMeta = ref({})
 const nodes = ref({})
+// Declared here (not down with loadScope()/resolveScope() below, where it's
+// actually populated) because geoScopeOtuId's computed, just below, reads it
+// synchronously: useKeyGeography's watch(scopeOtuIdRef, ...) evaluates its
+// source immediately at setup to capture a baseline "old" value (regardless
+// of the `immediate` option, which only gates the callback), so this ref has
+// to exist before useKeyGeography(...) runs or that read throws a
+// "Cannot access before initialization" TDZ error and kills the component.
+const resolvedScopeOtuId = ref(null)
 
 const couplets = computed(() => orderedCouplets(nodes.value))
 const terminalOtuList = computed(() => terminalOtus(nodes.value))
@@ -106,7 +115,12 @@ provide('keyTaxonNames', keyTaxonNames)
 
 // Geography filter (design spec 2026-09-02). The picker options come from the
 // terminal taxa's distributions; the selection is persisted per browser.
-const geo = useKeyGeography(terminalOtuList)
+// geoScopeOtuId mirrors the otuId fallback used for the page header (below) —
+// the key's declared scope OTU, or the one resolveScope() infers from the
+// terminals when the key has none set. useKeyGeography uses it to narrow the
+// flat-column country sweep to countries the scope taxon itself occurs in.
+const geoScopeOtuId = computed(() => listMeta.value.otu_id || resolvedScopeOtuId.value || null)
+const geo = useKeyGeography(terminalOtuList, geoScopeOtuId)
 const geoTerritories = geo.allTerritories
 const geoSelection = ref({ groupings: [], territories: [] })
 onMounted(() => {
@@ -273,7 +287,7 @@ const completeness = computed(() => {
 // completeness pipeline. `scopeTaxonName.html` is the taxon's `full_name_tag` (the same
 // field TaxonPages renders its page title from: name parts italic, author roman);
 // until it arrives the header shows the plain `metadata.taxonomic_scope` string.
-const resolvedScopeOtuId = ref(null)
+// (resolvedScopeOtuId itself is declared up near `nodes` — see the comment there.)
 const scopeTaxonName = ref(null)
 
 const meta = computed(() => ({
@@ -579,7 +593,7 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
       const rawTnId = otuIdToTnId.get(t.otuId)
       if (rawTnId == null) continue
       const row = tnRowById.get(rawTnId)
-      const validId = row?.cached_valid_taxon_name_id || rawTnId
+      const validId = effectiveTaxonNameId(row) ?? rawTnId
       terminalTnIds.push(validId)
       if (!descIds.has(validId)) outOfScopeTerminals.push({ label: t.label, otuId: t.otuId })
       if (row && row.cached_is_valid === false) {

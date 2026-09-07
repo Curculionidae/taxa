@@ -5,6 +5,12 @@
 //   1. asserted distributions stated directly on the terminal OTUs (paged)
 //   2. for terminals above species rank, descendant asserted distributions —
 //      page 1 first (to read the total), then pages 2..N in parallel
+//   2b. for family/subfamily/tribe/genus terminals, a flat-column
+//      dwc_occurrences presence probe instead (see fetchFlatColumnCountries)
+//      — replaces steps 2 and 3 for these terminals. With several such
+//      terminals, one extra presence sweep for the key's own scope taxon
+//      narrows the country list every terminal then probes (see
+//      resolveRootCandidates).
 //   3. GET /otus/:id/inventory/dwc.json for specimen countries, but ONLY for
 //      terminals where that call is cheap (species, small informal OTUs, and
 //      genus/subgenus terminals that aren't huge) — see lib/geoScope.js. A
@@ -27,6 +33,7 @@ import {
 } from '../lib/geoNormalize.js'
 import { needsDescendantAd, needsSpecimenPass, fieldForRank } from '../lib/geoScope.js'
 import { normRank } from '../lib/completeness.js'
+import { effectiveTaxonNameId } from '../lib/validTaxonName.js'
 
 const DWC_CONCURRENCY = 6
 const AD_PER = 1000
@@ -50,6 +57,9 @@ const SPECIMEN_TYPES = new Set(['CollectionObject', 'FieldOccurrence'])
 // in the same request, unlike the AD-only path those ranks otherwise get.
 const FLAT_COUNTRY_CONCURRENCY = 8
 const FLAT_TERMINAL_CONCURRENCY = 2
+// Below this many flat-pass terminals, the root pre-filter's own sweep
+// (resolveRootCandidates) costs more than it saves — skip it.
+const ROOT_PREFILTER_MIN_TERMINALS = 4
 
 // An asserted_distributions row links to its OTU via
 // asserted_distribution_object_{type,id}; the top-level `otu_id` is null.
@@ -141,6 +151,46 @@ async function fetchFlatColumnCountries(field, name, candidates, shouldStop) {
   return hits
 }
 
+// Root-taxon country pre-filter. dwc_occurrences rows carry family/subfamily/
+// tribe/genus together (one specimen, one ancestor walk — see
+// docs/feasibility_key_geography_filter.md), so a descendant terminal's
+// countries are always a subset of its scope taxon's own countries: a genus
+// row can't have a country its family probe didn't also see. One presence
+// sweep (same per=1 mechanics as fetchFlatColumnCountries) over the key's
+// scope taxon narrows the per-terminal candidate list from every country to
+// only the ones the scope actually occurs in. Only worth the extra sweep
+// when there are several flat-pass terminals to amortize it over (gated by
+// ROOT_PREFILTER_MIN_TERMINALS in load()), and only possible when the scope
+// taxon's own rank has a flat column — a superfamily-scoped key (no such
+// column) returns null and callers keep the full candidate list.
+// The scope taxon can itself be a synonym (redirected via
+// effectiveTaxonNameId, same rule the terminal resolution below uses) — an
+// un-redirected synonym probe would either find nothing (safe: falls back to
+// the full list) or, worse, find some unrelated data under that name string
+// and silently mis-narrow every terminal.
+async function resolveRootCandidates(scopeOtuId, candidateCountries, shouldStop) {
+  try {
+    const { data: otu } = await makeAPIRequest.get(`/otus/${scopeOtuId}`)
+    const tnId = otu?.taxon_name_id
+    if (!tnId || shouldStop()) return null
+    const { data: rawTn } = await makeAPIRequest.get(`/taxon_names/${tnId}`)
+    if (shouldStop()) return null
+    const validId = effectiveTaxonNameId(rawTn)
+    const tn =
+      validId === rawTn?.id
+        ? rawTn
+        : (await makeAPIRequest.get(`/taxon_names/${validId}`)).data
+    if (shouldStop()) return null
+    const field = fieldForRank(tn?.rank)
+    const name = tn?.name
+    if (!field || !name) return null
+    const hits = await fetchFlatColumnCountries(field, name, candidateCountries, shouldStop)
+    return hits.length ? hits : null
+  } catch {
+    return null // fall back to the full candidate list rather than block the pass
+  }
+}
+
 // The flat-column pass matches by bare name string (no taxon_name_id
 // scoping — dwc_occurrences' family/genus/subfamily/tribe columns are plain
 // strings, there is nothing else to scope by). A homonym at the same rank
@@ -193,7 +243,11 @@ async function mapPool(items, limit, fn, shouldStop) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
 }
 
-export function useKeyGeography(terminalListRef) {
+// scopeOtuIdRef (optional) is the key's own root/scope OTU — see
+// resolveRootCandidates above. A ref/computed, read fresh each load() so a
+// value that resolves after mount (KeyView's own scope inference) still
+// applies to a later ensureLoaded().
+export function useKeyGeography(terminalListRef, scopeOtuIdRef) {
   const territoriesByOtu = ref(new Map()) // otuId -> Set<territoryKey>
   const labelByKey = ref(new Map()) // territoryKey -> label
   const otuToTnRef = ref(new Map()) // terminal otuId -> taxon-name id
@@ -231,6 +285,22 @@ export function useKeyGeography(terminalListRef) {
   watch(terminalListRef, () => {
     if (started) ensureLoaded()
   })
+  // The scope OTU (KeyView's geoScopeOtuId) can resolve asynchronously after
+  // ensureLoaded() has already run once (e.g. the picker was opened before
+  // resolveScope()'s ancestor walk finished). Without this, the root
+  // pre-filter would silently stay disabled for the rest of the session even
+  // after the scope becomes known, since ensureLoaded() only reacts to the
+  // terminal list. Force one reload the first time the scope actually
+  // resolves; loadedFor is cleared so the (otherwise unchanged) id signature
+  // doesn't short-circuit it.
+  if (scopeOtuIdRef) {
+    watch(scopeOtuIdRef, (v, old) => {
+      if (started && v && !old) {
+        loadedFor = null
+        ensureLoaded()
+      }
+    })
+  }
 
   function add(otuId, territory) {
     // otuId is null for a BiologicalAssociation-linked asserted distribution
@@ -303,18 +373,17 @@ export function useKeyGeography(terminalListRef) {
 
         // A key terminal can be linked to a synonym taxon_name rather than
         // the valid one (KeyView.vue's completeness pass resolves the same
-        // case via cached_valid_taxon_name_id — proof this is a real,
-        // recurring situation in this project's keys). Both the flat-column
-        // probe and the descendant-AD walk below are built from the VALID
-        // name's own name string / lineage, so redirect every synonym-linked
-        // terminal to its valid taxon_name id up front. Otherwise it
-        // silently probes/walks a name with no distribution data of its own
-        // and reports as absent everywhere.
+        // case, via the same effectiveTaxonNameId rule — proof this is a
+        // real, recurring situation in this project's keys). Both the
+        // flat-column probe and the descendant-AD walk below are built from
+        // the VALID name's own name string / lineage, so redirect every
+        // synonym-linked terminal to its valid taxon_name id up front.
+        // Otherwise it silently probes/walks a name with no distribution
+        // data of its own and reports as absent everywhere.
         const validIdByTn = new Map()
         for (const t of Array.isArray(tns) ? tns : []) {
-          if (t?.cached_is_valid === false && t.cached_valid_taxon_name_id) {
-            validIdByTn.set(t.id, t.cached_valid_taxon_name_id)
-          }
+          const validId = effectiveTaxonNameId(t)
+          if (validId !== t.id) validIdByTn.set(t.id, validId)
         }
         if (validIdByTn.size) {
           const missing = [...new Set(validIdByTn.values())].filter(
@@ -417,16 +486,40 @@ export function useKeyGeography(terminalListRef) {
     // cache is a union of both), so nothing further is needed for them.
     const candidateCountries = allCountries()
     const isStale = () => myGen !== gen
-    await mapPool(
-      flatFieldOtus,
-      FLAT_TERMINAL_CONCURRENCY,
-      async ({ otuId, field, name }) => {
-        const hits = await fetchFlatColumnCountries(field, name, candidateCountries, isStale)
-        if (isStale()) return
-        for (const territory of hits) add(otuId, territory)
-      },
-      isStale
-    )
+    // Root pre-filter (see resolveRootCandidates): narrows the per-terminal
+    // country list to the scope taxon's own countries when there are enough
+    // flat-pass terminals to make the extra sweep worth it. Runs CONCURRENTLY
+    // with the terminal mapPool below, not before it — awaiting it first
+    // would serialize every terminal behind one extra full sweep, front-
+    // loading a stall with zero territory data landing until the root probe
+    // (~as long as a single terminal's own full sweep) finishes. Terminals
+    // already in flight when root resolves keep the full list they started
+    // with; only terminals that haven't started yet pick up the narrowed one.
+    let rootCandidates = null
+    const rootPromise =
+      flatFieldOtus.length >= ROOT_PREFILTER_MIN_TERMINALS && scopeOtuIdRef?.value
+        ? resolveRootCandidates(scopeOtuIdRef.value, candidateCountries, isStale).then((r) => {
+            rootCandidates = r
+          })
+        : null
+    await Promise.all([
+      rootPromise,
+      mapPool(
+        flatFieldOtus,
+        FLAT_TERMINAL_CONCURRENCY,
+        async ({ otuId, field, name }) => {
+          const hits = await fetchFlatColumnCountries(
+            field,
+            name,
+            rootCandidates || candidateCountries,
+            isStale
+          )
+          if (isStale()) return
+          for (const territory of hits) add(otuId, territory)
+        },
+        isStale
+      )
+    ])
     if (myGen !== gen) return
     bump()
     const flatFieldOtuIds = new Set(flatFieldOtus.map((f) => f.otuId))

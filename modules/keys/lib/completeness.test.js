@@ -82,6 +82,51 @@ test('geoScope present: second measure scoped to the selected territories', () =
   )
 })
 
+test('geoScope: hasDataByTaxonId supplied but empty -> behaviour unchanged', () => {
+  const r = buildCompletenessReport({
+    ...BASE,
+    geoScope: {
+      label: 'Europe',
+      effectiveKeys: new Set(['DE', 'FR', 'PL', 'russia-european']),
+      territoriesByTaxonId: new Map([
+        [10, new Set(['DE'])], // A: in area, keyed
+        [20, new Set(['FR', 'russia-european'])], // B: in area, keyed
+        [30, new Set(['west-siberia'])], // C: keyed, but OUT of area
+        [40, new Set(['PL'])] // D: in area, NOT keyed
+        // E (50): no distribution data
+      ]),
+      hasDataByTaxonId: new Set() // supplied, but empty -> a no-op
+    }
+  })
+
+  assert.deepEqual(r.geographic.unknownExpected, ['E'])
+  assert.equal(r.geographic.expectedCount, 3) // A, B, D
+})
+
+test('geoScope: hasDataByTaxonId contains E -> E moves from unknown to out', () => {
+  const r = buildCompletenessReport({
+    ...BASE,
+    geoScope: {
+      label: 'Europe',
+      effectiveKeys: new Set(['DE', 'FR', 'PL', 'russia-european']),
+      territoriesByTaxonId: new Map([
+        [10, new Set(['DE'])], // A: in area, keyed
+        [20, new Set(['FR', 'russia-european'])], // B: in area, keyed
+        [30, new Set(['west-siberia'])], // C: keyed, but OUT of area
+        [40, new Set(['PL'])] // D: in area, NOT keyed
+        // E (50): no territory entry, but has a record somewhere
+      ]),
+      hasDataByTaxonId: new Set([50])
+    }
+  })
+
+  // E has data somewhere but none in a selected territory -> 'out', not 'unknown'
+  assert.deepEqual(r.geographic.unknownExpected, [])
+  assert.equal(r.geographic.expectedCount, 3) // still A, B, D
+  // E is not a keyed terminal, so it does not join outOfAreaTerminals
+  assert.deepEqual(r.geographic.outOfAreaTerminals, ['C'])
+})
+
 test('no geoScope: members carry no geoStatus', () => {
   const r = buildCompletenessReport(BASE)
   assert.equal(r.ungrouped[0].geoStatus, undefined)

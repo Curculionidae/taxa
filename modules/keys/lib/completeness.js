@@ -145,8 +145,18 @@ export function buildCompletenessReport({
     geoActive && geoScope.territoriesByTaxonId instanceof Map
       ? geoScope.territoriesByTaxonId
       : null
+  const geoHasData =
+    geoActive && geoScope.hasDataByTaxonId instanceof Set
+      ? geoScope.hasDataByTaxonId
+      : null
   const geoStatusOf = (id) =>
-    geoActive ? territoryStatus(geoByTid ? geoByTid.get(id) : null, geoEff) : undefined
+    geoActive
+      ? territoryStatus(
+          geoByTid ? geoByTid.get(id) : null,
+          geoEff,
+          geoHasData ? geoHasData.has(id) : false
+        )
+      : undefined
 
   const mkMember = (d) => ({
     taxon: taxRef(d, tnIdToOtuId),

@@ -68,7 +68,6 @@
             @change="toggleTerritory(t.key)"
           />
           <span class="flex-1">{{ t.label }}</span>
-          <span class="text-base-soft">{{ t.otuCount }}</span>
         </label>
 
         <div
@@ -100,7 +99,7 @@ const props = defineProps({
   },
   // [{ id, label, members }]
   groupings: { type: Array, default: () => [] },
-  // [{ key, label, otuCount }]
+  // [{ key, label }]
   territories: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false }
 })

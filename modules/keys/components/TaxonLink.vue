@@ -37,9 +37,13 @@ const props = defineProps({
 const synonymy = inject('keySynonymy', { value: {} })
 const validName = computed(() => synonymy.value?.[props.id]?.validName || '')
 
-// Geography filter (design spec 2026-09-02): dim a terminal whose recorded
-// territories are all outside the selection. Unknown (no distribution data) and
-// in-area terminals are left alone. `props.id` is the target OTU id.
+// Geography filter (design spec 2026-09-07): dim a terminal only when it has a
+// distribution record somewhere but none of it falls in the selected countries.
+// A terminal with no distribution data at all is unknown, not out of area, so it
+// is left alone; so is one present in a selected country. Under the lazy model
+// `territoriesByOtu` holds only the currently selected countries the terminal
+// probed present in, so the has-data signal (`hasDataByOtu`) is what tells
+// "out of area" apart from "unknown". `props.id` is the target OTU id.
 const geo = inject('keyGeo', null)
 // A dimmed GuidedChoice card sets this so its inner taxa don't double-dim.
 const geoDimSuppressed = inject('geoDimSuppressed', null)
@@ -48,10 +52,15 @@ const outOfArea = computed(() => {
   if (props.suppressGeoDim || geoDimSuppressed?.value) return false
   const eff = geo?.effective?.value
   if (!eff || eff.size === 0) return false
-  const set = geo.territoriesByOtu.value.get(Number(props.id))
-  if (!set || set.size === 0) return false
-  for (const k of set) if (eff.has(k)) return false
-  return true
+  const id = Number(props.id)
+  const hasData = geo.hasDataByOtu?.value?.get(id) ?? false
+  if (!hasData) return false // no distribution data anywhere: unknown, never dim
+  const set = geo.territoriesByOtu.value.get(id)
+  if (set && set.size) {
+    for (const k of set) if (eff.has(k)) return false // present in a selected country
+    return true
+  }
+  return true // has data somewhere, none of it in the selected countries
 })
 
 // Provided by KeyView: otuId -> { html: "<i>Name</i>", authorYear: "Author, Year" }.

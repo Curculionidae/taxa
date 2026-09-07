@@ -139,7 +139,8 @@ function leadStatus(nodeId) {
   return leadGeoStatus(
     geo.reachableTerminalsByNode.value.get(Number(nodeId)),
     geo.territoriesByOtu.value,
-    geo.effective.value
+    geo.effective.value,
+    geo.hasDataByOtu?.value ?? null
   )
 }
 // Dim any lead whose reachable subtree is entirely out of area, taxon leads

@@ -85,7 +85,8 @@ function leadStatus(nodeId) {
   return leadGeoStatus(
     geo.reachableTerminalsByNode.value.get(Number(nodeId)),
     geo.territoriesByOtu.value,
-    geo.effective.value
+    geo.effective.value,
+    geo.hasDataByOtu?.value ?? null
   )
 }
 

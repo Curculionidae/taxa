@@ -902,12 +902,14 @@ watch(
       return
     }
     const myGen = ++geoExpectedGen
+    const myLoadGen = loadGen // capture: loadGen and geoExpectedGen are unrelated counters
     geoCompletenessLoading.value = true
     // targetTaxa currently exposes { id, otuId }; extend it (Step 4) to carry
     // { id, otuId, rank, name }.
     const taxa = targetTaxa.value.map((t) => ({ tnId: t.id, rank: t.rank, name: t.name }))
     const res = await geo.probeTaxa(taxa, eff)
-    if (myGen !== geoExpectedGen || myGen !== loadGen) return
+    // discard if a newer watch run superseded this one, or a key nav happened
+    if (myGen !== geoExpectedGen || myLoadGen !== loadGen) return
     geoExpected.value = res
     geoCompletenessLoading.value = false
   },

@@ -25,6 +25,12 @@ test('no geoScope: report is unchanged, no geographic block', () => {
   assert.equal(r.geographic, undefined)
 })
 
+test('member taxon refs carry a non-empty rank string (probeTaxa needs it)', () => {
+  const r = buildCompletenessReport(BASE)
+  assert.equal(typeof r.ungrouped[0].taxon.rank, 'string')
+  assert.ok(r.ungrouped[0].taxon.rank.length > 0)
+})
+
 test('empty effectiveKeys: no geographic block', () => {
   const r = buildCompletenessReport({
     ...BASE,

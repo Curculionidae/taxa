@@ -63,7 +63,7 @@ import CoupletCitation from './components/CoupletCitation.vue'
 import { readFormat, writeFormat } from './lib/format.js'
 import { buildCompletenessReport, finestRank } from './lib/completeness.js'
 import { effectiveTaxonNameId } from './lib/validTaxonName.js'
-import { normalizeShape, territoryLabel } from './lib/geoNormalize.js'
+import { territoryLabel } from './lib/geoNormalize.js'
 import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
 import { GEOGRAPHY_PRESETS as geoCategories } from './lib/geoData.js'
 
@@ -90,14 +90,6 @@ const error = ref(false)
 const rawMeta = ref({})
 const listMeta = ref({})
 const nodes = ref({})
-// Declared here (not down with loadScope()/resolveScope() below, where it's
-// actually populated) because geoScopeOtuId's computed, just below, reads it
-// synchronously: useKeyGeography's watch(scopeOtuIdRef, ...) evaluates its
-// source immediately at setup to capture a baseline "old" value (regardless
-// of the `immediate` option, which only gates the callback), so this ref has
-// to exist before useKeyGeography(...) runs or that read throws a
-// "Cannot access before initialization" TDZ error and kills the component.
-const resolvedScopeOtuId = ref(null)
 
 const couplets = computed(() => orderedCouplets(nodes.value))
 const terminalOtuList = computed(() => terminalOtus(nodes.value))
@@ -113,21 +105,20 @@ provide('keyImages', keyImages)
 const keyTaxonNames = useKeyTaxonNames(terminalOtuList)
 provide('keyTaxonNames', keyTaxonNames)
 
-// Geography filter (design spec 2026-09-02). The picker options come from the
-// terminal taxa's distributions; the selection is persisted per browser.
-// geoScopeOtuId mirrors the otuId fallback used for the page header (below) —
-// the key's declared scope OTU, or the one resolveScope() infers from the
-// terminals when the key has none set. useKeyGeography uses it to narrow the
-// flat-column country sweep to countries the scope taxon itself occurs in.
-const geoScopeOtuId = computed(() => listMeta.value.otu_id || resolvedScopeOtuId.value || null)
-const geo = useKeyGeography(terminalOtuList, geoScopeOtuId)
+// Geography filter (design spec 2026-09-07 — lazy, per country). The picker
+// shows the full static country list (geoTerritories, now [{ key, label }]);
+// nothing is fetched until a selection is restored or the picker is opened.
+const geo = useKeyGeography(terminalOtuList)
 const geoTerritories = geo.allTerritories
 const geoSelection = ref({ groupings: [], territories: [] })
 onMounted(() => {
   geoSelection.value = readGeoPrefs()
   // A restored non-empty selection needs the distribution data straight away;
   // a fresh visit fetches nothing until the picker is opened.
-  if (geoEffective.value.size) geo.ensureLoaded()
+  if (geoEffective.value.size) {
+    geo.ensureLoaded()
+    geo.syncSelection(geoEffective.value)
+  }
 })
 watch(geoSelection, (v) => writeGeoPrefs(v), { deep: true })
 const geoEffective = computed(() => effectiveKeys(geoSelection.value, geoCategories))
@@ -160,10 +151,15 @@ const reachableTerminalsByNode = computed(() => {
 })
 provide('keyGeo', {
   territoriesByOtu: geo.territoriesByOtu,
+  hasDataByOtu: geo.hasDataByOtu,
   effective: geoEffective,
   selectionLabel: geoSelectionLabel,
   reachableTerminalsByNode
 })
+
+// Fire the terminal presence-probe batch whenever the effective country
+// selection changes (the picker opening only resolves ranks via @geo-open).
+watch(geoEffective, (eff) => { if (eff.size) geo.syncSelection(eff) }, { deep: true })
 
 const citations = ref({})
 const activeCitation = ref(null)
@@ -172,14 +168,10 @@ const completenessInput = ref(null)
 // True while the (slow) completeness pipeline runs, so the header chip can say
 // "loading" rather than nothing.
 const completenessLoading = ref(false)
-// { targetTaxonNameId -> Set<territoryKey> } for the geographic completeness
-// pass. Assembled lazily: reuse the picker's per-terminal data for the taxa that
-// are in the key, fetch only the gaps (missing taxa, usually a handful).
-const territoriesByExpectedId = ref(new Map())
-// True from a filter becoming active until its distribution data is assembled.
+// True from a filter becoming active until the per-country probe batch for the
+// completeness pill's expected taxa has resolved.
 const geoCompletenessLoading = ref(false)
 const geoLoading = computed(() => geo.loading.value || geoCompletenessLoading.value)
-let geoTerrGen = -1
 
 // The report without the geographic pass — the source of the target-rank taxa
 // the geographic pass needs distributions for.
@@ -191,84 +183,46 @@ const baseReport = computed(() =>
 const targetTaxa = computed(() => {
   const r = baseReport.value
   if (!r) return []
-  return [
-    ...r.groups.flatMap((g) => g.members),
-    ...r.ungrouped
-  ].map((m) => ({ id: m.taxon.id, otuId: m.taxon.otuId }))
+  return [...r.groups.flatMap((g) => g.members), ...r.ungrouped].map((m) => ({
+    id: m.taxon.id,
+    otuId: m.taxon.otuId,
+    rank: m.taxon.rank,
+    name: m.taxon.name
+  }))
 })
 
+// { tnId -> Set<countryKey> } and the has-data Set, for the geographic
+// completeness pass. Rebuilt whenever the selection or the base report changes.
+const geoExpected = ref({ territoriesByTaxonId: new Map(), hasDataByTaxonId: new Set() })
+let geoExpectedGen = -1
+
 watch(
-  () => [
-    geoEffective.value.size > 0,
-    targetTaxa.value.length > 0,
-    geo.loading.value
-  ],
-  ([active, hasTargets, geoBusy]) => {
-    if (!active) {
+  () => [geoEffective.value, targetTaxa.value, completenessLoading.value],
+  async () => {
+    const eff = geoEffective.value
+    if (!eff.size || !targetTaxa.value.length) {
       geoCompletenessLoading.value = false
+      geoExpected.value = { territoriesByTaxonId: new Map(), hasDataByTaxonId: new Set() }
       return
     }
-    if (geoTerrGen === loadGen) return
-    geoCompletenessLoading.value = true // filter on, data not ready yet
-    if (!hasTargets || geoBusy) return // wait for the picker + the base report
-    geoTerrGen = loadGen
-    assembleExpectedTerritories(targetTaxa.value, loadGen)
-  },
-  { immediate: true }
-)
-
-async function assembleExpectedTerritories(targets, myGen) {
-  const byTn = geo.territoriesByTn.value
-  const map = new Map()
-  const need = []
-  for (const t of targets) {
-    const s = byTn.get(t.id)
-    if (s && s.size) map.set(t.id, new Set(s))
-    else need.push(t.id)
-  }
-  territoriesByExpectedId.value = new Map(map) // show the in-key data immediately
-  // Fetch the gap taxa (missing from the key), scoped to each one's own subtree.
-  let i = 0
-  const worker = async () => {
-    while (i < need.length) {
-      const tnId = need[i++]
-      const set = await fetchTaxonTerritories(tnId, myGen)
-      if (myGen !== loadGen) return
-      if (set.size) map.set(tnId, set)
-    }
-  }
-  await Promise.all([worker(), worker(), worker(), worker()])
-  if (myGen === loadGen) {
-    territoriesByExpectedId.value = new Map(map)
+    // geoExpectedGen: a newer watch run supersedes this one. loadGen (captured
+    // separately): a key navigation happened during the await. probeTaxa reads
+    // the composable's own `gen` but never bumps it, so it cannot self-invalidate
+    // a stale full result — this guard is what discards one. (The brief specified
+    // `myGen !== loadGen`, which compares this sequence number against an
+    // unrelated counter and would discard every result after the first key load;
+    // main confirmed the separate-capture form below on 2026-09-07.)
+    const myGen = ++geoExpectedGen
+    const myLoadGen = loadGen
+    geoCompletenessLoading.value = true
+    const taxa = targetTaxa.value.map((t) => ({ tnId: t.id, rank: t.rank, name: t.name }))
+    const res = await geo.probeTaxa(taxa, eff)
+    if (myGen !== geoExpectedGen || myLoadGen !== loadGen) return
+    geoExpected.value = res
     geoCompletenessLoading.value = false
-  }
-}
-
-async function fetchTaxonTerritories(tnId, myGen) {
-  const set = new Set()
-  try {
-    for (let page = 1; page <= 15; page++) {
-      const q = new URLSearchParams()
-      q.append('taxon_name_id[]', tnId)
-      q.set('descendants', 'true')
-      q.set('per', '1000')
-      q.set('page', String(page))
-      const { data } = await makeAPIRequest.get(`/asserted_distributions?${q}`)
-      if (myGen !== loadGen) return new Set()
-      const rows = Array.isArray(data) ? data : []
-      for (const row of rows) {
-        if (row?.is_absent) continue
-        if (row.asserted_distribution_object_type !== 'Otu') continue
-        const terr = normalizeShape(row.asserted_distribution_shape)
-        if (terr) set.add(terr.key)
-      }
-      if (rows.length < 1000) break
-    }
-  } catch {
-    /* partial is fine */
-  }
-  return set
-}
+  },
+  { immediate: true, deep: true }
+)
 
 const completeness = computed(() => {
   const input = completenessInput.value
@@ -277,7 +231,8 @@ const completeness = computed(() => {
   const geoScope = eff.size
     ? {
         effectiveKeys: eff,
-        territoriesByTaxonId: territoriesByExpectedId.value,
+        territoriesByTaxonId: geoExpected.value.territoriesByTaxonId,
+        hasDataByTaxonId: geoExpected.value.hasDataByTaxonId,
         label: geoSelectionLabel.value
       }
     : null
@@ -287,7 +242,7 @@ const completeness = computed(() => {
 // completeness pipeline. `scopeTaxonName.html` is the taxon's `full_name_tag` (the same
 // field TaxonPages renders its page title from: name parts italic, author roman);
 // until it arrives the header shows the plain `metadata.taxonomic_scope` string.
-// (resolvedScopeOtuId itself is declared up near `nodes` — see the comment there.)
+const resolvedScopeOtuId = ref(null)
 const scopeTaxonName = ref(null)
 
 const meta = computed(() => ({
@@ -349,9 +304,9 @@ async function load(id) {
   geo.reset()
   completenessInput.value = null
   completenessLoading.value = true
-  territoriesByExpectedId.value = new Map()
+  geoExpected.value = { territoriesByTaxonId: new Map(), hasDataByTaxonId: new Set() }
   geoCompletenessLoading.value = false
-  geoTerrGen = -1
+  geoExpectedGen = -1
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
     const listReq = makeAPIRequest.get('/leads').catch(() => ({ data: [] }))

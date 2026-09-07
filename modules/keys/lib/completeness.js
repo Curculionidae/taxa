@@ -65,6 +65,7 @@ function taxRef(d, tnIdToOtuId) {
   return {
     id: d.id,
     otuId: tnIdToOtuId[d.id] ?? null,
+    rank: d.rank || '',
     name: String(d.name || ''),
     authorYear: d.authorYear || ''
   }

@@ -101,6 +101,15 @@ export const ISO_ALIAS_SPELLINGS = (() => {
   return out
 })()
 
+// The ISO codes whose dwc_occurrences.country value is reliably NOT the
+// canonical ISO_NAME spelling (verified live in the 2026-09-07 whole-branch
+// review reconciliation): MK stores "Macedonia", CI "Ivory Coast", BA carries
+// both "Bosnia and Herz." and the canonical form, CG stores "Congo". For every
+// other country the cache stores the canonical name, so the lazy probe sends
+// only that; probing alias spellings there is wasted requests (GB alone has
+// eight). Only these get the fall-through to ISO_ALIAS_SPELLINGS.
+export const DIVERGENT_SPELLING_ISOS = new Set(['MK', 'CI', 'BA', 'CG'])
+
 // Russian WGSRPD units east of the Urals (Siberia + Russian Far East). Each keeps
 // its own key and stays out of the "Europe" grouping.
 export const ASIAN_RUSSIA = new Set([

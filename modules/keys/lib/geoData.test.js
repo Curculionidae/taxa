@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ISO_NAME, NAME_ALIASES_DISPLAY, ISO_ALIAS_SPELLINGS, GEOGRAPHY_PRESETS,
-  EUROPEAN_RUSSIA
+  ISO_NAME, NAME_ALIASES_DISPLAY, ISO_ALIAS_SPELLINGS, DIVERGENT_SPELLING_ISOS,
+  GEOGRAPHY_PRESETS, EUROPEAN_RUSSIA
 } from './geoData.js'
 
 test('ISO_NAME keys are 2-letter uppercase, values non-empty', () => {
@@ -70,5 +70,17 @@ test('GEOGRAPHY_PRESETS members are ISO codes only, no slugs', () => {
   assert.ok(!europe.members.includes(EUROPEAN_RUSSIA.key))
   for (const g of GEOGRAPHY_PRESETS) {
     for (const m of g.members) assert.match(m, /^[A-Z]{2}$/)
+  }
+})
+
+// Every divergent-spelling ISO must be a real country that actually carries
+// alias spellings to fall through to (otherwise the allow-list entry is inert).
+test('DIVERGENT_SPELLING_ISOS members are known ISO codes with alias spellings', () => {
+  for (const iso of DIVERGENT_SPELLING_ISOS) {
+    assert.ok(ISO_NAME[iso], `${iso} must be in ISO_NAME`)
+    assert.ok(
+      (ISO_ALIAS_SPELLINGS[iso] || []).length > 0,
+      `${iso} must have at least one alias spelling`
+    )
   }
 })

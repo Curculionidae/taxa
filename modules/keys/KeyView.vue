@@ -209,7 +209,15 @@ const geoExpected = ref({ territoriesByTaxonId: new Map(), hasDataByTaxonId: new
 let geoExpectedGen = -1
 
 watch(
-  () => [geoEffective.value, targetTaxa.value, completenessLoading.value],
+  // geo.loading is a dep so the pill re-probes once the composable settles after
+  // a terminal re-resolve bumped its gen mid-await (F5): probeTaxa then returned
+  // a partial result flagged { stale: true }, which the guard below discards.
+  () => [
+    geoEffective.value,
+    targetTaxa.value,
+    completenessLoading.value,
+    geo.loading.value
+  ],
   async () => {
     const eff = geoEffective.value
     if (!eff.size || !targetTaxa.value.length) {
@@ -218,18 +226,20 @@ watch(
       return
     }
     // geoExpectedGen: a newer watch run supersedes this one. loadGen (captured
-    // separately): a key navigation happened during the await. probeTaxa reads
-    // the composable's own `gen` but never bumps it, so it cannot self-invalidate
-    // a stale full result; this guard is what discards one. (The brief specified
-    // `myGen !== loadGen`, which compares this sequence number against an
-    // unrelated counter and would discard every result after the first key load;
-    // main confirmed the separate-capture form below on 2026-09-07.)
+    // separately): a key navigation happened during the await. res.stale: the
+    // composable's own gen bumped mid-probe (terminal re-resolve), so the
+    // result is partial. Any of the three -> discard without committing.
     const myGen = ++geoExpectedGen
     const myLoadGen = loadGen
     geoCompletenessLoading.value = true
-    const taxa = targetTaxa.value.map((t) => ({ tnId: t.id, rank: t.rank, name: t.name }))
+    const taxa = targetTaxa.value.map((t) => ({
+      tnId: t.id,
+      otuId: t.otuId,
+      rank: t.rank,
+      name: t.name
+    }))
     const res = await geo.probeTaxa(taxa, eff)
-    if (myGen !== geoExpectedGen || myLoadGen !== loadGen) return
+    if (myGen !== geoExpectedGen || myLoadGen !== loadGen || res.stale) return
     geoExpected.value = res
     geoCompletenessLoading.value = false
   },

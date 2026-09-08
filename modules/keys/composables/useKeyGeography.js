@@ -36,55 +36,22 @@ import {
 import { normRank } from '../lib/completeness.js'
 import { effectiveTaxonNameId } from '../lib/validTaxonName.js'
 import { probeParams, PRESENCE_PARAMS } from '../lib/geoProbe.js'
-import { ISO_ALIAS_SPELLINGS } from '../lib/geoData.js'
+import { ISO_ALIAS_SPELLINGS, DIVERGENT_SPELLING_ISOS } from '../lib/geoData.js'
 
 // One flat presence probe per (terminal, country) at a time, capped here. The
 // spike (design spec section 2) measured ~1 s for 34 requests at this limit.
 const PROBE_CONCURRENCY = 8
 
-// The single-column dwc_occurrences fields a bare name string can be probed
-// against. A terminal whose probe reduces to exactly one of these is exposed to
-// the same-rank homonym risk findHomonymTnIds guards (a species probe pins
-// genus= as well, so it is not).
-const FLAT_FIELDS = new Set(['family', 'subfamily', 'tribe', 'genus'])
-
-// The flat-column probe matches by bare name string (no taxon_name_id scoping
-// is possible: dwc_occurrences' family/genus/subfamily/tribe columns are plain
-// strings). A homonym at the same rank elsewhere in this project's data (a
-// different lineage that happens to share the exact name) would have its
-// occurrences misattributed to this terminal. One batched /taxon_names lookup
-// (name_exact + epithet_only, so it matches the bare `name` column the flat
-// probe itself uses) finds any such collision up front; `epithet_only` is
-// required, otherwise name_exact matches against `cached` (the authored name),
-// which the bare epithet here would never match. Returns the set of candidate
-// tnIds that collide with a same-rank different-id taxon_name and so must not
-// use the flat pass.
-async function findHomonymTnIds(candidates) {
-  const names = [...new Set(candidates.map((c) => c.name).filter(Boolean))]
-  if (!names.length) return new Set()
-  const q = new URLSearchParams()
-  names.forEach((n) => q.append('name[]', n))
-  q.set('name_exact', 'true')
-  q.set('epithet_only', 'true')
-  q.set('per', '1000')
-  try {
-    const { data } = await makeAPIRequest.get(`/taxon_names?${q}`)
-    const idsByKey = new Map() // `${rank}|${name}` -> Set<taxon_name id>
-    for (const t of Array.isArray(data) ? data : []) {
-      const key = `${normRank(t.rank)}|${t.name}`
-      if (!idsByKey.has(key)) idsByKey.set(key, new Set())
-      idsByKey.get(key).add(t.id)
-    }
-    const homonymTnIds = new Set()
-    for (const c of candidates) {
-      const ids = idsByKey.get(`${c.rank}|${c.name}`)
-      if (ids && ids.size > 1) homonymTnIds.add(c.tnId)
-    }
-    return homonymTnIds
-  } catch {
-    return new Set() // lookup failure: proceed as before rather than block the pass
-  }
-}
+// Note on homonyms: the flat-column probe matches dwc_occurrences' bare
+// family/subfamily/tribe/genus string columns, which carry no authorship, so a
+// same-rank homonym elsewhere in the data would have its occurrences
+// misattributed. An earlier version forced such terminals onto the ID-exact
+// /otus/:id/inventory/dwc.json call, but that call is unbounded (~172 s / 100 MB
+// for a family) and the guard fired on benign name + synonym collisions. Within
+// a single-superfamily curated dataset the ICZN forbids two valid same-rank
+// homonyms, so the flat probe is kept for every flat-rank terminal and the
+// guard was removed (code review, 2026-09-08). A cross-family deployment that
+// genuinely needs it should scope by valid taxa only.
 
 // `shouldStop`, checked before each item, lets a caller abandon the remaining
 // queue once its result is no longer wanted (a key change or a newer selection
@@ -145,15 +112,18 @@ async function earlyExitPool(items, countryKeys, limit, run, shouldStop, onRound
   }
 }
 
-// Every string worth sending as dwc_occurrences.country for one territory key:
-// the canonical ISO name first, then the alias spellings that map to the same
-// ISO code. The column stores whatever the specimen record spelled, and for some
-// countries that is never the canonical form ("Macedonia", "Ivory Coast"), so a
-// canonical-only probe read them as empty. Deduped case-insensitively, since a
-// few aliases repeat the canonical name.
+// The dwc_occurrences.country string(s) to probe for one territory key. For
+// almost every country the cache stores the canonical ISO_NAME spelling, so that
+// is all that is sent. Only the ISO codes in DIVERGENT_SPELLING_ISOS get the
+// fall-through to their alias spellings ("Macedonia" for MK, "Ivory Coast" for
+// CI, ...); probing every spelling for every country blew the request budget
+// (GB has eight aliases, all wasted). F7. Deduped case-insensitively.
 function countryProbeStrings(countryKey) {
   const iso = String(countryKey || '').toUpperCase()
   const canonical = countryName(countryKey) ?? territoryLabel(countryKey)
+  if (!DIVERGENT_SPELLING_ISOS.has(iso)) {
+    return canonical ? [canonical] : []
+  }
   const out = []
   const seen = new Set()
   for (const s of [canonical, ...(ISO_ALIAS_SPELLINGS[iso] || [])]) {
@@ -207,7 +177,7 @@ export function useKeyGeography(terminalListRef) {
   let resolvePromise = Promise.resolve() // in-flight ensureLoaded resolution
 
   // Terminal descriptors (from ensureLoaded). Keyed by Number(otuId).
-  let terminals = new Map() // otuId -> { rank, name, tnId, forceInventory? }
+  let terminals = new Map() // otuId -> { rank, name, cached, tnId }
   // Shared presence caches. probeCache is keyed by country then probe signature;
   // probeTaxa reuses it so an in-key terminal that is also a completeness target
   // is fetched once. These hold SETTLED values only, because recomputeTerritories
@@ -237,28 +207,13 @@ export function useKeyGeography(terminalListRef) {
     ]
   }
 
-  // probeParams for a resolved terminal, honouring the homonym / fallback flag.
-  // Uses `cached` (the full binomial for a species) so probeParams can split
-  // genus + epithet; bare `name` alone would reduce a species to the inventory
-  // fallback. C2.
+  // probeParams for a resolved terminal. Uses `cached` (the full binomial for a
+  // species) so probeParams can split genus + epithet; bare `name` alone would
+  // reduce a species to the inventory fallback. C2. subgenus / nameless
+  // terminals return { fallback: 'inventory' } from probeParams itself.
   function descriptorFor(t) {
-    if (!t || t.forceInventory) return { fallback: 'inventory' }
+    if (!t) return { fallback: 'inventory' }
     return probeParams({ rank: t.rank, name: t.cached || t.name })
-  }
-
-  // Is `countryKey` fully covered by cache for the current terminal set? (a flat
-  // descriptor: its sig cached for that country; a fallback terminal: its
-  // inventory set cached, which is country independent.)
-  function countryCovered(ck, descByOtu) {
-    const bucket = probeCache.get(ck)
-    for (const [otuId, desc] of descByOtu) {
-      if (desc.fallback === 'inventory') {
-        if (!inventoryCountryCache.has(otuId)) return false
-      } else if (!bucket || !bucket.has(desc.sig)) {
-        return false
-      }
-    }
-    return true
   }
 
   function presentIn(desc, otuId, ck) {
@@ -402,13 +357,17 @@ export function useKeyGeography(terminalListRef) {
 
   // --- terminal resolution ---------------------------------------------------
 
-  // Resolve terminal OTUs to { rank, name, tnId }. No distribution fetch.
+  // Resolve terminal OTUs to { rank, name, cached, tnId }. No distribution fetch.
   async function resolveTerminals(otuIds, sig) {
     const myGen = ++gen
-    loadedFor = sig
+    // F3: only mark this signature "done" once resolution SUCCEEDS. Setting it up
+    // front meant a transient /otus or /taxon_names error left loadedFor set with
+    // terminals empty, so every later ensureLoaded() early-returned and the
+    // filter was silently dead until a route change.
     terminals = new Map()
     hasDataDone = false
     if (!otuIds.length) {
+      loadedFor = sig
       loading.value = false
       return
     }
@@ -426,7 +385,7 @@ export function useKeyGeography(terminalListRef) {
       }
 
       const rankByTn = new Map()
-      const nameByTn = new Map() // bare `name` column (the homonym lookup needs it)
+      const nameByTn = new Map() // bare `name` column
       const cachedByTn = new Map() // `cached` (full binomial for a species terminal)
       const tnIds = [...new Set(otuToTn.values())]
       if (tnIds.length) {
@@ -483,48 +442,20 @@ export function useKeyGeography(terminalListRef) {
         terminals.set(Number(otuId), {
           tnId: tnId ?? null,
           rank: tnId != null ? normRank(rankByTn.get(tnId)) : null,
-          // bare `name` for findHomonymTnIds; `cached` (full binomial) for the
-          // flat probe, so a species terminal probes genus + epithet rather than
-          // the bare epithet (which probeParams rejects as fallback). C2.
+          // bare `name` column; `cached` (full binomial) is what the flat probe
+          // uses, so a species terminal probes genus + epithet rather than the
+          // bare epithet (which probeParams rejects as fallback). C2.
           name: tnId != null ? nameByTn.get(tnId) || '' : '',
           cached: tnId != null ? cachedByTn.get(tnId) || '' : ''
         })
       }
-
-      // Homonym guard: a bare-name flat probe (family/subfamily/tribe/genus)
-      // whose name+rank collides with a different taxon_name elsewhere in the
-      // project is forced onto the inventory fallback (ID exact) instead.
-      const flatCandidates = []
-      for (const [otuId, t] of terminals) {
-        const desc = descriptorFor(t)
-        if (desc.fallback) continue
-        const fields = Object.keys(desc.params)
-        if (fields.length === 1 && FLAT_FIELDS.has(fields[0])) {
-          flatCandidates.push({
-            otuId,
-            tnId: t.tnId,
-            rank: t.rank,
-            // bare `name` column value: findHomonymTnIds matches it with
-            // epithet_only against the same column the flat probe uses. C2.
-            name: t.name || desc.params[fields[0]]
-          })
-        }
-      }
-      if (flatCandidates.length) {
-        const homonymTnIds = await findHomonymTnIds(flatCandidates)
-        if (myGen !== gen) return
-        for (const c of flatCandidates) {
-          if (c.tnId != null && homonymTnIds.has(c.tnId)) {
-            const t = terminals.get(c.otuId)
-            if (t) t.forceInventory = true
-          }
-        }
-      }
+      loadedFor = sig // F3: resolution succeeded
     } catch {
       /* the /otus or /taxon_names batch failed: `terminals` stays the empty Map
          set at the top of this function, so syncSelection no-ops and no geography
          filtering is applied. Safer than probing every terminal blind through the
-         inventory fallback. M11. */
+         inventory fallback. M11. loadedFor stays null (F3) so the next
+         ensureLoaded() retries rather than treating the empty set as final. */
     } finally {
       if (myGen === gen) loading.value = false
     }
@@ -575,10 +506,19 @@ export function useKeyGeography(terminalListRef) {
 
     const descByOtu = new Map()
     for (const [otuId, t] of terminals) descByOtu.set(otuId, descriptorFor(t))
+    const flat = []
+    const fallback = []
+    for (const [otuId, desc] of descByOtu) {
+      ;(desc.fallback === 'inventory' ? fallback : flat).push({ otuId, desc })
+    }
 
     loading.value = true
     try {
-      // has-data batch, once per gen.
+      // has-data batch, once per gen. Its result is NOT published here (F1):
+      // publishing hasDataByOtu before the presence sweep fills territoriesByOtu
+      // would flash every recorded terminal as "out of area" (hasData true +
+      // still-empty territory set) for the seconds the sweep takes. Both land
+      // together at the end.
       if (!hasDataDone) {
         await mapPool(
           [...terminals.keys()],
@@ -595,37 +535,32 @@ export function useKeyGeography(terminalListRef) {
         )
         if (stale()) return
         hasDataDone = true
-        recomputeHasData()
       }
 
-      // presence batch: only countries not already covered by cache.
-      const newCountries = [...keys].filter((ck) => !countryCovered(ck, descByOtu))
-      if (newCountries.length) {
-        const flat = []
-        const fallback = []
-        for (const [otuId, desc] of descByOtu) {
-          ;(desc.fallback === 'inventory' ? fallback : flat).push({ otuId, desc })
-        }
+      // Fallback terminals: one country-independent inventory fetch each
+      // (cached; also covers a retry after an earlier fetch error, M10).
+      await mapPool(
+        fallback,
+        PROBE_CONCURRENCY,
+        ({ otuId }) => inventoryCountries(otuId, stale),
+        stale
+      )
+      if (stale()) return
 
-        // Fallback terminals: one country-independent inventory fetch each.
-        // Usually already cached by the has-data batch; this covers a retry
-        // after an earlier fetch error (M10).
-        await mapPool(
-          fallback,
-          PROBE_CONCURRENCY,
-          ({ otuId }) => inventoryCountries(otuId, stale),
-          stale
-        )
-        if (stale()) return
-
-        // Flat terminals: probe each against the new countries, stopping the
-        // moment a terminal is present anywhere in the selection (I6). Every
-        // consumer (territoryStatus, leadGeoStatus, the completeness geo pass)
-        // resolves 'in' on the first selected country a taxon is present in, so
-        // the rest of that taxon's countries are never requested.
+      // Flat terminals: a terminal already known present in a still-selected
+      // country needs no probe (every consumer resolves 'in' on the first hit).
+      // Everyone else gets the early-exit sweep over the CURRENT selection,
+      // reusing cached true/false and only hitting the network for genuinely
+      // unknown pairs. Correct whether the selection grew or shrank (F8): a
+      // shrink to a country a terminal skipped last time re-probes it here.
+      const needProbe = flat.filter(({ otuId, desc }) => {
+        for (const ck of keys) if (presentIn(desc, otuId, ck)) return false
+        return true
+      })
+      if (needProbe.length) {
         await earlyExitPool(
-          flat,
-          newCountries,
+          needProbe,
+          [...keys],
           PROBE_CONCURRENCY,
           ({ otuId, desc }, ck) => probeOne(desc.sig, desc.params, ck, stale),
           stale,
@@ -636,6 +571,7 @@ export function useKeyGeography(terminalListRef) {
         if (stale()) return
       }
       recomputeTerritories()
+      recomputeHasData() // F1: publish has-data now, alongside territories
     } finally {
       if (!stale()) loading.value = false
     }
@@ -645,8 +581,11 @@ export function useKeyGeography(terminalListRef) {
 
   // Probe a set of expected modal-rank taxa (in-key targets and gaps) the same
   // way, sharing probeCache / hasDataBySig. Does NOT mutate territoriesByOtu /
-  // hasDataByOtu (those are terminal scoped). A taxon with no flat column
-  // (subgenus / no name) has no OTU id here, so it is left as unknown.
+  // hasDataByOtu (those are terminal scoped). A taxon whose rank has no flat
+  // column (modal rank = subgenus, ...) uses the /inventory/dwc.json fallback
+  // when the caller passes its `otuId` (F4); with no otuId it stays unknown.
+  // Returns `{ ..., stale }`: true when the composable's gen bumped mid-probe,
+  // so the caller must discard the partial result (F5).
   async function probeTaxa(taxa, effectiveKeys) {
     const keys =
       effectiveKeys instanceof Set
@@ -659,7 +598,7 @@ export function useKeyGeography(terminalListRef) {
     const hasDataByTaxonId = new Set()
     const list = (taxa || []).filter((t) => t && t.tnId != null)
     if (!list.length || shouldStop()) {
-      return { territoriesByTaxonId, hasDataByTaxonId }
+      return { territoriesByTaxonId, hasDataByTaxonId, stale: shouldStop() }
     }
 
     const descByTn = new Map()
@@ -667,25 +606,35 @@ export function useKeyGeography(terminalListRef) {
       descByTn.set(t.tnId, probeParams({ rank: t.rank, name: t.name }))
       territoriesByTaxonId.set(t.tnId, new Set())
     }
+    const flatList = list.filter((t) => !descByTn.get(t.tnId).fallback)
+    // F4: fallback taxa the caller gave an otuId for -> one inventory fetch each.
+    const invList = list.filter(
+      (t) => descByTn.get(t.tnId).fallback && t.otuId != null
+    )
 
     // has-data per taxon (once, shared cache).
     await mapPool(
-      list,
+      [...flatList, ...invList],
       PROBE_CONCURRENCY,
       async (t) => {
         const desc = descByTn.get(t.tnId)
-        if (desc.fallback) return
+        if (desc.fallback) {
+          const set = await inventoryCountries(t.otuId, shouldStop)
+          if (set.size) hasDataByTaxonId.add(t.tnId)
+          return
+        }
         const present = await probeHasData(desc.sig, desc.params, shouldStop)
         if (present) hasDataByTaxonId.add(t.tnId)
       },
       shouldStop
     )
-    if (shouldStop()) return { territoriesByTaxonId, hasDataByTaxonId }
+    if (shouldStop()) {
+      return { territoriesByTaxonId, hasDataByTaxonId, stale: true }
+    }
 
     // presence per (taxon, country), shared cache. Early exit per taxon (I6):
     // the pill only needs whether each expected taxon occurs in the selection at
     // all, so probing stops once a taxon is present in one selected country.
-    const flatList = list.filter((t) => !descByTn.get(t.tnId).fallback)
     await earlyExitPool(
       flatList,
       [...keys],
@@ -698,8 +647,14 @@ export function useKeyGeography(terminalListRef) {
       },
       shouldStop
     )
+    // Fallback taxa: intersect the cached inventory country set with the selection.
+    for (const t of invList) {
+      const set = inventoryCountryCache.get(t.otuId)
+      if (!set) continue
+      for (const ck of keys) if (set.has(ck)) territoriesByTaxonId.get(t.tnId).add(ck)
+    }
 
-    return { territoriesByTaxonId, hasDataByTaxonId }
+    return { territoriesByTaxonId, hasDataByTaxonId, stale: shouldStop() }
   }
 
   // --- lifecycle ----------------------------------------------------------

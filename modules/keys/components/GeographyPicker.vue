@@ -52,11 +52,18 @@
         </template>
 
         <input
+          ref="filterInputEl"
           v-model="territoryFilter"
           type="text"
           placeholder="Filter countries…"
           aria-label="Filter countries"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="geo-picker-list"
+          autocomplete="off"
+          :aria-activedescendant="activeIndex >= 0 ? rowId(activeIndex) : undefined"
           class="mb-1 w-full rounded border border-base-muted bg-base-foreground px-1.5 py-0.5 text-base-content placeholder:text-base-soft"
+          @keydown="onFilterKeydown"
         />
         <p
           v-if="!filteredTerritories.length"
@@ -65,18 +72,32 @@
           No match.
         </p>
 
-        <label
-          v-for="t in filteredTerritories"
-          :key="t.key"
-          class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-base-muted/40"
+        <div
+          id="geo-picker-list"
+          ref="listEl"
+          role="listbox"
+          aria-label="Countries"
         >
-          <input
-            type="checkbox"
-            :checked="modelValue.territories.includes(t.key)"
-            @change="toggleTerritory(t.key)"
-          />
-          <span class="flex-1">{{ t.label }}</span>
-        </label>
+          <label
+            v-for="(t, idx) in filteredTerritories"
+            :id="rowId(idx)"
+            :key="t.key"
+            role="option"
+            :aria-selected="modelValue.territories.includes(t.key)"
+            :data-active="idx === activeIndex"
+            :class="[
+              'flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-base-muted/40',
+              { 'bg-base-muted': idx === activeIndex }
+            ]"
+          >
+            <input
+              type="checkbox"
+              :checked="modelValue.territories.includes(t.key)"
+              @change="toggleTerritory(t.key)"
+            />
+            <span class="flex-1">{{ t.label }}</span>
+          </label>
+        </div>
 
         <div
           v-if="hasSelection"
@@ -96,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { territoryLabel } from '../lib/geoNormalize.js'
 
 const props = defineProps({
@@ -130,6 +151,70 @@ const filteredTerritories = computed(() => {
     String(t.label || '').toLowerCase().includes(q)
   )
 })
+
+// Keyboard navigation of the filtered country list (arrow keys + Enter),
+// modelled on CollectionDatabase's custom-dropdown pattern. activeIndex -1 means
+// nothing is highlighted yet.
+const filterInputEl = ref(null)
+const listEl = ref(null)
+const activeIndex = ref(-1)
+function rowId(i) {
+  return `geo-picker-opt-${i}`
+}
+
+// Focus the filter box when the menu opens so the arrow keys work right away;
+// drop the highlight when it closes.
+watch(open, (isOpen) => {
+  if (isOpen) nextTick(() => filterInputEl.value?.focus())
+  else activeIndex.value = -1
+})
+// Any change to the filter text invalidates the highlighted row.
+watch(territoryFilter, () => {
+  activeIndex.value = -1
+})
+// Keep the highlighted row visible inside the scrolling menu.
+watch(activeIndex, (i) => {
+  if (i < 0) return
+  nextTick(() => {
+    listEl.value
+      ?.querySelector('[data-active="true"]')
+      ?.scrollIntoView({ block: 'nearest' })
+  })
+})
+
+function moveActive(delta) {
+  const n = filteredTerritories.value.length
+  if (!n) {
+    activeIndex.value = -1
+    return
+  }
+  const cur = activeIndex.value
+  activeIndex.value =
+    cur < 0 ? (delta > 0 ? 0 : n - 1) : (cur + delta + n) % n
+}
+
+function onFilterKeydown(e) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    moveActive(1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    moveActive(-1)
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    const list = filteredTerritories.value
+    const t =
+      activeIndex.value >= 0
+        ? list[activeIndex.value]
+        : list.length === 1
+          ? list[0]
+          : null
+    if (t) toggleTerritory(t.key)
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    open.value = false
+  }
+}
 
 const hasSelection = computed(
   () =>

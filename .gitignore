@@ -6,3 +6,4 @@ dist
 .vite
 config/**/*.development.yml
 *.kate-swp
+.ipynb_checkpoints/

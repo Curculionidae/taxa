@@ -1,0 +1,17 @@
+Me
+    Is there an periodically updated "index" for geographical distribution of higher taxa that can be queried via the API, or is the only way to query all descendants?
+    I made an identification key interface, that is checking the completeness of the identification key based on taxonomy (are all species of the genus keyed?) and geography (filter for "Germany", see if all German species of the genus are included in the key).
+    Example for genus level (works): https://catalog.curculionoidea.org/#/key/3605
+    Example for the Families of Weevils (loading geography is taking too long): https://catalog.curculionoidea.org/#/key/5024
+Answer
+    There is only an aggregate map/shape, no aggregate per OTU.  However, the DwC acts as a proxy of sorts, as you could quickly query it and get the countries, for example.
+Me
+    Sure, feel free to share them. I like about the keys in TaxonWorks/TaxonPages that they are easy to maintain. I add figures only if they illustrate characters, figures for terminal taxa are fetched automatically, preferably from TaxonWorks, as a fallback from iNaturalist. If a taxon name from the key is synonymized, the name is not silently replaced, but annotated with the valid name (may need to emphasize this more in the layout, currently it looks as if the valid name was the synonym).
+Answer
+        There is only an aggregate map/shape, no aggregate per OTU.  However, the DwC acts as a proxy of sorts, as you could quickly query it and get the countries, for example.
+Me
+    apparently querying the DwC is not faster than getting Asserted Distributions with descendants.
+Answer
+    What fields are you hitting? I think I know why. We don't heavily index that table at the moment- it's optimized for write, not read. We may have to reconsider that.
+    In theory it should be much much faster.
+

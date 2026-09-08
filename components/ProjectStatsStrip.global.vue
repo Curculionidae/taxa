@@ -32,6 +32,10 @@
 // re-drives <AnimateNumber>. Seeds are deliberately BELOW the real figures so
 // the correction only ever counts upward; the catalog only grows. A failed
 // request just leaves the estimate showing.
+//
+// weevilNames / plantNames back the "taxon names" tooltip only (not animated):
+// they come from two extra header-count queries so the "how many of these are
+// non-weevil / plant names" line stays live rather than a written-in guess.
 
 import { reactive, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
@@ -45,6 +49,8 @@ const ROOT_TAXON_NAME_ID = 809411
 const counts = reactive({
   species: 14000,
   names: 22000,
+  weevilNames: 21300,
+  plantNames: 640,
   specimens: 16000,
   distributions: 32000,
   bioassoc: 1900,
@@ -61,7 +67,15 @@ const META = [
   {
     key: 'names',
     label: 'taxon names',
-    title: 'All scientific names in the project, every rank, valid and invalid.'
+    title: (c) => {
+      const nonWeevil = Math.max(0, c.names - c.weevilNames)
+      return (
+        'Every scientific name in the project, all ranks, valid and invalid. ' +
+        `Includes ${nonWeevil.toLocaleString()} names outside Curculionoidea ` +
+        `(host plants and other taxa in biological associations), ` +
+        `${c.plantNames.toLocaleString()} of them plants.`
+      )
+    }
   },
   {
     key: 'specimens',
@@ -93,7 +107,11 @@ const META = [
 ]
 
 const pills = computed(() =>
-  META.map((m) => ({ ...m, count: counts[m.key] }))
+  META.map((m) => ({
+    ...m,
+    count: counts[m.key],
+    title: typeof m.title === 'function' ? m.title(counts) : m.title
+  }))
 )
 
 onMounted(() => {
@@ -128,6 +146,33 @@ onMounted(() => {
     .then((response) => {
       const total = Number(response.headers['pagination-total'])
       if (Number.isFinite(total)) counts.species = total
+    })
+    .catch(() => {})
+
+  // Non-weevil share of "Taxon names": total (from /stats) minus everything
+  // under Curculionoidea. Header count only, feeds the tooltip.
+  makeAPIRequest
+    .get('/taxon_names.json', {
+      params: {
+        per: 1,
+        taxon_name_id: [ROOT_TAXON_NAME_ID],
+        descendants: true
+      }
+    })
+    .then((response) => {
+      const total = Number(response.headers['pagination-total'])
+      if (Number.isFinite(total)) counts.weevilNames = total
+    })
+    .catch(() => {})
+
+  // Of those non-weevil names, how many are botanical (ICN code).
+  makeAPIRequest
+    .get('/taxon_names.json', {
+      params: { per: 1, nomenclature_group: 'Icn' }
+    })
+    .then((response) => {
+      const total = Number(response.headers['pagination-total'])
+      if (Number.isFinite(total)) counts.plantNames = total
     })
     .catch(() => {})
 })

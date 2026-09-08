@@ -7,20 +7,30 @@
 // `number` changes (a seeded estimate first, then the real figure). Only ever
 // counts upward: a lower target settles instantly rather than ticking back.
 // Adapted from sfg-taxonpages/orthoptera pages/components/AnimateNumber.vue.
+//
+// `display` is seeded with `number` rather than 0 so a server render (dev:ssr)
+// and the first client render agree — no hydration mismatch. The sweep up from
+// 0 is a client-only flourish kicked off in onMounted, after hydration.
 
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   number: { type: Number, default: 0 },
   duration: { type: Number, default: 1600 }
 })
 
-const display = ref(0)
+const display = ref(props.number)
 let raf = null
 
 const prefersReducedMotion =
   typeof window !== 'undefined' &&
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+onMounted(() => {
+  if (prefersReducedMotion) return
+  display.value = 0
+  animate(props.number)
+})
 
 watch(
   () => props.number,

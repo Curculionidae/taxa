@@ -36,21 +36,28 @@
 // weevilNames / plantNames back the "taxon names" tooltip only (not animated):
 // they come from two extra header-count queries so the "how many of these are
 // non-weevil / plant names" line stays live rather than a written-in guess.
+// Both seed as null and the tooltip only spells out the breakdown once every
+// figure it needs is a real fetched number (see the sanity guard in the title
+// function) — a half-loaded or failed pair never renders a bogus subtraction.
 
 import { reactive, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import AnimateNumber from './AnimateNumber.vue'
+import {
+  CURCULIONOIDEA_TAXON_NAME_ID,
+  fetchValidSpeciesCount
+} from './lib/validSpeciesCount.js'
 
-// TaxonWorks taxon_name id for Curculionoidea — the root the catalog covers.
-const ROOT_TAXON_NAME_ID = 809411
+// The root this catalog covers.
+const ROOT_TAXON_NAME_ID = CURCULIONOIDEA_TAXON_NAME_ID
 
 // Roughly two thirds of the current real figures: enough runway that the
 // correction is a visible continuation, never a jump, and always upward.
 const counts = reactive({
   species: 14000,
   names: 22000,
-  weevilNames: 21300,
-  plantNames: 640,
+  weevilNames: null,
+  plantNames: null,
   specimens: 16000,
   distributions: 32000,
   bioassoc: 1900,
@@ -68,10 +75,21 @@ const META = [
     key: 'names',
     label: 'taxon names',
     title: (c) => {
-      const nonWeevil = Math.max(0, c.names - c.weevilNames)
+      const base =
+        'Every scientific name in the project, all ranks, valid and invalid.'
+      // Only add the breakdown when every figure it needs is a real fetched
+      // number and the arithmetic is sane (a failed /stats leaves c.names at
+      // its seed, which can be below the weevil-only count).
+      if (
+        c.weevilNames == null ||
+        c.plantNames == null ||
+        c.names <= c.weevilNames
+      )
+        return base
+      const nonWeevil = c.names - c.weevilNames
       return (
-        'Every scientific name in the project, all ranks, valid and invalid. ' +
-        `Includes ${nonWeevil.toLocaleString()} names outside Curculionoidea ` +
+        base +
+        ` Includes ${nonWeevil.toLocaleString()} names outside Curculionoidea ` +
         `(host plants and other taxa in biological associations), ` +
         `${c.plantNames.toLocaleString()} of them plants.`
       )
@@ -133,19 +151,9 @@ onMounted(() => {
     })
     .catch(() => {})
 
-  makeAPIRequest
-    .get('/taxon_names.json', {
-      params: {
-        per: 1,
-        validity: true,
-        taxon_name_id: [ROOT_TAXON_NAME_ID],
-        rank: ['NomenclaturalRank::Iczn::SpeciesGroup::Species'],
-        descendants: true
-      }
-    })
-    .then((response) => {
-      const total = Number(response.headers['pagination-total'])
-      if (Number.isFinite(total)) counts.species = total
+  fetchValidSpeciesCount()
+    .then((total) => {
+      if (total != null) counts.species = total
     })
     .catch(() => {})
 

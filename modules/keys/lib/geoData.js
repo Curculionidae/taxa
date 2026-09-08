@@ -80,8 +80,26 @@ export const NAME_ALIASES_DISPLAY = {
   Turkiye: 'TR', Türkiye: 'TR',
   'Swiss Confederation': 'CH',
   Kirghizia: 'KG', Kirgizia: 'KG',
-  'White Russia': 'BY', Byelorussia: 'BY'
+  'White Russia': 'BY', Byelorussia: 'BY',
+  // Live-verified spellings the project's dwc_occurrences.country column
+  // actually stores (the canonical ISO_NAME value returns zero rows for these).
+  'Bosnia and Herz.': 'BA',
+  Congo: 'CG'
 }
+
+// ISO code -> the non canonical spellings that map to it, in the order they are
+// declared above. The presence probe matches dwc_occurrences.country by exact
+// string, and the cache genuinely spells some countries the alias way
+// ("Macedonia" 216 rows vs "North Macedonia" 0, "Ivory Coast" 1 vs
+// "Cote d'Ivoire" 0), so a probe that only ever sent the canonical name read
+// those countries as empty. Derived here so the two tables cannot drift.
+export const ISO_ALIAS_SPELLINGS = (() => {
+  const out = {}
+  for (const [display, iso] of Object.entries(NAME_ALIASES_DISPLAY)) {
+    ;(out[iso] ||= []).push(display)
+  }
+  return out
+})()
 
 // Russian WGSRPD units east of the Urals (Siberia + Russian Far East). Each keeps
 // its own key and stays out of the "Europe" grouping.
@@ -99,8 +117,12 @@ export const EUROPEAN_RUSSIA = { key: 'russia-european', label: 'European Russia
 
 // Named region groupings. Each expands to its FULL member list regardless of
 // which members the current key reaches, so the geographic-completeness
-// denominator is never silently narrowed. `members` are territory keys as
-// geoNormalize.js emits them (ISO 3166-1 alpha-2 plus the `russia-european` slug).
+// denominator is never silently narrowed. `members` are ISO 3166-1 alpha-2
+// country keys only: the lazy per country model probes dwc_occurrences.country,
+// which has no "European Russia" value, so the `russia-european` slug always
+// probed zero and was dropped from this list (design spec section 7). The slug
+// itself stays in geoNormalize's gazetteer branch, where shape normalization
+// still emits it.
 // Add a grouping = add an entry. Edit what counts as "Europe" = edit the array.
 export const GEOGRAPHY_PRESETS = [
   {
@@ -110,8 +132,7 @@ export const GEOGRAPHY_PRESETS = [
       'AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE',
       'FO', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT',
       'LU', 'MT', 'MD', 'MC', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'SM',
-      'RS', 'SK', 'SI', 'ES', 'SJ', 'SE', 'CH', 'TR', 'UA', 'GB', 'VA',
-      'russia-european'
+      'RS', 'SK', 'SI', 'ES', 'SJ', 'SE', 'CH', 'TR', 'UA', 'GB', 'VA'
     ]
   }
 ]

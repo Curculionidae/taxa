@@ -1,11 +1,11 @@
 // One place for the "synonym -> valid taxon_name" rule so it can't drift
-// between call sites. Pure — no Vue, no network.
+// between call sites. Pure: no Vue, no network.
 //
 // A TaxonWorks /taxon_names row for a synonym carries cached_is_valid: false
 // and cached_valid_taxon_name_id pointing at the accepted name. Everything
 // that needs to treat a key terminal (or any other taxon_name reference) as
-// "whichever taxon_name actually carries the data" — descendant walks,
-// dwc_occurrences flat-column probes, out-of-scope checks — should redirect
+// "whichever taxon_name actually carries the data" (descendant walks,
+// dwc_occurrences flat-column probes, out-of-scope checks) should redirect
 // through this before using the id, or it silently operates on a name with
 // no data of its own. There is no package-level ("TaxonPages") utility for
 // this (checked node_modules/@sfgrp/taxonpages/src, 2026-09-07): the OTU page

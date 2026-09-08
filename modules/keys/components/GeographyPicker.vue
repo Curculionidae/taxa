@@ -34,14 +34,8 @@
         >
           Loading distributions…
         </p>
-        <p
-          v-else-if="!territories.length"
-          class="px-1 py-0.5 text-base-soft"
-        >
-          No distribution data for this key's taxa.
-        </p>
 
-        <template v-if="groupings.length && (loading || territories.length)">
+        <template v-if="groupings.length">
           <label
             v-for="g in groupings"
             :key="g.id"
@@ -57,8 +51,22 @@
           <div class="my-1 border-t border-base-muted" />
         </template>
 
+        <input
+          v-model="territoryFilter"
+          type="text"
+          placeholder="Filter countries…"
+          aria-label="Filter countries"
+          class="mb-1 w-full rounded border border-base-muted bg-base-foreground px-1.5 py-0.5 text-base-content placeholder:text-base-soft"
+        />
+        <p
+          v-if="!filteredTerritories.length"
+          class="px-1 py-0.5 text-base-soft"
+        >
+          No match.
+        </p>
+
         <label
-          v-for="t in territories"
+          v-for="t in filteredTerritories"
           :key="t.key"
           class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-base-muted/40"
         >
@@ -113,6 +121,16 @@ function toggle() {
   if (open.value) emit('open')
 }
 
+// I7: case-insensitive substring filter over the (long, ~190 entry) country list.
+const territoryFilter = ref('')
+const filteredTerritories = computed(() => {
+  const q = territoryFilter.value.trim().toLowerCase()
+  if (!q) return props.territories
+  return props.territories.filter((t) =>
+    String(t.label || '').toLowerCase().includes(q)
+  )
+})
+
 const hasSelection = computed(
   () =>
     props.modelValue.groupings.length > 0 ||
@@ -120,7 +138,6 @@ const hasSelection = computed(
 )
 
 const summaryLabel = computed(() => {
-  if (props.loading && !props.territories.length) return 'distributions…'
   const gLabels = props.modelValue.groupings
     .map((id) => props.groupings.find((g) => g.id === id)?.label)
     .filter(Boolean)

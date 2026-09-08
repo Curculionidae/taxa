@@ -36,6 +36,7 @@ import {
 import { normRank } from '../lib/completeness.js'
 import { effectiveTaxonNameId } from '../lib/validTaxonName.js'
 import { probeParams, PRESENCE_PARAMS } from '../lib/geoProbe.js'
+import { ISO_ALIAS_SPELLINGS } from '../lib/geoData.js'
 
 // One flat presence probe per (terminal, country) at a time, capped here. The
 // spike (design spec section 2) measured ~1 s for 34 requests at this limit.
@@ -99,6 +100,71 @@ async function mapPool(items, limit, fn, shouldStop) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
 }
 
+// Presence sweep with per item early exit.
+//
+// No consumer needs a taxon's COMPLETE set of selected countries: territoryStatus,
+// leadGeoStatus and buildCompletenessReport's geographic pass all resolve 'in' on
+// the FIRST selected country the taxon is present in, and the picker shows no per
+// country counts. So once an item probes present anywhere in the selection, its
+// remaining countries are never requested. With the Europe preset (47 countries)
+// a widely distributed taxon costs one probe instead of 47; only a narrow endemic
+// pays the full sweep.
+//
+// Probing runs in rounds so the pool stays saturated: each round hands every
+// still-unresolved item the next slice of the country list, the slice sized
+// ceil(limit / itemsLeft), which is 1 while many items remain (maximum breadth,
+// minimum wasted probes) and grows to `limit` once a single stubborn item is
+// left (so it is not reduced to one sequential request at a time).
+//
+// `run(item, countryKey)` must resolve to the presence boolean and is
+// responsible for recording its own result. `onRound` fires after each settled
+// round, for progressive UI fill.
+async function earlyExitPool(items, countryKeys, limit, run, shouldStop, onRound) {
+  let active = items.slice()
+  let offset = 0
+  while (active.length && offset < countryKeys.length) {
+    if (shouldStop?.()) return
+    const chunk = Math.max(1, Math.ceil(limit / active.length))
+    const slice = countryKeys.slice(offset, offset + chunk)
+    offset += slice.length
+    const pairs = []
+    for (const item of active) for (const ck of slice) pairs.push({ item, ck })
+    const hit = new Set()
+    await mapPool(
+      pairs,
+      limit,
+      async ({ item, ck }) => {
+        if (hit.has(item)) return // already present: skip the rest of its slice
+        if (await run(item, ck)) hit.add(item)
+      },
+      shouldStop
+    )
+    if (shouldStop?.()) return
+    if (hit.size) active = active.filter((it) => !hit.has(it))
+    onRound?.()
+  }
+}
+
+// Every string worth sending as dwc_occurrences.country for one territory key:
+// the canonical ISO name first, then the alias spellings that map to the same
+// ISO code. The column stores whatever the specimen record spelled, and for some
+// countries that is never the canonical form ("Macedonia", "Ivory Coast"), so a
+// canonical-only probe read them as empty. Deduped case-insensitively, since a
+// few aliases repeat the canonical name.
+function countryProbeStrings(countryKey) {
+  const iso = String(countryKey || '').toUpperCase()
+  const canonical = countryName(countryKey) ?? territoryLabel(countryKey)
+  const out = []
+  const seen = new Set()
+  for (const s of [canonical, ...(ISO_ALIAS_SPELLINGS[iso] || [])]) {
+    const k = String(s || '').trim().toLowerCase()
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(s)
+  }
+  return out
+}
+
 // Read presence off a /dwc_occurrences response: the Pagination-Total header
 // first (per=1 keeps the body tiny), body length as the fallback, so
 // correctness never depends on the header being present.
@@ -144,10 +210,20 @@ export function useKeyGeography(terminalListRef) {
   let terminals = new Map() // otuId -> { rank, name, tnId, forceInventory? }
   // Shared presence caches. probeCache is keyed by country then probe signature;
   // probeTaxa reuses it so an in-key terminal that is also a completeness target
-  // is fetched once.
+  // is fetched once. These hold SETTLED values only, because recomputeTerritories
+  // and recomputeHasData read them synchronously.
   let probeCache = new Map() // countryKey -> Map<sig, boolean>
   let hasDataBySig = new Map() // sig -> boolean (no-country probe)
   let inventoryCountryCache = new Map() // otuId -> Set<countryKey> (fallback terminals)
+  // In-flight request dedup, kept SEPARATE from the settled caches above so a
+  // pending promise can never be read as a value. syncSelection and probeTaxa
+  // both fire on the same geoEffective change and share every signature, so
+  // without this an identical request goes out up to PROBE_CONCURRENCY times
+  // (worst case: parallel /otus/:id/inventory/dwc.json for one fallback OTU).
+  // Each entry is deleted as its request settles.
+  let probeInflight = new Map() // `${countryKey}|${sig}` -> Promise<boolean>
+  let hasDataInflight = new Map() // sig -> Promise<boolean>
+  let inventoryInflight = new Map() // otuId -> Promise<Set<countryKey>>
   let hasDataDone = false // the no-country batch has run for this gen
   let selectedKeys = new Set() // the countries the last syncSelection applied
 
@@ -162,9 +238,12 @@ export function useKeyGeography(terminalListRef) {
   }
 
   // probeParams for a resolved terminal, honouring the homonym / fallback flag.
+  // Uses `cached` (the full binomial for a species) so probeParams can split
+  // genus + epithet; bare `name` alone would reduce a species to the inventory
+  // fallback. C2.
   function descriptorFor(t) {
     if (!t || t.forceInventory) return { fallback: 'inventory' }
-    return probeParams({ rank: t.rank, name: t.name })
+    return probeParams({ rank: t.rank, name: t.cached || t.name })
   }
 
   // Is `countryKey` fully covered by cache for the current terminal set? (a flat
@@ -222,42 +301,64 @@ export function useKeyGeography(terminalListRef) {
 
   // --- probes -------------------------------------------------------------
 
-  // Present? for one (probe signature, country). Cached in probeCache. Any error
-  // is a false ("one country short on data is tolerable").
+  // Present? for one (probe signature, country). Cached in probeCache (settled
+  // values only). Concurrent identical callers (syncSelection + probeTaxa share
+  // every signature) collapse onto one request via probeInflight (I5). A caught
+  // error resolves false and is NOT cached, so a later selection retries (M10).
   async function probeOne(sig, params, countryKey, shouldStop) {
     const bucket = probeCache.get(countryKey)
     if (bucket && bucket.has(sig)) return bucket.get(sig)
     if (shouldStop?.()) return false
-    let present = false
-    try {
-      const country = countryName(countryKey) ?? territoryLabel(countryKey)
-      const res = await makeAPIRequest.get('/dwc_occurrences', {
-        params: { ...params, country, ...PRESENCE_PARAMS }
-      })
-      present = readPresence(res)
-    } catch {
-      present = false
+
+    const flightKey = `${countryKey}|${sig}`
+    let pending = probeInflight.get(flightKey)
+    if (!pending) {
+      pending = (async () => {
+        let present = false
+        // I3: the country column stores one of several spellings per country
+        // ("Macedonia" not "North Macedonia", "Congo" not "Republic of the
+        // Congo"). Probe each in turn, stop at the first hit.
+        for (const country of countryProbeStrings(countryKey)) {
+          const res = await makeAPIRequest.get('/dwc_occurrences', {
+            params: { ...params, country, ...PRESENCE_PARAMS }
+          })
+          if (readPresence(res)) {
+            present = true
+            break
+          }
+        }
+        if (!probeCache.has(countryKey)) probeCache.set(countryKey, new Map())
+        probeCache.get(countryKey).set(sig, present)
+        return present
+      })()
+        .catch(() => false) // M10: not cached, so a later run retries
+        .finally(() => probeInflight.delete(flightKey))
+      probeInflight.set(flightKey, pending)
     }
-    if (!probeCache.has(countryKey)) probeCache.set(countryKey, new Map())
-    probeCache.get(countryKey).set(sig, present)
-    return present
+    return pending
   }
 
-  // Present anywhere? for one probe signature (no country). Cached in hasDataBySig.
+  // Present anywhere? for one probe signature (no country). Cached in
+  // hasDataBySig; concurrent callers share one request (I5); a caught error is
+  // an uncached false (M10).
   async function probeHasData(sig, params, shouldStop) {
     if (hasDataBySig.has(sig)) return hasDataBySig.get(sig)
     if (shouldStop?.()) return false
-    let present = false
-    try {
-      const res = await makeAPIRequest.get('/dwc_occurrences', {
-        params: { ...params, ...PRESENCE_PARAMS }
-      })
-      present = readPresence(res)
-    } catch {
-      present = false
+
+    let pending = hasDataInflight.get(sig)
+    if (!pending) {
+      pending = makeAPIRequest
+        .get('/dwc_occurrences', { params: { ...params, ...PRESENCE_PARAMS } })
+        .then((res) => {
+          const present = readPresence(res)
+          hasDataBySig.set(sig, present)
+          return present
+        })
+        .catch(() => false)
+        .finally(() => hasDataInflight.delete(sig))
+      hasDataInflight.set(sig, pending)
     }
-    hasDataBySig.set(sig, present)
-    return present
+    return pending
   }
 
   // Fallback path (subgenus / nameless / homonym terminals): one
@@ -267,24 +368,36 @@ export function useKeyGeography(terminalListRef) {
   async function inventoryCountries(otuId, shouldStop) {
     const cached = inventoryCountryCache.get(otuId)
     if (cached) return cached
-    const set = new Set()
-    if (shouldStop?.()) return set
-    try {
-      const { data } = await makeAPIRequest.get(
-        `/otus/${otuId}/inventory/dwc.json`
-      )
-      const rows = data?.data || data?.rows || (Array.isArray(data) ? data : [])
-      for (const r of rows) {
-        const c = r?.country
-        if (!c) continue
-        const norm = normalizeCountryString(c)
-        if (norm?.key) set.add(norm.key)
-      }
-    } catch {
-      /* one terminal short on data is tolerable */
+    if (shouldStop?.()) return new Set()
+
+    let pending = inventoryInflight.get(otuId)
+    if (!pending) {
+      pending = makeAPIRequest
+        .get(`/otus/${otuId}/inventory/dwc.json`)
+        .then(({ data }) => {
+          const set = new Set()
+          const rows =
+            data?.data || data?.rows || (Array.isArray(data) ? data : [])
+          for (const r of rows) {
+            const c = r?.country
+            if (!c) continue
+            // M8: an explicit non-present status (absent, doubtful, ...) is not
+            // a presence record. A missing status is treated as present, to
+            // match the flat probe's occurrenceStatus=present filter, which
+            // AD-sourced rows carry but many specimen rows do not.
+            const status = r?.occurrenceStatus
+            if (status && String(status).toLowerCase() !== 'present') continue
+            const norm = normalizeCountryString(c)
+            if (norm?.key) set.add(norm.key)
+          }
+          inventoryCountryCache.set(otuId, set)
+          return set
+        })
+        .catch(() => new Set()) // M10: not cached, so a later run retries
+        .finally(() => inventoryInflight.delete(otuId))
+      inventoryInflight.set(otuId, pending)
     }
-    inventoryCountryCache.set(otuId, set)
-    return set
+    return pending
   }
 
   // --- terminal resolution ---------------------------------------------------
@@ -313,7 +426,8 @@ export function useKeyGeography(terminalListRef) {
       }
 
       const rankByTn = new Map()
-      const nameByTn = new Map()
+      const nameByTn = new Map() // bare `name` column (the homonym lookup needs it)
+      const cachedByTn = new Map() // `cached` (full binomial for a species terminal)
       const tnIds = [...new Set(otuToTn.values())]
       if (tnIds.length) {
         const tq = new URLSearchParams()
@@ -325,6 +439,7 @@ export function useKeyGeography(terminalListRef) {
         for (const t of rows) {
           rankByTn.set(t.id, t.rank)
           nameByTn.set(t.id, t.name)
+          cachedByTn.set(t.id, t.cached || t.name)
         }
 
         // A key terminal can be linked to a synonym taxon_name rather than the
@@ -353,6 +468,7 @@ export function useKeyGeography(terminalListRef) {
             for (const t of Array.isArray(validTns) ? validTns : []) {
               rankByTn.set(t.id, t.rank)
               nameByTn.set(t.id, t.name)
+              cachedByTn.set(t.id, t.cached || t.name)
             }
           }
           for (const [otuId, tnId] of otuToTn) {
@@ -367,7 +483,11 @@ export function useKeyGeography(terminalListRef) {
         terminals.set(Number(otuId), {
           tnId: tnId ?? null,
           rank: tnId != null ? normRank(rankByTn.get(tnId)) : null,
-          name: tnId != null ? nameByTn.get(tnId) || '' : ''
+          // bare `name` for findHomonymTnIds; `cached` (full binomial) for the
+          // flat probe, so a species terminal probes genus + epithet rather than
+          // the bare epithet (which probeParams rejects as fallback). C2.
+          name: tnId != null ? nameByTn.get(tnId) || '' : '',
+          cached: tnId != null ? cachedByTn.get(tnId) || '' : ''
         })
       }
 
@@ -384,7 +504,9 @@ export function useKeyGeography(terminalListRef) {
             otuId,
             tnId: t.tnId,
             rank: t.rank,
-            name: desc.params[fields[0]]
+            // bare `name` column value: findHomonymTnIds matches it with
+            // epithet_only against the same column the flat probe uses. C2.
+            name: t.name || desc.params[fields[0]]
           })
         }
       }
@@ -399,8 +521,10 @@ export function useKeyGeography(terminalListRef) {
         }
       }
     } catch {
-      /* leave `terminals` as best effort; an unresolved terminal probes via
-         the inventory fallback (no name -> { fallback: 'inventory' }) */
+      /* the /otus or /taxon_names batch failed: `terminals` stays the empty Map
+         set at the top of this function, so syncSelection no-ops and no geography
+         filtering is applied. Safer than probing every terminal blind through the
+         inventory fallback. M11. */
     } finally {
       if (myGen === gen) loading.value = false
     }
@@ -444,7 +568,10 @@ export function useKeyGeography(terminalListRef) {
     selectedKeys = new Set(keys)
     recomputeTerritories() // immediate feedback (a removal needs nothing more)
 
-    if (!terminals.size || !keys.size) return
+    if (!terminals.size || !keys.size) {
+      if (!stale()) loading.value = false // M9: the latest run always clears loading
+      return
+    }
 
     const descByOtu = new Map()
     for (const [otuId, t] of terminals) descByOtu.set(otuId, descriptorFor(t))
@@ -474,25 +601,37 @@ export function useKeyGeography(terminalListRef) {
       // presence batch: only countries not already covered by cache.
       const newCountries = [...keys].filter((ck) => !countryCovered(ck, descByOtu))
       if (newCountries.length) {
-        const remaining = new Map(newCountries.map((ck) => [ck, descByOtu.size]))
-        const pairs = []
-        for (const ck of newCountries) {
-          for (const [otuId, desc] of descByOtu) pairs.push({ ck, otuId, desc })
+        const flat = []
+        const fallback = []
+        for (const [otuId, desc] of descByOtu) {
+          ;(desc.fallback === 'inventory' ? fallback : flat).push({ otuId, desc })
         }
+
+        // Fallback terminals: one country-independent inventory fetch each.
+        // Usually already cached by the has-data batch; this covers a retry
+        // after an earlier fetch error (M10).
         await mapPool(
-          pairs,
+          fallback,
           PROBE_CONCURRENCY,
-          async ({ ck, otuId, desc }) => {
-            if (desc.fallback === 'inventory') {
-              await inventoryCountries(otuId, stale)
-            } else {
-              await probeOne(desc.sig, desc.params, ck, stale)
-            }
-            const left = (remaining.get(ck) || 1) - 1
-            remaining.set(ck, left)
-            if (left <= 0 && !stale()) recomputeTerritories() // progressive fill
-          },
+          ({ otuId }) => inventoryCountries(otuId, stale),
           stale
+        )
+        if (stale()) return
+
+        // Flat terminals: probe each against the new countries, stopping the
+        // moment a terminal is present anywhere in the selection (I6). Every
+        // consumer (territoryStatus, leadGeoStatus, the completeness geo pass)
+        // resolves 'in' on the first selected country a taxon is present in, so
+        // the rest of that taxon's countries are never requested.
+        await earlyExitPool(
+          flat,
+          newCountries,
+          PROBE_CONCURRENCY,
+          ({ otuId, desc }, ck) => probeOne(desc.sig, desc.params, ck, stale),
+          stale,
+          () => {
+            if (!stale()) recomputeTerritories()
+          }
         )
         if (stale()) return
       }
@@ -543,19 +682,19 @@ export function useKeyGeography(terminalListRef) {
     )
     if (shouldStop()) return { territoriesByTaxonId, hasDataByTaxonId }
 
-    // presence per (taxon, country), shared cache.
-    const pairs = []
-    for (const t of list) {
-      for (const ck of keys) pairs.push({ t, ck })
-    }
-    await mapPool(
-      pairs,
+    // presence per (taxon, country), shared cache. Early exit per taxon (I6):
+    // the pill only needs whether each expected taxon occurs in the selection at
+    // all, so probing stops once a taxon is present in one selected country.
+    const flatList = list.filter((t) => !descByTn.get(t.tnId).fallback)
+    await earlyExitPool(
+      flatList,
+      [...keys],
       PROBE_CONCURRENCY,
-      async ({ t, ck }) => {
+      async (t, ck) => {
         const desc = descByTn.get(t.tnId)
-        if (desc.fallback) return
         const present = await probeOne(desc.sig, desc.params, ck, shouldStop)
         if (present) territoriesByTaxonId.get(t.tnId).add(ck)
+        return present
       },
       shouldStop
     )
@@ -572,6 +711,9 @@ export function useKeyGeography(terminalListRef) {
     probeCache = new Map()
     hasDataBySig = new Map()
     inventoryCountryCache = new Map()
+    probeInflight = new Map()
+    hasDataInflight = new Map()
+    inventoryInflight = new Map()
     selectedKeys = new Set()
     hasDataDone = false
     loading.value = false

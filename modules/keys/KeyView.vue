@@ -113,6 +113,12 @@ const geoTerritories = geo.allTerritories
 const geoSelection = ref({ groupings: [], territories: [] })
 onMounted(() => {
   geoSelection.value = readGeoPrefs()
+  // M14: drop persisted territory entries that are not an ISO alpha-2 code
+  // (stale slugs from the pre-lazy model, e.g. `west-siberia`, `russia-european`,
+  // which are no longer selectable). Groupings are left untouched.
+  geoSelection.value.territories = (geoSelection.value.territories || []).filter(
+    (k) => /^[A-Z]{2}$/.test(k)
+  )
   // A restored non-empty selection needs the distribution data straight away;
   // a fresh visit fetches nothing until the picker is opened.
   if (geoEffective.value.size) {
@@ -160,6 +166,12 @@ provide('keyGeo', {
 // Fire the terminal presence-probe batch whenever the effective country
 // selection changes (the picker opening only resolves ranks via @geo-open).
 watch(geoEffective, (eff) => { if (eff.size) geo.syncSelection(eff) }, { deep: true })
+// C1: a fresh key tree populating changes the terminal set but not geoEffective,
+// so the watch above will not fire. Re-run the presence batch for the active
+// selection when the terminals change.
+watch(terminalOtuList, () => {
+  if (geoEffective.value.size) geo.syncSelection(geoEffective.value)
+})
 
 const citations = ref({})
 const activeCitation = ref(null)

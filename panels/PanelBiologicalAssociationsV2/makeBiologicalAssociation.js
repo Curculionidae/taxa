@@ -13,8 +13,8 @@
  *   unlike the live extend[]=taxonomy path.
  */
 
-import { isSpecimenType, resolveSpecimenRef } from '../_shared/specimenRef.js'
-export { isSpecimenType, resolveSpecimenRef }
+import { isSpecimenType, resolveSpecimenRef, specimenKey } from '../_shared/specimenRef.js'
+export { isSpecimenType, resolveSpecimenRef, specimenKey }
 
 /**
  * Extracts the inner HTML of an otu_tag_taxon_name or otu_tag_otu_name span
@@ -47,34 +47,86 @@ function extractNameHtml(objectTag) {
   return words.length > 1 ? html : `${html} sp.`
 }
 
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/**
+ * Splits a "Genus (Subgenus) species Author, Year" scientific name into its
+ * italic part (name) and roman part (authorship). Kept deliberately in sync
+ * with the identical helper in panels/_shared/DwcTable.vue — this codebase
+ * copies it per file rather than sharing (see
+ * panels/PanelSpecimenOccurrences/components/SpeciesBars.vue for the same note).
+ */
+function splitScientificName(name) {
+  const words = (name || '').trim().split(/\s+/)
+  let i = 1
+  while (i < words.length) {
+    const w = words[i]
+    if (/^[a-z]/.test(w)) { i++; continue }
+    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) { i++; continue }
+    if (/^\[/.test(w)) { i++; continue }
+    break
+  }
+  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
+}
+
+function nameHtmlFromScientificName(scientificName) {
+  const { italic, plain } = splitScientificName(scientificName)
+  if (!italic) return escHtml(scientificName || '')
+  return `<i>${escHtml(italic)}</i>${plain ? ' ' + escHtml(plain) : ''}`
+}
+
 /**
  * Returns { prefix, html } for the label cell.
  *
- * OTU / CO / FO    → { prefix: null, html: "<i>Genus species</i>" }
+ * OTU              → { prefix: null, html: "<i>Genus species</i>" }
+ * CO / FO          → { prefix: null, html: "<i>Genus species</i> Author, Year" }
+ *                    from the specimen's DWC scientificName (`specimenName`) —
+ *                    a CO/FO entity's own object_tag has no clean taxon-name
+ *                    span, only a catalog string ("FieldOccurrence 5000; …").
  * AnatomicalPart   → { prefix: "Leaf of ", html: "<i>Genus species</i>" }
- *                    (prefix extracted from object_label "leaf: Artemisia vulgaris")
- * Fallback         → { prefix: null, html: plain object_label text }
+ *                    (prefix from object_label "leaf: Artemisia vulgaris"; when
+ *                    the part wraps a CO/FO, `specimenName` fills the name)
+ * Fallback         → { prefix, html: plain object_label text (part head removed) }
  *
- * Keeping prefix separate lets the template wrap only the species name in a RouterLink.
+ * `specimenName` is the DWC scientificName resolved for a CO/FO entity (or the
+ * CO/FO an AnatomicalPart wraps), passed in from the panel's DWC lookup.
+ * Keeping prefix separate lets the template wrap only the species name in a
+ * RouterLink to the OTU page.
  */
-function buildLabelParts(entity) {
+function buildLabelParts(entity, specimenName) {
   const speciesHtml = extractNameHtml(entity.object_tag)
+  const isPart = entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)
 
-  if (speciesHtml) {
-    if (entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)) {
-      // AnatomicalPart: object_label is "leaf: Artemisia vulgaris"
-      const label = entity.object_label || ''
-      const colonIdx = label.indexOf(': ')
-      if (colonIdx > 0) {
-        const raw = label.slice(0, colonIdx)
-        const capitalized = raw.charAt(0).toUpperCase() + raw.slice(1)
-        return { prefix: `${capitalized} of `, html: speciesHtml }
-      }
+  // AnatomicalPart: object_label leads with the part name, e.g.
+  // "leaf: Artemisia vulgaris" or "nidus: FieldOccurrence 4996; <uuid>; …".
+  // Split it into the "Leaf of " prefix and the remainder (used both as the
+  // name when a real name span is present and as the fallback body).
+  let prefix = null
+  let partRemainder = null
+  if (isPart) {
+    const label = entity.object_label || ''
+    const colonIdx = label.indexOf(': ')
+    if (colonIdx > 0) {
+      const raw = label.slice(0, colonIdx)
+      prefix = `${raw.charAt(0).toUpperCase() + raw.slice(1)} of `
+      partRemainder = label.slice(colonIdx + 2)
     }
-    return { prefix: null, html: speciesHtml }
   }
 
-  return { prefix: null, html: entity.object_label || '' }
+  // Preferred for any CO/FO (directly, or wrapped in an AnatomicalPart): the
+  // determination name from the specimen's DWC record, which carries authorship.
+  if (specimenName) {
+    return { prefix, html: nameHtmlFromScientificName(specimenName) }
+  }
+
+  if (speciesHtml) {
+    return { prefix, html: speciesHtml }
+  }
+
+  // Fallback: raw label text, minus any part-name prefix already pulled off.
+  return { prefix, html: partRemainder ?? (entity.object_label || '') }
 }
 
 export function makeBiologicalAssociation(
@@ -89,11 +141,16 @@ export function makeBiologicalAssociation(
   const obj  = data.object  || {}
   const rel  = data.biological_relationship || {}
 
-  const subjLabel = buildLabelParts(subj)
-  const objLabel  = buildLabelParts(obj)
-
   const subjSpecimen = resolveSpecimenRef(subj)
   const objSpecimen  = resolveSpecimenRef(obj)
+
+  // localityByCoId is keyed by specimenKey() (type+id), not the bare numeric
+  // id — a CollectionObject and a FieldOccurrence can share a number.
+  const subjDwc = subjSpecimen ? (localityByCoId.get(specimenKey(subjSpecimen)) || null) : null
+  const objDwc  = objSpecimen  ? (localityByCoId.get(specimenKey(objSpecimen))  || null) : null
+
+  const subjLabel = buildLabelParts(subj, subjDwc?.scientificName || null)
+  const objLabel  = buildLabelParts(obj, objDwc?.scientificName || null)
 
   return {
     id: data.id,
@@ -105,8 +162,8 @@ export function makeBiologicalAssociation(
     subjectDetail:      subj.object_tag || null,
     subjectSpecimenType: subjSpecimen?.type || null,
     subjectSpecimenId:   subjSpecimen?.id || null,
-    subjectLocality:    subjSpecimen ? (localityByCoId.get(subjSpecimen.id) || null) : null,
-    subjectCollector:   subjSpecimen ? (localityByCoId.get(subjSpecimen.id)?.recordedBy || null) : null,
+    subjectLocality:    subjDwc,
+    subjectCollector:   subjDwc?.recordedBy || null,
 
     biologicalRelationship:    rel.name || '',
 
@@ -117,8 +174,8 @@ export function makeBiologicalAssociation(
     objectDetail:      obj.object_tag || null,
     objectSpecimenType: objSpecimen?.type || null,
     objectSpecimenId:   objSpecimen?.id || null,
-    objectLocality:    objSpecimen ? (localityByCoId.get(objSpecimen.id) || null) : null,
-    objectCollector:   objSpecimen ? (localityByCoId.get(objSpecimen.id)?.recordedBy || null) : null,
+    objectLocality:    objDwc,
+    objectCollector:   objDwc?.recordedBy || null,
 
     citations:    basic?.citations || null,
     citationList,

@@ -27,6 +27,15 @@ export function isSpecimenType(type) {
 }
 
 /**
+ * Stable map key for a resolved specimen ref. CollectionObject and
+ * FieldOccurrence ids come from independent sequences, so a numeric id alone
+ * collides across the two types — key on `${type}:${id}`.
+ */
+export function specimenKey(ref) {
+  return ref ? `${ref.type}:${ref.id}` : null
+}
+
+/**
  * Resolves the physical specimen (CollectionObject/FieldOccurrence) an
  * entity refers to.
  *

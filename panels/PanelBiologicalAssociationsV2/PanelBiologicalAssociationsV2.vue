@@ -348,7 +348,8 @@ import DwcTable from '../_shared/DwcTable.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
 import {
   makeBiologicalAssociation,
-  resolveSpecimenRef
+  resolveSpecimenRef,
+  specimenKey
 } from './makeBiologicalAssociation.js'
 
 const fullExtend = ['object', 'subject', 'biological_relationship']
@@ -714,8 +715,13 @@ async function loadBiologicalAssociations(page = 1) {
       fetchBasic(`/biological_associations/basic?${scope}`, params)
     ])
 
-    // Pre-fetch DWC locality for CO/FO subjects (grouped by OTU to avoid duplicate fetches)
-    const cosByOtuId = new Map()
+    // Pre-fetch DWC records for CO/FO subjects/objects (grouped by OTU to
+    // avoid duplicate fetches). Supplies both the locality shown in the Area
+    // column and — since a CO/FO entity's object_tag carries no clean
+    // taxon-name span, only a catalog-string object_label ("FieldOccurrence
+    // 5000; <uuid>; <locality>") — the determination name (scientificName,
+    // authorship included) used for the label cell.
+    const specimensByOtuId = new Map()
     for (const item of data) {
       const basic = basicMap.get(item.id)
       if (!basic) continue
@@ -725,23 +731,35 @@ async function loadBiologicalAssociations(page = 1) {
       ]) {
         const specimen = resolveSpecimenRef(entity)
         if (!specimen || !otuId) continue
-        if (!cosByOtuId.has(otuId)) cosByOtuId.set(otuId, [])
-        cosByOtuId.get(otuId).push(specimen.id)
+        if (!specimensByOtuId.has(otuId)) specimensByOtuId.set(otuId, [])
+        specimensByOtuId.get(otuId).push(specimen)
       }
     }
     const localityByCoId = new Map()
     await Promise.all(
-      [...cosByOtuId.entries()].map(async ([otuId, coIds]) => {
+      [...specimensByOtuId.entries()].map(async ([otuId, specimens]) => {
         const records = await fetchDwcForOtu(otuId)
-        for (const coId of coIds) {
-          const record = records.find((r) => r.dwc_occurrence_object_id === coId)
-          if (record) {
-            const parts = [record.country, record.stateProvince, record.county].filter(Boolean)
-            const lat = record.decimalLatitude  ? Number(record.decimalLatitude)  : null
-            const lon = record.decimalLongitude ? Number(record.decimalLongitude) : null
-            if (parts.length || (lat && lon) || record.recordedBy) {
-              localityByCoId.set(coId, { text: parts.join(', '), lat, lon, recordedBy: record.recordedBy || null })
-            }
+        for (const specimen of specimens) {
+          // dwc.json also carries AssertedDistribution rows and could hold a
+          // CO and FO sharing a numeric id — match on both id and type.
+          const record = records.find(
+            (r) =>
+              r.dwc_occurrence_object_id === specimen.id &&
+              r.dwc_occurrence_object_type === specimen.type
+          )
+          if (!record) continue
+          const parts = [record.country, record.stateProvince, record.county].filter(Boolean)
+          const lat = record.decimalLatitude  ? Number(record.decimalLatitude)  : null
+          const lon = record.decimalLongitude ? Number(record.decimalLongitude) : null
+          const scientificName = record.scientificName || null
+          if (parts.length || (lat && lon) || record.recordedBy || scientificName) {
+            localityByCoId.set(specimenKey(specimen), {
+              text: parts.join(', '),
+              lat,
+              lon,
+              recordedBy: record.recordedBy || null,
+              scientificName
+            })
           }
         }
       })

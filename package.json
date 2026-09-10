@@ -13,6 +13,6 @@
     "test": "node --test 'panels/_gbifShared/**/*.test.js' 'panels/_shared/**/*.test.js' 'panels/PanelMapV2/**/*.test.js' 'panels/PanelBiologicalAssociationsV2/**/*.test.js' 'modules/keys/**/*.test.js'"
   },
   "dependencies": {
-    "@sfgrp/taxonpages": "^0.6.7"
+    "@sfgrp/taxonpages": "^0.7.2"
   }
 }

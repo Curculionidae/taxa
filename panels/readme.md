@@ -1,3 +1,3 @@
-Those panels where copied from https://github.com/sfg-taxonpages/orthoptera
+Some components are used by several panels, those are in _shared (or _gbifShared for the GBIF panels).  
 
-I modified the GBIF and iNaturalist panels received minor adjustments.
+When developing new panels, make sure that shared components are re-used instad of cloned.

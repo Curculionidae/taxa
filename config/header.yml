@@ -24,4 +24,10 @@
       link: /resources/tw/filter/bibliography
 
     - label: About
-      link: /about
+      submenu:
+        - label: About
+          link: /about
+
+        - label: Documentation
+          link: https://curculionidae.github.io/docs/
+          target: _blank

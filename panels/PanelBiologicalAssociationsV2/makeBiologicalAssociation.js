@@ -14,6 +14,7 @@
  */
 
 import { isSpecimenType, resolveSpecimenRef, specimenKey } from '../_shared/specimenRef.js'
+import { escHtml, splitScientificName } from '../_shared/scientificName.js'
 export { isSpecimenType, resolveSpecimenRef, specimenKey }
 
 /**
@@ -45,30 +46,6 @@ function extractNameHtml(objectTag) {
   const html = italics[0]
   const words = html.replace(/<[^>]+>/g, '').replace(/[()]/g, '').trim().split(/\s+/).filter(Boolean)
   return words.length > 1 ? html : `${html} sp.`
-}
-
-function escHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-/**
- * Splits a "Genus (Subgenus) species Author, Year" scientific name into its
- * italic part (name) and roman part (authorship). Kept deliberately in sync
- * with the identical helper in panels/_shared/DwcTable.vue — this codebase
- * copies it per file rather than sharing (see
- * panels/PanelSpecimenOccurrences/components/SpeciesBars.vue for the same note).
- */
-function splitScientificName(name) {
-  const words = (name || '').trim().split(/\s+/)
-  let i = 1
-  while (i < words.length) {
-    const w = words[i]
-    if (/^[a-z]/.test(w)) { i++; continue }
-    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) { i++; continue }
-    if (/^\[/.test(w)) { i++; continue }
-    break
-  }
-  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
 }
 
 function nameHtmlFromScientificName(scientificName) {

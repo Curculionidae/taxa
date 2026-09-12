@@ -176,6 +176,7 @@ import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 import inatMark from './inat-mark.svg'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
+import { resolveInatTaxonId, makeTaxonPhotoImage } from '../_shared/inatFallback.js'
 
 const props = defineProps({
   taxon: {
@@ -224,87 +225,6 @@ function openTaxonPhotoViewer(index) {
 }
 
 /**
- * Converts a raw iNaturalist taxon_photo entry into the image object shape
- * expected by the shared ImageLightbox:
- *   { id, thumb, original, attribution: { label }, source: { label }, depictions: [] }
- *
- * Since taxon photos are not linked to a specific observation, the source
- * points to the photo page on iNaturalist (inaturalist.org/photos/:id).
- */
-function makeTaxonPhotoImage(taxonPhoto) {
-  const photo = taxonPhoto.photo
-  const photoUrl = `https://www.inaturalist.org/photos/${photo.id}`
-  const taxonName = taxonPhoto.taxon?.name || ''
-  return {
-    id: photo.id,
-    thumb: photo.medium_url || photo.url.replace('square', 'medium'),
-    original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
-    attribution: { label: photo.attribution || '' },
-    source: {
-      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${photoUrl}</a>`
-    },
-    depictions: taxonName ? [{ label: taxonName }] : []
-  }
-}
-
-/**
- * Parses a TaxonWorks expanded_name into its components.
- */
-function parseName(expandedName) {
-  const subgenusMatch = expandedName.match(/^(\S+)\s+\((\S+)\)(?:\s+(\S+))?$/)
-  if (subgenusMatch) {
-    return {
-      genus: subgenusMatch[1],
-      subgenus: subgenusMatch[2],
-      epithet: subgenusMatch[3] || null
-    }
-  }
-  const parts = expandedName.trim().split(/\s+/)
-  return {
-    genus: parts[0],
-    subgenus: null,
-    epithet: parts[1] || null
-  }
-}
-
-/**
- * Resolves the TaxonWorks taxon name to an iNaturalist taxon ID.
- * Returns the iNat taxon ID (number), or null if not found.
- */
-async function resolveInatTaxonId() {
-  const { genus, subgenus, epithet } = parseName(props.taxon.expanded_name)
-
-  if (subgenus && !epithet) {
-    const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
-      params: { q: subgenus, rank: 'subgenus', per_page: 10, all_names: true }
-    })
-
-    const match = data.results.find((t) => {
-      if (t.name.toLowerCase() !== subgenus.toLowerCase()) return false
-      if (t.ancestors?.length) {
-        return t.ancestors.some(
-          (a) => a.rank === 'genus' && a.name.toLowerCase() === genus.toLowerCase()
-        )
-      }
-      return true
-    })
-
-    return match ? match.id : null
-  }
-
-  const plainName = subgenus && epithet ? `${genus} ${epithet}` : props.taxon.expanded_name
-
-  const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
-    params: { q: plainName, rank: props.taxon.rank, per_page: 10 }
-  })
-
-  const match = data.results.find(
-    (t) => t.name.toLowerCase() === plainName.toLowerCase()
-  )
-  return match ? match.id : null
-}
-
-/**
  * Fetches the curated taxon photos from /v1/taxa/:id and converts them
  * into ImageLightbox-compatible image objects.
  */
@@ -331,7 +251,7 @@ async function loadObservations(params = {}) {
 
   try {
     if (taxonId.value === undefined) {
-      taxonId.value = await resolveInatTaxonId()
+      taxonId.value = await resolveInatTaxonId(props.taxon.expanded_name, props.taxon.rank)
     }
 
     if (taxonId.value === null) return

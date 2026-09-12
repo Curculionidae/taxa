@@ -80,6 +80,26 @@ test('getCachedInstitutionName: reads what resolveInstitutionName already cached
   }
 })
 
+test('resolveInstitutionName: concurrent callers before either settles share one request', async () => {
+  let calls = 0
+  let resolveFetch
+  const restore = stubFetch(() => new Promise((resolve) => {
+    calls++
+    resolveFetch = () => resolve(jsonResponse({ results: [{ name: 'Concurrent Museum' }] }))
+  }))
+  try {
+    const p1 = resolveInstitutionName('CONCURRENT-TEST-6', 'http://grbio.org/institution/x6')
+    const p2 = resolveInstitutionName('CONCURRENT-TEST-6', 'http://grbio.org/institution/x6')
+    resolveFetch()
+    const [n1, n2] = await Promise.all([p1, p2])
+    assert.equal(n1, 'Concurrent Museum')
+    assert.equal(n2, 'Concurrent Museum')
+    assert.equal(calls, 1)
+  } finally {
+    restore()
+  }
+})
+
 test('resolveCollectionName: caches by institutionCode+code pair', async () => {
   let calls = 0
   const restore = stubFetch(async () => {

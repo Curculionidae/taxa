@@ -145,6 +145,7 @@ import { ref, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { fetchAllPages } from '../../_shared/fetchAllPages.js'
 import { escHtml, splitScientificName } from '../../_shared/scientificName.js'
+import { mapPool } from '../../_shared/concurrencyPool.js'
 import SingleSpeciesOccurrences from './SingleSpeciesOccurrences.vue'
 
 const props = defineProps({
@@ -367,10 +368,10 @@ async function loadNextBatch() {
   isFetchingBatch.value = true
   checkedCount.value = start
 
-  let cursor = 0
-  async function worker() {
-    while (cursor < batch.length && !query2Stopped.value) {
-      const sp = batch[cursor++]
+  await mapPool(
+    batch,
+    CONCURRENCY,
+    async (sp) => {
       try {
         const records = await fetchSpeciesRecords(sp)
         // Query 1 may have completed (and replaced results.value wholesale
@@ -388,10 +389,9 @@ async function loadNextBatch() {
       } finally {
         checkedCount.value++
       }
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batch.length) }, worker))
+    },
+    () => query2Stopped.value
+  )
   loadedCount.value = end
   isFetchingBatch.value = false
   maybeBuildFallbackTotal()

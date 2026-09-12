@@ -2,10 +2,10 @@
  * eventDate.js
  *
  * Formats a DwC collecting-event date for display: the verbatim eventDate
- * when present, else day.month.year built from the separate day/month/year
- * fields (the "specimen label" convention DwcTable.vue's identity block
- * uses) — only when year itself is present, so a record with just a day/
- * month never shows a bare ".6." fragment.
+ * when present, else whatever of day/month/year is populated, joined
+ * "day.month.year" (the "specimen label" convention DwcTable.vue's identity
+ * block uses). Never requires all three: a record with only a month and
+ * day, or only a year, still shows that partial date rather than nothing.
  *
  * Depended on by:
  *   - ./DwcTable.vue
@@ -18,6 +18,6 @@
  */
 export function formatEventDate({ eventDate, day, month, year } = {}) {
   if (eventDate) return eventDate
-  if (!year) return null
-  return [day, month, year].filter(Boolean).join('.')
+  const parts = [day, month, year].filter(Boolean)
+  return parts.length ? parts.join('.') : null
 }

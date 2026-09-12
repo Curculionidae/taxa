@@ -14,8 +14,8 @@ test('formatEventDate: year only', () => {
   assert.equal(formatEventDate({ year: 1990 }), '1990')
 })
 
-test('formatEventDate: no year -> null, even with day/month present', () => {
-  assert.equal(formatEventDate({ day: 12, month: 6 }), null)
+test('formatEventDate: day/month present without year still shows a partial date', () => {
+  assert.equal(formatEventDate({ day: 12, month: 6 }), '12.6')
 })
 
 test('formatEventDate: nothing at all -> null', () => {

@@ -22,6 +22,7 @@
 
 <script setup>
 import { inject, computed } from 'vue'
+import { escHtml } from '../../../panels/_shared/scientificName.js'
 
 const props = defineProps({
   id: { type: [Number, String], required: true },
@@ -74,11 +75,4 @@ const authorYear = computed(() => entry.value?.authorYear || '')
 const authorYearSuffix = computed(() =>
   authorYear.value ? `&nbsp;${escHtml(authorYear.value)}` : ''
 )
-
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
 </script>

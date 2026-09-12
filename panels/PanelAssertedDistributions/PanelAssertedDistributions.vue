@@ -269,6 +269,7 @@
 
 import { computed, onMounted, ref } from 'vue'
 import { makeAPIRequest } from '@/utils'
+import TaxonWorks from '@/modules/otus/services/TaxonWorks'
 import { fetchAllPages } from '../_shared/fetchAllPages.js'
 import { fetchAssertedDistributionTags } from '../_shared/assertedDistributionTags.js'
 import { stripHtml, shortCitation } from '../_shared/citationText.js'
@@ -421,7 +422,7 @@ function fetchGeoForOtu(otuId) {
   if (geoPromiseCache[otuId]) return geoPromiseCache[otuId]
   geoPromiseCache[otuId] = (async () => {
     try {
-      const { data } = await makeAPIRequest.get(`/otus/${otuId}/inventory/distribution.geojson`)
+      const { data } = await TaxonWorks.getOtuGeoJSONDistribution(otuId)
       const updates = {}
       for (const f of data?.features || []) {
         const fp = f.properties || {}

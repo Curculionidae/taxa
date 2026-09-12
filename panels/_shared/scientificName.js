@@ -12,7 +12,7 @@
  *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
  *   - ../PanelSpecimenOccurrences/components/SpeciesBars.vue
  *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
- *   - ../PanelMapV2/components/MapPopup.vue (escHtml and typeStatusHtml only —
+ *   - ../PanelMapV2/components/MapPopup.vue (escHtml and typeStatusHtml only,
  *     its own splitName, used for OTU target-label name/author splitting, is
  *     a different algorithm serving a different purpose and stays local)
  *   - ../../modules/keys/composables/useKeyTaxonNames.js (escHtml only)
@@ -58,7 +58,7 @@ export function splitScientificName(name) {
  * syntypes of Aus bus Author, 1900" still italicises only the trailing name,
  * not "the syntypes of".
  * @param {string} status
- * @param {{tag?: string}} [opt] - wrapping tag for the italic part, default 'em'
+ * @param {{tag?: string}} [opt] wrapping tag for the italic part (default 'em')
  * @returns {string}
  */
 export function typeStatusHtml(status, { tag = 'em' } = {}) {

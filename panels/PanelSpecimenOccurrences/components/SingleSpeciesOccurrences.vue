@@ -54,6 +54,7 @@ import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
+import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
 import { groupRecords, groupCountLabel } from '../lib/groupRecords'
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -478,50 +479,6 @@ function getCoordinates({ verbatimCoordinates, coordinateUncertaintyInMeters }) 
   return `(${coordinates}${formatUncertainty(coordinateUncertaintyInMeters)})`
 }
 
-// Mirrors DwcTable.vue's typeStatusHtml logic exactly (kept as a local
-// duplicate rather than a _shared/ export, so this panel doesn't add a
-// fifth dependent to that file): italicize the scientific name embedded in
-// a typeStatus string like "lectotype of Bothynoderus communis Motschulsky,
-// 1860", keeping the "lectotype of " prefix and trailing author/year roman.
-function escHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function splitScientificName(name) {
-  const words = (name || '').trim().split(/\s+/)
-  let i = 1
-  while (i < words.length) {
-    const w = words[i]
-    if (/^[a-z]/.test(w)) {
-      i++
-      continue
-    }
-    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) {
-      i++
-      continue
-    }
-    if (/^\[/.test(w)) {
-      i++
-      continue
-    }
-    break
-  }
-  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
-}
-
-function typeStatusHtml(typeStatus) {
-  if (!typeStatus) return ''
-  const idx = typeStatus.indexOf(' of ')
-  if (idx === -1) return escHtml(typeStatus)
-  const prefix = typeStatus.slice(0, idx + 4)
-  const { italic, plain } = splitScientificName(typeStatus.slice(idx + 4))
-  return (
-    escHtml(prefix) +
-    (italic ? `<em>${escHtml(italic)}</em>` : '') +
-    (plain ? ` ${escHtml(plain)}` : '')
-  )
-}
-
 function getDetHtml({ identifiedBy, dateIdentified }) {
   if (!identifiedBy) return ''
   const year = String(dateIdentified || '').match(/^\d{4}/)?.[0]
@@ -544,10 +501,9 @@ function badgeHtml(text) {
 
 // Mirrors DwcTable.vue's fetchBioAssociations matching logic exactly (kept
 // as a local duplicate rather than a _shared/ export — see specimenRef.js's
-// header comment, same reasoning as typeStatusHtml above), but INDEXES every
-// association for the OTU once instead of re-fetching+re-filtering per
-// specimen — this list can have dozens of rows, not the one DwcTable shows
-// at a time.
+// header comment), but INDEXES every association for the OTU once instead
+// of re-fetching+re-filtering per specimen — this list can have dozens of
+// rows, not the one DwcTable shows at a time.
 function bioPartyLabel(entity) {
   if (!entity) return { italic: '', plain: '' }
   if (entity.base_class === 'Otu') return splitScientificName(entity.object_label || '')

@@ -189,7 +189,18 @@
       </Teleport>
 
       <div
-        v-if="!isLoading && !groupedDistributions.length"
+        v-if="!isLoading && loadError"
+        class="text-sm text-center my-8 w-full flex flex-col items-center gap-2"
+      >
+        <span>Something went wrong loading distributions.</span>
+        <VButton
+          size="sm"
+          @click="loadDistributions"
+        >Retry</VButton>
+      </div>
+
+      <div
+        v-else-if="!isLoading && !groupedDistributions.length"
         class="text-xl text-center my-8 w-full"
       >
         No records found.
@@ -211,36 +222,62 @@
  *
  * Displays asserted distributions for an OTU and its descendants + synonyms.
  *
- * LOAD SEQUENCE (optimised for speed)
- * ------------------------------------
- * Step 1 — parallel:
- *   a. /asserted_distributions?taxon_name_id[]=X&descendants=true
- *      Covers the valid OTU and all its subspecies/varieties.
- *   b. /taxon_name_relationships?object_taxon_name_id[]=X
- *      Returns Invalidating relationships → synonym taxon_name_ids.
+ * LOAD SEQUENCE
+ * -------------
+ * Step 1:
+ *   /otus?taxon_name_id[]=X&descendants=true&coordinatify=true
+ *   Resolves the full OTU set: the valid taxon, its descendants
+ *   (subspecies/varieties), and every coordinate OTU (true synonym sharing
+ *   the same valid taxon name) among them, all decided by TaxonWorks
+ *   itself. This panel does NOT determine synonymy on its own: an earlier
+ *   version walked /taxon_name_relationships and filtered by a bare
+ *   `type.includes('Invalidating')`, which also matches Misapplication and
+ *   Homonym relationships (not synonymy) and could pull in an unrelated
+ *   taxon's distributions (see issue #35). `coordinatify` is TaxonWorks'
+ *   own, correct notion of "same taxon, different OTU record". Deduplicated
+ *   (`new Set`), since coordinatify can list an OTU that also qualifies as
+ *   a plain descendant. `/otus` has no id-only/lean response mode, but this
+ *   panel is restricted to `rank_group: ['SpeciesGroup']` (taxa_page.yml),
+ *   which keeps the OTU set (and so this payload) small in practice.
  *
- * Step 2 — only when synonyms exist:
- *   /asserted_distributions?taxon_name_id[]=SYN1&taxon_name_id[]=SYN2&...
- *   OTUs already present in step 1a are excluded to prevent duplication.
+ * Step 2:
+ *   /asserted_distributions?otu_id[]=OTU1&otu_id[]=OTU2&..., one batch for
+ *   every OTU resolved in step 1.
  *
- * Step 3 — one batch for all records:
- *   /citations?extend[]=source  (source object embedded, no separate /sources call)
+ * Steps 1 and 2, plus the citations, tags, and data-attribute fetches in
+ * step 3 below, all go through the shared `fetchAllPages()` (panels/_shared/):
+ * it follows `pagination-total-pages` rather than assuming everything fits
+ * in one `per`-sized page, since a widely-distributed, heavily-synonymized
+ * species can exceed 500 records at any of these steps, not just step 2.
+ * Remaining pages run through a small concurrency-capped worker pool rather
+ * than one unbounded burst of requests.
  *
- * SYNONYM DETECTION
- * -----------------
+ * Step 3, one batch each, in parallel, for all records:
+ *   citations (/citations?extend[]=source), tags, data attributes.
+ *
+ * SYNONYM DETECTION (display only: badges/❌, not which records to include)
+ * ---------------------------------------------------------------------------
  * asserted_distribution_object.object_tag contains &#10060; for synonyms,
- * &#10003; for valid taxa — no extra API call needed.
+ * &#10003; for valid taxa, no extra API call needed.
  *
  * TABS & MERGED VIEW
  * ------------------
  * Tabs appear when records span more than one OTU. The "All" tab merges
  * rows with the same geographic area into a single row and adds a Taxa
  * column listing all taxa recorded there. Per-OTU tabs show individual rows.
+ *
+ * ERROR HANDLING
+ * --------------
+ * A load failure sets `loadError` and leaves `distributions` untouched,
+ * rather than the two states being conflated: an empty result set on
+ * success renders "No records found.", a thrown error renders a distinct
+ * message with a retry button, so a transient network failure never reads
+ * as "this taxon has no distributions."
  */
 
 import { computed, onMounted, ref } from 'vue'
 import { makeAPIRequest } from '@/utils'
-import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest.js'
+import { fetchAllPages } from '../_shared/fetchAllPages.js'
 import { fetchAssertedDistributionTags } from '../_shared/assertedDistributionTags.js'
 function convertUrlsToLinks(text = '') {
   return text.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
@@ -263,6 +300,7 @@ const props = defineProps({
 
 const distributions = ref([])
 const isLoading = ref(false)
+const loadError = ref(false)
 const totalCount = ref(0)
 const activeCitation = ref(null)
 const selectedOtuId = ref('all')
@@ -273,12 +311,12 @@ const mapModal = ref({ open: false })
 // Keyed by shape.id (geographic area ID) so any tab can find a polygon
 // regardless of which OTU's GeoJSON record it came from.
 const shapeIdMap = ref({})
-// Per-OTU promise cache — deduplicates concurrent requests for the same OTU.
+// Per-OTU promise cache: deduplicates concurrent requests for the same OTU.
 const geoPromiseCache = {}
 
 const showTabs = computed(() => new Set(distributions.value.map((d) => d.otuId)).size > 1)
 
-// True when the All tab is active across multiple OTUs — collapses rows by area
+// True when the All tab is active across multiple OTUs, collapses rows by area
 const isMergedView = computed(() => selectedOtuId.value === 'all' && showTabs.value)
 
 const tabs = computed(() => {
@@ -437,15 +475,20 @@ function shortCitation(body) {
   return `${authorsStr.split(',')[0].trim()} et al., ${year}`
 }
 
+// Citations, tags, and data attributes are all fetched by id-set, and that
+// id-set is exactly what step 1/2's own pagination fix was guarding against
+// growing past one page: a widely-distributed, heavily-synonymized species
+// can have more than `per` citation/attribute rows too, not just more than
+// `per` AD records. All three go through the shared fetchAllPages() so none
+// of them re-truncates what step 2 just finished un-truncating.
 async function fetchCitations(distributionIds) {
   if (!distributionIds.length) return new Map()
 
-  const params = new URLSearchParams()
-  params.append('citation_object_type', 'AssertedDistribution')
-  params.append('extend[]', 'source')
-  distributionIds.forEach((id) => params.append('citation_object_id[]', id))
-
-  const { data: citations } = await makeAPIRequest.get(`/citations?${params.toString()}`)
+  const citations = await fetchAllPages('/citations', {
+    citation_object_type: 'AssertedDistribution',
+    'extend[]': 'source',
+    'citation_object_id[]': distributionIds
+  }, { per: props.per })
 
   const result = new Map()
   for (const cit of citations) {
@@ -460,21 +503,20 @@ async function fetchCitations(distributionIds) {
   return result
 }
 
-// A data attribute's own citation - e.g. the source that reassessed a record
+// A data attribute's own citation, e.g. the source that reassessed a record
 // as a misidentification. Same shape/behaviour as PanelMapV2's MapPopup
 // "Reassessed by [citation]" line; kept in sync with it.
 async function fetchDataAttributeCitations(dataAttributeIds) {
   if (!dataAttributeIds.length) return new Map()
 
-  const params = new URLSearchParams()
-  params.append('citation_object_type', 'DataAttribute')
-  params.append('extend[]', 'source')
-  dataAttributeIds.forEach((id) => params.append('citation_object_id[]', id))
-
-  const { data: citations } = await makeAPIRequest.get(`/citations?${params.toString()}`)
+  const citations = await fetchAllPages('/citations', {
+    citation_object_type: 'DataAttribute',
+    'extend[]': 'source',
+    'citation_object_id[]': dataAttributeIds
+  }, { per: props.per })
 
   const result = new Map()
-  for (const cit of citations || []) {
+  for (const cit of citations) {
     if (result.has(cit.citation_object_id)) continue // one citation per attribute
     result.set(cit.citation_object_id, {
       id: cit.id,
@@ -488,13 +530,10 @@ async function fetchDataAttributeCitations(dataAttributeIds) {
 async function fetchDataAttributes(distributionIds) {
   if (!distributionIds.length) return new Map()
 
-  const params = new URLSearchParams()
-  params.append('attribute_subject_type', 'AssertedDistribution')
-  distributionIds.forEach((id) => params.append('attribute_subject_id[]', id))
-  params.append('per', props.per)
-
-  const { data: attrs } = await makeAPIRequest.get(`/data_attributes?${params.toString()}`)
-  const list = attrs || []
+  const list = await fetchAllPages('/data_attributes', {
+    attribute_subject_type: 'AssertedDistribution',
+    'attribute_subject_id[]': distributionIds
+  }, { per: props.per })
   const citationByAttrId = await fetchDataAttributeCitations(list.map((a) => a.id))
 
   const result = new Map()
@@ -514,40 +553,30 @@ async function fetchDataAttributes(distributionIds) {
 
 async function loadDistributions() {
   isLoading.value = true
+  loadError.value = false
   try {
-    // Step 1: parallel — main records (valid OTU + descendants) + synonym relationships
-    const [adResult, relResult] = await Promise.all([
-      useOtuPageRequest('panel:asserted-distributions', () =>
-        makeAPIRequest.get('/asserted_distributions', {
-          params: { 'taxon_name_id[]': props.taxon.id, descendants: true, per: props.per }
-        })
-      ),
-      makeAPIRequest.get('/taxon_name_relationships', {
-        params: { 'object_taxon_name_id[]': props.taxon.id, per: 500 }
-      })
-    ])
-
-    const adData = adResult.data
-    const synonymTaxonNameIds = [...new Set(
-      (relResult.data || [])
-        .filter((r) => r.type?.includes('Invalidating'))
-        .map((r) => r.subject_taxon_name_id)
-        .filter(Boolean)
-    )]
-
-    // Step 2: synonym ADs, only when synonyms exist, excluding already-known OTUs
-    let synData = []
-    if (synonymTaxonNameIds.length) {
-      const knownOtuIds = new Set(adData.map((d) => String(d.asserted_distribution_object_id)))
-      const params = new URLSearchParams()
-      synonymTaxonNameIds.forEach((id) => params.append('taxon_name_id[]', id))
-      params.append('per', props.per)
-      const { data } = await makeAPIRequest.get(`/asserted_distributions?${params.toString()}`)
-      synData = data.filter((d) => !knownOtuIds.has(String(d.asserted_distribution_object_id)))
+    // Step 1: resolve the full OTU set via TaxonWorks' own coordinatify,
+    // this panel does not determine synonymy itself (see the file header).
+    const otus = await fetchAllPages('/otus', {
+      'taxon_name_id[]': props.taxon.id,
+      descendants: true,
+      coordinatify: true
+    }, { per: props.per })
+    const otuIds = [...new Set(otus.map((o) => o.id))]
+    if (!otuIds.length) {
+      distributions.value = []
+      totalCount.value = 0
+      return
     }
 
+    // Step 2: asserted distributions for all of them, paginated
+    const allData = await fetchAllPages(
+      '/asserted_distributions',
+      { 'otu_id[]': otuIds },
+      { per: props.per, cacheKey: 'panel:asserted-distributions' }
+    )
+
     // Step 3: citations + tags + data attributes for all records, one batch each, in parallel
-    const allData = [...adData, ...synData]
     const [citationsMap, tagsMap, dataAttributesMap] = await Promise.all([
       fetchCitations(allData.map((d) => d.id)),
       fetchAssertedDistributionTags(allData.map((d) => d.id)),
@@ -565,11 +594,11 @@ async function loadDistributions() {
     totalCount.value = distributions.value.length
 
     // Background: pre-fetch GeoJSON for all OTUs so map popups are instant.
-    // Always includes props.otuId — its inventory is most comprehensive.
+    // Always includes props.otuId, its inventory is most comprehensive.
     const allOtuIds = [...new Set([props.otuId, ...distributions.value.map((d) => d.otuId)])]
     allOtuIds.forEach(fetchGeoForOtu)
   } catch {
-    // silently fail
+    loadError.value = true
   } finally {
     isLoading.value = false
   }

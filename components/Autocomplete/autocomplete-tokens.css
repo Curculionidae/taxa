@@ -1,0 +1,19 @@
+/*
+ * Plant-row indicator for the OTU autocomplete (Autocomplete.global.vue).
+ * A distinct green from --pp-gbif in panels/_gbifShared/gbif-tokens.css —
+ * that one means "this is GBIF data"; this one means "this OTU is a plant
+ * (ICN name)". Reusing the GBIF hue would conflate the two meanings.
+ *
+ * Same rules as panels/_shared/panel-tokens.css: not in the host palette, not
+ * in Tailwind @theme, carried with the component by relative import. `--pp-`
+ * prefix = project-panel token. Retint by redefining in the host :root/.dark.
+ */
+:root {
+  --pp-plant-icon: #2f8f5b;
+  --pp-plant-tint: rgb(47 143 91 / 0.12);
+}
+
+.dark {
+  --pp-plant-icon: #6fce9c;
+  --pp-plant-tint: rgb(111 206 156 / 0.16);
+}

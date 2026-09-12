@@ -143,6 +143,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
+import { fetchAllPages } from '../../_shared/fetchAllPages.js'
 import SingleSpeciesOccurrences from './SingleSpeciesOccurrences.vue'
 
 function escHtml(s) {
@@ -299,26 +300,11 @@ const hasMore = computed(() => loadedCount.value < allSpecies.value.length)
 const activeBatchEnd = computed(() => Math.min(loadedCount.value + BATCH_SIZE, allSpecies.value.length))
 const nextBatchSize = computed(() => Math.min(BATCH_SIZE, allSpecies.value.length - loadedCount.value))
 
-// Fetches every page of a paginated index endpoint — otus.json and
-// taxon_names.json both stay fast (~1-2s) even at thousands of rows for a
-// plain descendant listing (unlike dwc_occurrences.json/collection_objects
-// with a taxon join, which do not — see project memory), so pulling the
-// full list up front is safe.
-async function fetchAllPages(url, params) {
-  const per = 500
-  const first = await makeAPIRequest.get(url, { params: { ...params, per, page: 1 } })
-  const totalPages = Number(first.headers['pagination-total-pages']) || 1
-  const pages = [first.data]
-  if (totalPages > 1) {
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, i) =>
-        makeAPIRequest.get(url, { params: { ...params, per, page: i + 2 } })
-      )
-    )
-    pages.push(...rest.map((r) => r.data))
-  }
-  return pages.flat()
-}
+// otus.json and taxon_names.json both stay fast (~1-2s) even at thousands
+// of rows for a plain descendant listing (unlike dwc_occurrences.json/
+// collection_objects with a taxon join, which do not: see project memory),
+// so pulling the full list up front via fetchAllPages (panels/_shared/) is
+// safe.
 
 // otus.json?descendants=true returns OTUs at every rank in the subtree
 // (including the higher taxon's own placeholder OTU) — only currently-

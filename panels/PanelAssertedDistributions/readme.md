@@ -2,7 +2,7 @@
 
 > **Compatibility:** `@sfgrp/taxonpages` ≥ 0.5.4 (npm package setup)
 
-Table panel (`panel:asserted-distributions`) displaying all asserted distributions for an OTU, its descendants, and its synonyms — grouped by country/parent area, with structured citations.
+Table panel (`panel:asserted-distributions`) displaying all asserted distributions for an OTU, its descendants, and its synonyms, grouped by country/parent area, with structured citations.
 
 ## Setup
 
@@ -25,8 +25,8 @@ taxa_page:
 
 When distributions span multiple OTUs (e.g. a species, its subspecies, and its synonyms), tabs appear:
 
-- **All** — merged view: one row per geographic area, with a Taxa column listing all taxa recorded there. Synonym taxa are marked with ❌.
-- **Per-taxon tabs** — filters to a single OTU, one row per distribution record. Synonym tabs are marked with ❌ before the name.
+- **All**: merged view, one row per geographic area, with a Taxa column listing all taxa recorded there. Synonym taxa are marked with ❌.
+- **Per-taxon tabs**: filters to a single OTU, one row per distribution record. Synonym tabs are marked with ❌ before the name.
 
 Tabs are hidden on pages with a single OTU (e.g. subspecies pages with no synonyms).
 
@@ -50,21 +50,20 @@ Groups and areas within groups are sorted alphabetically.
 
 ## API calls
 
-Loading completes in ~1–2 seconds. The sequence is optimised: step 1 runs in parallel, steps 2–3 are only as sequential as the data dependencies require.
+**Step 1:**
 
-**Step 1 — parallel (~300ms):**
+1. **`/otus`**: `taxon_name_id[]=X&descendants=true&coordinatify=true`. Resolves the full OTU set: the valid taxon, its descendants (subspecies/varieties), and every coordinate OTU (true synonym sharing the same valid taxon name), all decided by TaxonWorks itself via `coordinatify`, not by this panel walking `taxon_name_relationships` (an earlier version did that, filtering by `type.includes('Invalidating')`, which also matched Misapplication/Homonym relationships and could pull in an unrelated taxon's distributions). Result is deduplicated. `/otus` has no id-only/lean response mode, but `rank_group: ['SpeciesGroup']` (below) keeps the resolved OTU set, and so this payload, small in practice.
 
-1. **`/asserted_distributions`** — `taxon_name_id[]=X&descendants=true&per=500`. Covers the valid OTU and all its subspecies/varieties.
-2. **`/taxon_name_relationships`** — `object_taxon_name_id[]=X`. Returns Invalidating relationships → synonym `taxon_name_id`s.
+**Step 2:**
 
-**Step 2 — only when synonyms exist (~150ms):**
+2. **`/asserted_distributions`**: `otu_id[]=OTU1&otu_id[]=OTU2&...`, one batch for every OTU resolved in step 1.
 
-3. **`/asserted_distributions`** — `taxon_name_id[]=SYN1&taxon_name_id[]=SYN2&...`. OTUs already covered by step 1 are excluded to prevent duplication.
+**Step 3, one batch each, in parallel, for all records:**
 
-**Step 3 — one batch for all records (~500ms):**
+3. **`/citations`**: `citation_object_type=AssertedDistribution&citation_object_id[]=...&extend[]=source`. Returns citation records with the full source object embedded, no separate `/sources` call needed.
+4. Tags and data attributes, one batch each.
 
-4. **`/citations`** — `citation_object_type=AssertedDistribution&citation_object_id[]=...&extend[]=source`  
-   Returns citation records with the full source object embedded — no separate `/sources` call needed.
+Steps 1, 2, and every fetch in step 3 go through the shared `fetchAllPages()` (`panels/_shared/fetchAllPages.js`), which follows the `pagination-total-pages` response header instead of assuming everything fits in one `per`-sized page: a widely-distributed, heavily-synonymized species can exceed 500 records at any of these steps, not just step 2. Remaining pages run through a small concurrency-capped worker pool (default 4) rather than one unbounded burst of requests. A failure at any step sets an error state (see Notes) instead of silently rendering as "no records."
 
 ## Map modal
 
@@ -79,5 +78,6 @@ Clicking an area name opens a modal with a Leaflet map showing the polygon for t
 ## Notes
 
 - Synonym detection uses `asserted_distribution_object.object_tag`: TaxonWorks embeds `&#10060;` (❌) for synonyms and `&#10003;` (✓) for valid taxa. No extra API call needed.
-- Default `per=500` loads all records at once. Configurable as a prop in `taxa_page.yml`.
-- `useOtuPageRequest` key is `panel:asserted-distributions` to cache the main AD fetch across navigation.
+- Default `per=500` is the page size, not a hard cap: `fetchAllPages()` follows `pagination-total-pages` to load every page. Configurable as a prop in `taxa_page.yml`.
+- `useOtuPageRequest` key `panel:asserted-distributions` (page 1 of the asserted-distributions fetch) feeds the package's "view JSON used to build this page" debug link. Later pages register under `panel:asserted-distributions:page2`, `:page3`, ... so a multi-page species still shows its full request set there, not just page 1.
+- A thrown error during load (any step, including a transient failure on any one page of a multi-page fetch) shows a distinct "Something went wrong loading distributions." message with a retry button, rather than the same "No records found." an empty-but-successful result shows. The load is still all-or-nothing (a failed page still aborts the whole load), but the failure is never silently misread as "this taxon has no distributions."

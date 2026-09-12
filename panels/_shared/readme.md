@@ -2,9 +2,21 @@
 
 Not a panel — no `main.js`, so the taxonpages panel loader ignores this directory (same convention as `panels/_gbifShared/`). Holds components shared by multiple panels, imported by relative path.
 
+## fetchAllPages.js
+
+`fetchAllPages(url, params, { per = 500, concurrency = 4, cacheKey, signal } = {})` → follows the `pagination-total-pages` response header to fetch every page of a paginated index endpoint instead of assuming one `per`-sized page has everything, returning the flattened array of all pages' records. Remaining pages run through a small worker pool (`concurrency`), not one unbounded `Promise.all` burst. When `cacheKey` is given, every page (not just the first) is routed through `useOtuPageRequest` under its own key (`cacheKey`, `${cacheKey}:page2`, ...) so the package's debug "view JSON used to build this page" link reflects the full fetch.
+
+**Depended on by:**
+
+| Panel | File | Use |
+|---|---|---|
+| PanelAssertedDistributions | `../PanelAssertedDistributions/PanelAssertedDistributions.vue` | otus, asserted_distributions, citations, data_attributes |
+| PanelSpecimenOccurrences | `../PanelSpecimenOccurrences/components/SpeciesBars.vue` | taxon_names, otus |
+| _shared | `./assertedDistributionTags.js` | tags |
+
 ## assertedDistributionTags.js
 
-`fetchAssertedDistributionTags(ids, { signal } = {})` → one batched `GET /tags?tag_object_type=AssertedDistribution&tag_object_id[]=…&per=500`, resolving to `Map<assertedDistributionId, keywordName[]>` (empty Map on error or empty input).
+`fetchAssertedDistributionTags(ids, { signal } = {})` → a `/tags` fetch (paginated via `fetchAllPages`, since a large record set can exceed one page of tag rows), resolving to `Map<assertedDistributionId, keywordName[]>` (empty Map on error or empty input).
 
 **Depended on by:**
 

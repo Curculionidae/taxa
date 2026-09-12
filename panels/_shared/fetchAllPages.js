@@ -23,6 +23,7 @@
  */
 import { makeAPIRequest } from '@/utils/request'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest.js'
+import { mapPool } from './concurrencyPool.js'
 
 const DEFAULT_CONCURRENCY = 4
 
@@ -40,17 +41,10 @@ export async function fetchAllPages(url, params, { per = 500, concurrency = DEFA
 
   if (totalPages > 1) {
     const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-    let cursor = 0
-    async function worker() {
-      while (cursor < remainingPages.length) {
-        const page = remainingPages[cursor++]
-        const { data } = await trackedRequestPage(page)
-        pages[page - 1] = data
-      }
-    }
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, remainingPages.length) }, worker)
-    )
+    await mapPool(remainingPages, concurrency, async (page) => {
+      const { data } = await trackedRequestPage(page)
+      pages[page - 1] = data
+    })
   }
 
   return pages.flat()

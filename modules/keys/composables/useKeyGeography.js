@@ -37,6 +37,7 @@ import { normRank } from '../lib/completeness.js'
 import { effectiveTaxonNameId } from '../lib/validTaxonName.js'
 import { probeParams, PRESENCE_PARAMS } from '../lib/geoProbe.js'
 import { ISO_ALIAS_SPELLINGS, DIVERGENT_SPELLING_ISOS } from '../lib/geoData.js'
+import { mapPool } from '../../../panels/_shared/concurrencyPool.js'
 
 // One flat presence probe per (terminal, country) at a time, capped here. The
 // spike (design spec section 2) measured ~1 s for 34 requests at this limit.
@@ -52,20 +53,6 @@ const PROBE_CONCURRENCY = 8
 // homonyms, so the flat probe is kept for every flat-rank terminal and the
 // guard was removed (code review, 2026-09-08). A cross-family deployment that
 // genuinely needs it should scope by valid taxa only.
-
-// `shouldStop`, checked before each item, lets a caller abandon the remaining
-// queue once its result is no longer wanted (a key change or a newer selection
-// racing a large batch).
-async function mapPool(items, limit, fn, shouldStop) {
-  let i = 0
-  const worker = async () => {
-    while (i < items.length) {
-      if (shouldStop?.()) return
-      await fn(items[i++])
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
-}
 
 // Presence sweep with per item early exit.
 //

@@ -139,6 +139,7 @@ import {
   TYPE_MATERIAL
 } from '@/constants/objectTypes.js'
 import { stripHtml, shortCitation } from '../../_shared/citationText.js'
+import { escHtml as escapeHtml, typeStatusHtml as buildTypeStatusHtml } from '../../_shared/scientificName.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
 const AD_TYPES = [ASSERTED_DISTRIBUTION, ASSERTED_ABSENT]
@@ -202,29 +203,11 @@ const rows = computed(() =>
     .filter(({ item }) => !typeMaterialIsDuplicate(item))
 )
 
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
 // "holotype of Parexophthalmus vitiensis Marshall, 1941" ->
 // "holotype of <i>Parexophthalmus vitiensis</i> Marshall, 1941"
+// tag: 'i' matches this component's own `[&_i]:italic` wrapping classes.
 function formatTypeStatus(s) {
-  const str = String(s || '')
-  // split on the LAST " of " so a status like "one of the syntypes of Aus bus"
-  // still italicises only the trailing name
-  const m = str.match(/^(.* of )(.+)$/)
-  if (!m) return escapeHtml(str)
-  const { name, author } = splitName(m[2])
-  return (
-    escapeHtml(m[1]) +
-    '<i>' +
-    escapeHtml(name) +
-    '</i>' +
-    (author ? ' ' + escapeHtml(author) : '')
-  )
+  return buildTypeStatusHtml(s, { tag: 'i' })
 }
 
 const emit = defineEmits(['selected', 'citation-selected'])

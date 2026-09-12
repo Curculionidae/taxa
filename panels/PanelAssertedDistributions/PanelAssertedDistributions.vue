@@ -40,7 +40,7 @@
           <VTableHeaderRow>
             <VTableHeaderCell>Area</VTableHeaderCell>
             <VTableHeaderCell v-if="isMergedView">Taxa</VTableHeaderCell>
-            <VTableHeaderCell>Absent</VTableHeaderCell>
+            <VTableHeaderCell>Annotations</VTableHeaderCell>
             <VTableHeaderCell>Citation</VTableHeaderCell>
           </VTableHeaderRow>
         </VTableHeader>
@@ -72,15 +72,6 @@
                   v-if="item.areaType"
                   class="text-xs opacity-50 ml-1.5"
                 >{{ item.areaType }}</span>
-                <VBadge
-                  v-for="tag in item.tags || []"
-                  :key="tag"
-                  class="ml-1"
-                  color="yellow"
-                  shape="pill"
-                  size="sm"
-                  weight="normal"
-                >{{ tag }}</VBadge>
               </VTableBodyCell>
 
               <!-- Taxa column: merged All-tab view only -->
@@ -106,6 +97,32 @@
                   v-if="item.isAbsent"
                   class="text-danger text-sm font-medium"
                 >Absent</span>
+                <VBadge
+                  v-for="tag in item.tags || []"
+                  :key="tag"
+                  class="ml-1"
+                  color="yellow"
+                  shape="pill"
+                  size="sm"
+                  weight="normal"
+                >{{ tag }}</VBadge>
+                <template
+                  v-for="attr in item.dataAttributes || []"
+                  :key="attr.id"
+                >
+                  <div
+                    v-if="attr.predicate.toLowerCase() === 'reassessment' && attr.citation"
+                    class="text-xs mt-0.5"
+                  ><b>Reassessed by <button
+                        class="hover:underline cursor-pointer text-secondary"
+                        @click="activeCitation = attr.citation"
+                        v-html="attr.citation.display"
+                      /></b><b>:</b> {{ attr.value }}</div>
+                  <div
+                    v-else
+                    class="text-xs mt-0.5"
+                  ><b>{{ attr.predicate }}:</b> {{ attr.value }}</div>
+                </template>
               </VTableBodyCell>
 
               <VTableBodyCell class="text-sm">
@@ -299,6 +316,7 @@ function mergeByArea(dists) {
         parentName: dist.parentName,
         isAbsent: false,
         tags: [],
+        dataAttributes: [],
         otuEntries: [],
         citationList: []
       })
@@ -306,6 +324,11 @@ function mergeByArea(dists) {
     const m = byArea.get(key)
     m.isAbsent = m.isAbsent || dist.isAbsent
     for (const t of dist.tags || []) if (!m.tags.includes(t)) m.tags.push(t)
+    for (const a of dist.dataAttributes || []) {
+      if (!m.dataAttributes.some((x) => x.id === a.id)) {
+        m.dataAttributes.push(a)
+      }
+    }
     if (!m.otuEntries.some((e) => e.otuId === dist.otuId)) {
       m.otuEntries.push({ otuId: dist.otuId, otuName: dist.otuName, isSynonym: dist.isSynonym })
     }
@@ -340,7 +363,7 @@ const groupedDistributions = computed(() => {
     }))
 })
 
-function makeDistribution(item, citationList, tags = []) {
+function makeDistribution(item, citationList, tags = [], dataAttributes = []) {
   const shape = item.asserted_distribution_shape || {}
   const obj = item.asserted_distribution_object || {}
   return {
@@ -354,6 +377,7 @@ function makeDistribution(item, citationList, tags = []) {
     parentName: shape.parent?.name || 'Earth',
     isAbsent: !!item.is_absent,
     tags,
+    dataAttributes,
     citationList
   }
 }
@@ -436,6 +460,58 @@ async function fetchCitations(distributionIds) {
   return result
 }
 
+// A data attribute's own citation - e.g. the source that reassessed a record
+// as a misidentification. Same shape/behaviour as PanelMapV2's MapPopup
+// "Reassessed by [citation]" line; kept in sync with it.
+async function fetchDataAttributeCitations(dataAttributeIds) {
+  if (!dataAttributeIds.length) return new Map()
+
+  const params = new URLSearchParams()
+  params.append('citation_object_type', 'DataAttribute')
+  params.append('extend[]', 'source')
+  dataAttributeIds.forEach((id) => params.append('citation_object_id[]', id))
+
+  const { data: citations } = await makeAPIRequest.get(`/citations?${params.toString()}`)
+
+  const result = new Map()
+  for (const cit of citations || []) {
+    if (result.has(cit.citation_object_id)) continue // one citation per attribute
+    result.set(cit.citation_object_id, {
+      id: cit.id,
+      display: shortCitation(cit.citation_source_body || ''),
+      full: cit.source?.cached || cit.citation_source_body || ''
+    })
+  }
+  return result
+}
+
+async function fetchDataAttributes(distributionIds) {
+  if (!distributionIds.length) return new Map()
+
+  const params = new URLSearchParams()
+  params.append('attribute_subject_type', 'AssertedDistribution')
+  distributionIds.forEach((id) => params.append('attribute_subject_id[]', id))
+  params.append('per', props.per)
+
+  const { data: attrs } = await makeAPIRequest.get(`/data_attributes?${params.toString()}`)
+  const list = attrs || []
+  const citationByAttrId = await fetchDataAttributeCitations(list.map((a) => a.id))
+
+  const result = new Map()
+  for (const attr of list) {
+    const entry = {
+      id: attr.id,
+      predicate: attr.predicate_name || attr.import_predicate || '',
+      value: attr.value,
+      citation: citationByAttrId.get(attr.id) || null
+    }
+    const id = attr.attribute_subject_id
+    if (!result.has(id)) result.set(id, [])
+    result.get(id).push(entry)
+  }
+  return result
+}
+
 async function loadDistributions() {
   isLoading.value = true
   try {
@@ -470,15 +546,21 @@ async function loadDistributions() {
       synData = data.filter((d) => !knownOtuIds.has(String(d.asserted_distribution_object_id)))
     }
 
-    // Step 3: citations + tags for all records, one batch each, in parallel
+    // Step 3: citations + tags + data attributes for all records, one batch each, in parallel
     const allData = [...adData, ...synData]
-    const [citationsMap, tagsMap] = await Promise.all([
+    const [citationsMap, tagsMap, dataAttributesMap] = await Promise.all([
       fetchCitations(allData.map((d) => d.id)),
-      fetchAssertedDistributionTags(allData.map((d) => d.id))
+      fetchAssertedDistributionTags(allData.map((d) => d.id)),
+      fetchDataAttributes(allData.map((d) => d.id))
     ])
 
     distributions.value = allData.map((item) =>
-      makeDistribution(item, citationsMap.get(item.id) || [], tagsMap.get(item.id) || [])
+      makeDistribution(
+        item,
+        citationsMap.get(item.id) || [],
+        tagsMap.get(item.id) || [],
+        dataAttributesMap.get(item.id) || []
+      )
     )
     totalCount.value = distributions.value.length
 

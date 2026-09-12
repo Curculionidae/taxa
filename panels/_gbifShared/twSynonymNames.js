@@ -4,9 +4,19 @@ import { makeAPIRequest } from '@/utils/request'
 // memoise the promise per taxon-name id.
 const cache = new Map()
 
-// TaxonWorks synonym name strings for a taxon-name id: invalidating relationships
-// whose *object* is this name → their subject names. Same two-step
-// PanelAssertedDistributions uses. Returns [] on any failure.
+// TaxonWorks synonym name strings for a taxon-name id: Invalidating::Synonym
+// relationships whose *object* is this name → their subject names. Same
+// two-step PanelAssertedDistributions uses. Returns [] on any failure.
+//
+// Deliberately narrower than "any Invalidating type": TaxonWorks' Invalidating
+// category also covers Misapplication ("this name was historically misapplied
+// to specimens of that species" — NOT synonymy) and Homonym/Usage (misspelling,
+// incorrect original spelling — a naming accident, not a shared concept).
+// Widening this back to a bare `.includes('Invalidating')` check pulls an
+// unrelated species' own type material into the GBIF/iNat scope for this taxon
+// (confirmed live 2026-09-12: a Misapplication relationship linking "Rhinoncus
+// pericarpius" to "Rhinoncus leucostigma" leaked pericarpius's own GBIF
+// syntypes into the leucostigma gallery).
 export function fetchTwSynonymNames(taxonId) {
   if (!taxonId) return Promise.resolve([])
   const key = String(taxonId)
@@ -21,7 +31,7 @@ async function fetchTwSynonymNamesUncached(taxonId) {
     })
     const synIds = [...new Set(
       (rels || [])
-        .filter((r) => r.type?.includes('Invalidating'))
+        .filter((r) => r.type?.includes('Invalidating::Synonym'))
         .map((r) => r.subject_taxon_name_id)
         .filter(Boolean)
     )]

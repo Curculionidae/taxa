@@ -68,6 +68,25 @@ export function featureIsAdventive(feature, adventiveAdIds) {
   )
 }
 
+// True when any base entry of the feature is an asserted-absent record. A
+// shape can carry both a presence and an absent record for the same area
+// (e.g. an old report later corrected as a misidentification) - once merged
+// by removeDuplicateShapes they share one feature, and the presence entry may
+// itself be tagged "Adventive". Absence must win the polygon style regardless:
+// it is the more specific, corrective claim, and letting an adventive tag on
+// the disputed presence record repaint it back to "adventive purple" would
+// hide the correction entirely.
+//
+// `is_absent` itself lives only on the GeoJSON feature's top-level
+// `properties` (a sibling of `base`, confirmed against the live API) - it is
+// never copied onto an individual base entry. normalizeAbsentFeatures (in
+// useDistributionStore.js) reads that top-level flag and rewrites the base
+// entry's `type` to 'AssertedAbsent' instead, which is what survives into the
+// merged array and what this must check.
+export function featureIsAbsent(feature) {
+  return asArray(feature?.properties?.base).some((b) => b?.type === 'AssertedAbsent')
+}
+
 export const ADVENTIVE_HATCH_CLASS = 'leaflet-adventive-hatch'
 
 // Style properties the enrichment overlays on a polygon's base style, or null to
@@ -148,6 +167,10 @@ export function restyleEnriched(group, { L, adventiveAdIds, typeStatusByCoId }) 
     }
 
     if (typeof layer.setStyle === 'function') {
+      // Absence wins outright (see featureIsAbsent) - leave the package's
+      // Absent style alone rather than repaint it adventive-purple.
+      if (featureIsAbsent(feature)) return
+
       const delta = enrichedPolygonStyleDelta(kind, adventive)
       if (delta) {
         layer.setStyle(delta)

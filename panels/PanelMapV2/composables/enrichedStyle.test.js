@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   featureTypeMaterialKind,
   featureIsAdventive,
+  featureIsAbsent,
   enrichedPolygonStyleDelta,
   enrichedMarkerIconOptions,
   restyleEnriched,
@@ -14,6 +15,11 @@ import {
 
 const co = (id) => ({ type: 'CollectionObject', id })
 const ad = (id) => ({ type: 'AssertedDistribution', id })
+// Matches the real merged base-entry shape: normalizeAbsentFeatures rewrites
+// `type` to 'AssertedAbsent' - `is_absent` itself never survives onto a base
+// entry (it's a top-level GeoJSON feature property), so it's deliberately
+// absent here too.
+const absentAd = (id) => ({ type: 'AssertedAbsent', id })
 const feature = (base) => ({ properties: { base } })
 
 const typeMap = (entries) => new Map(entries)
@@ -64,6 +70,14 @@ test('featureIsAdventive: false when the AD id is not in the set', () => {
 
 test('featureIsAdventive: ignores non-AssertedDistribution bases', () => {
   assert.equal(featureIsAdventive(feature([co(1)]), new Set([1])), false)
+})
+
+test('featureIsAbsent: false when no base entry is type AssertedAbsent', () => {
+  assert.equal(featureIsAbsent(feature([ad(1), co(2)])), false)
+})
+
+test('featureIsAbsent: true when any base entry is type AssertedAbsent, even mixed with a presence record', () => {
+  assert.equal(featureIsAbsent(feature([ad(1), absentAd(2)])), true)
 })
 
 test('enrichedPolygonStyleDelta: primary type carries the type-material tokens', () => {
@@ -274,6 +288,22 @@ test('restyleEnriched: toggles the hatch class on an adventive polygon', () => {
   })
   assert.deepEqual(adv.calls.toggle, [[ADVENTIVE_HATCH_CLASS, true]])
   assert.deepEqual(other.calls.toggle, [[ADVENTIVE_HATCH_CLASS, false]])
+})
+
+test('restyleEnriched: an adventive tag never repaints a mixed presence/absent shape', () => {
+  // Shape has both a presence record tagged "Adventive" (id 10) and a separate
+  // absent record for the same area, merged by removeDuplicateShapes into one
+  // feature - the corrective absent record must keep the package's Absent
+  // style, not get repainted adventive-purple.
+  const layer = polygonLayer([ad(10), absentAd(11)])
+  const n = restyleEnriched(groupOf([layer]), {
+    L: fakeL(),
+    adventiveAdIds: new Set([10]),
+    typeStatusByCoId: new Map()
+  })
+  assert.equal(n, 0)
+  assert.equal(layer.calls.setStyle.length, 0)
+  assert.equal(layer.calls.toggle.length, 0)
 })
 
 test('restyleEnriched: recurses through nested layer groups', () => {

@@ -24,6 +24,24 @@ function normalizeAbsentFeatures(arr) {
   })
 }
 
+// distribution.geojson never carries is_absent:true records - TaxonWorks only
+// exposes those through this separate endpoint (same split the vanilla map
+// uses). Merged into the main feature list before normalizeAbsentFeatures /
+// removeDuplicateShapes, so a shape asserted both present and absent (e.g. an
+// old record later corrected as a misidentification) becomes one feature with
+// both citations, styled as absent - see enrichedStyle.js / geojsonOptions.js.
+async function fetchAbsentFeatures(otuId, signal) {
+  try {
+    const { data } = await makeAPIRequest.get(
+      `/otus/${otuId}/inventory/distribution_is_absent.geojson`,
+      { signal }
+    )
+    return Array.isArray(data?.features) ? data.features : []
+  } catch {
+    return []
+  }
+}
+
 function sortFeaturesByType(arr, reference) {
   const referenceMap = new Map()
 
@@ -157,20 +175,23 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       this.controller = new AbortController()
 
       if (isSpeciesGroup) {
+        const absentFeaturesPromise = fetchAbsentFeatures(otuId, this.controller.signal)
+
         useOtuPageRequest('panel:map-v2', () =>
           makeAPIRequest.get(`/otus/${otuId}/inventory/distribution.geojson`, {
             signal: this.controller.signal
           })
         )
-          .then(({ data }) => {
+          .then(async ({ data }) => {
             if (data.request_too_large) {
               this.distribution.geojson = null
               this.distribution.errorMessage = data.message
             } else {
-              normalizeAbsentFeatures(data.features)
+              const allFeatures = [...data.features, ...(await absentFeaturesPromise)]
+              normalizeAbsentFeatures(allFeatures)
 
               const { features, shapeTypes } = removeDuplicateShapes(
-                sortFeaturesByType(data.features, Object.keys(LEGEND))
+                sortFeaturesByType(allFeatures, Object.keys(LEGEND))
               )
 
               this.distribution.currentShapeTypes = shapeTypes

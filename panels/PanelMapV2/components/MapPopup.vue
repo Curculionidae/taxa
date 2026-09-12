@@ -10,7 +10,7 @@
       >
         <!-- CollectionObject / FieldOccurrence -->
         <template v-if="CLICKABLE_TYPES.includes(item.type)">
-          <div class="text-sm font-medium text-base-soft">{{ TYPE_LABELS[item.type] }}</div>
+          <div class="text-sm font-medium text-base-content">{{ TYPE_LABELS[item.type] }}</div>
           <div class="text-xs truncate">
             <span class="italic">{{ splitName(targets?.[i]?.label ?? item.label).name }}</span>
             <span v-if="splitName(targets?.[i]?.label ?? item.label).author">
@@ -27,7 +27,7 @@
 
         <!-- AssertedDistribution / AssertedAbsent — BA-linked variant -->
         <template v-else-if="AD_TYPES.includes(item.type) && isBaLinked(item, targets?.[i])">
-          <div class="text-sm font-medium text-base-soft">
+          <div class="text-sm font-medium text-base-content">
             Asserted Distribution (Biological Association)<VBadge
               v-for="tag in tagList(item.id)"
               :key="tag"
@@ -65,11 +65,19 @@
               >{{ cit.display }}</button>
             </template>
           </div>
+          <div
+            v-for="reassessment in reassessmentsByItemId.get(item.id) || []"
+            :key="reassessment.citation.id"
+            class="mt-1"
+          ><b>Reassessed by <button
+              class="text-secondary hover:underline"
+              @click.stop="emit('citation-selected', reassessment.citation)"
+            >{{ reassessment.citation.display }}</button>:</b> {{ reassessment.value }}</div>
         </template>
 
         <!-- AssertedDistribution / AssertedAbsent — regular -->
         <template v-else-if="AD_TYPES.includes(item.type)">
-          <div class="text-sm font-medium text-base-soft">
+          <div class="text-sm font-medium text-base-content">
             {{ item.type === ASSERTED_ABSENT ? 'Asserted absent' : 'Asserted distribution' }}<VBadge
               v-for="tag in tagList(item.id)"
               :key="tag"
@@ -98,6 +106,14 @@
               >{{ cit.display }}</button>
             </template>
           </div>
+          <div
+            v-for="reassessment in reassessmentsByItemId.get(item.id) || []"
+            :key="reassessment.citation.id"
+            class="mt-1"
+          ><b>Reassessed by <button
+              class="text-secondary hover:underline"
+              @click.stop="emit('citation-selected', reassessment.citation)"
+            >{{ reassessment.citation.display }}</button>:</b> {{ reassessment.value }}</div>
         </template>
 
         <!-- TypeMaterial and other bare types. Redundant TypeMaterial rows are
@@ -216,11 +232,77 @@ const citationsByItemId = ref(new Map())
 const citationsLoading = ref(false)
 const baDetailsMap = ref(new Map())   // item.id → { otherId, otherLabel }
 const baLoading = ref(false)
+const reassessmentsByItemId = ref(new Map())  // AD item.id → { value, citation }[]
 
 // Module-level caches: persist across popup open/close cycles
 const citationCache = new Map()    // itemId → citation[]
 const baByTargetId = new Map()     // targetId → BaRecord[] from /biological_associations/basic
 const baDetailsCache = new Map()   // item.label → { otherId, otherLabel } | null
+const reassessmentCache = new Map() // AD id → { value, citation }[]
+
+// A "Reassessment" DataAttribute on an AssertedDistribution: a later source
+// reassessed the record (e.g. a reported presence turned out to be a
+// misidentification and was asserted absent elsewhere). Only surfaced when it
+// carries its own citation - "Reassessed by [citation]" with no citation to
+// point to isn't useful in the popup.
+async function fetchReassessments(adIds) {
+  try {
+    const params = new URLSearchParams()
+    params.append('attribute_subject_type', 'AssertedDistribution')
+    adIds.forEach((id) => params.append('attribute_subject_id[]', id))
+
+    const { data: attrs } = await makeAPIRequest.get(`/data_attributes?${params.toString()}`)
+    const matches = (attrs || []).filter(
+      (a) => (a.predicate_name || '').toLowerCase() === 'reassessment'
+    )
+
+    if (matches.length) {
+      const citParams = new URLSearchParams()
+      citParams.append('citation_object_type', 'DataAttribute')
+      matches.forEach((a) => citParams.append('citation_object_id[]', a.id))
+      const { data: citations } = await makeAPIRequest.get(`/citations?${citParams.toString()}`)
+
+      const sourceIds = [...new Set((citations || []).map((c) => c.source_id))]
+      const srcParams = new URLSearchParams()
+      sourceIds.forEach((id) => srcParams.append('source_id[]', id))
+      const { data: sources } = sourceIds.length
+        ? await makeAPIRequest.get(`/sources?${srcParams.toString()}`)
+        : { data: [] }
+      const sourceMap = new Map(sources.map((s) => [s.id, s.cached]))
+
+      const citationByAttrId = new Map()
+      for (const cit of citations || []) {
+        if (citationByAttrId.has(cit.citation_object_id)) continue
+        citationByAttrId.set(cit.citation_object_id, {
+          id: cit.id,
+          display: shortCitation(stripHtml(cit.citation_source_body || '')),
+          full: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
+        })
+      }
+
+      for (const attr of matches) {
+        const citation = citationByAttrId.get(attr.id)
+        if (!citation) continue
+        if (!reassessmentCache.has(attr.attribute_subject_id)) {
+          reassessmentCache.set(attr.attribute_subject_id, [])
+        }
+        reassessmentCache.get(attr.attribute_subject_id).push({ value: attr.value, citation })
+      }
+    }
+
+    adIds.forEach((id) => {
+      if (!reassessmentCache.has(id)) reassessmentCache.set(id, [])
+    })
+  } catch {
+    adIds.forEach((id) => {
+      if (!reassessmentCache.has(id)) reassessmentCache.set(id, [])
+    })
+  } finally {
+    reassessmentsByItemId.value = new Map(
+      props.items.map((item) => [item.id, reassessmentCache.get(item.id) || []])
+    )
+  }
+}
 
 // A regular AD label is "{target.label} in {area} [{type}]".
 // A BA-linked AD has a relationship verb phrase after the target label instead of " in ".
@@ -242,6 +324,9 @@ watch(
 
     citationsByItemId.value = new Map(
       items.map((item) => [item.id, citationCache.get(item.id) || []])
+    )
+    reassessmentsByItemId.value = new Map(
+      items.map((item) => [item.id, reassessmentCache.get(item.id) || []])
     )
 
     // ── BA OTU details for BA-linked ADs ─────────────────────────────────────
@@ -307,6 +392,7 @@ watch(
     if (!adIds.length) return
 
     citationsLoading.value = true
+    fetchReassessments(adIds) // independent fetch; own cache/loading state
     try {
       const params = new URLSearchParams()
       params.append('citation_object_type', 'AssertedDistribution')
@@ -327,7 +413,7 @@ watch(
           }
           citationCache.get(cit.citation_object_id).push({
             id: cit.id,
-            display: shortCitation(cit.citation_source_body || ''),
+            display: shortCitation(stripHtml(cit.citation_source_body || '')),
             full: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
           })
         }
@@ -367,6 +453,14 @@ function splitName(label) {
   const match = label.match(/^((?:.*\s)?[a-z]\S*)\s+(.+)$/)
   if (!match) return { name: label, author: '' }
   return { name: match[1], author: match[2] }
+}
+
+// citation_source_body can carry an inline topic annotation as raw markup
+// (e.g. a "Distribution" pill: `<span class="annotation__citation_topic">...`).
+// Strip it before use as a plain-text button label - `full` (rendered via
+// v-html in the reference modal) keeps the original markup untouched.
+function stripHtml(s) {
+  return String(s || '').replace(/<[^>]+>/g, '')
 }
 
 function shortCitation(body) {

@@ -4,6 +4,7 @@ import { computed, ref, unref } from 'vue'
 import {
   featureTypeMaterialKind,
   featureIsAdventive,
+  featureIsAbsent,
   enrichedPolygonStyleDelta,
   enrichedMarkerIconOptions,
   ADVENTIVE_HATCH_CLASS
@@ -20,6 +21,9 @@ export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, ty
     return {
       style: (feature) => {
         const base = defaults.style(feature)
+        // Absence wins outright: an adventive tag on the disputed presence
+        // record must not repaint a corrected/absent shape back to purple.
+        if (featureIsAbsent(feature)) return base
         const kind = kindOf(feature)
         const adventive = !kind && featureIsAdventive(feature, unref(adventiveAdIds))
         const delta = enrichedPolygonStyleDelta(kind, adventive)

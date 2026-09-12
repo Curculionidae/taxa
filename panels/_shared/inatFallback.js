@@ -13,10 +13,19 @@
  *     paginated grid, not run through makeObservationImage/ImageLightbox)
  *   - ../../modules/keys/composables/useKeyImages.js
  *
+ * resolveInatTaxonId caches by "name|rank" (module-level, shared across every
+ * caller, in-flight requests deduped too): PanelGallery and PaneliNaturalist
+ * can both be configured on the same OTU page (taxa_page.yml), and would
+ * otherwise each independently resolve the same taxon name against the
+ * iNaturalist API.
+ *
  * If you change this file, sanity-check all three call sites.
  */
 
 import axios from 'axios'
+
+const taxonIdCache = new Map()
+const taxonIdPending = new Map()
 
 /**
  * Parses a TaxonWorks expanded_name ("Genus (Subgenus) species" or "Genus
@@ -49,6 +58,23 @@ export function parseName(expandedName) {
  */
 export async function resolveInatTaxonId(name, rank) {
   if (!name) return null
+  const cacheKey = `${name}|${rank || ''}`
+  if (taxonIdCache.has(cacheKey)) return taxonIdCache.get(cacheKey)
+
+  let pending = taxonIdPending.get(cacheKey)
+  if (!pending) {
+    pending = fetchInatTaxonId(name, rank)
+      .then((id) => {
+        taxonIdCache.set(cacheKey, id)
+        return id
+      })
+      .finally(() => taxonIdPending.delete(cacheKey))
+    taxonIdPending.set(cacheKey, pending)
+  }
+  return pending
+}
+
+async function fetchInatTaxonId(name, rank) {
   const { genus, subgenus, epithet } = parseName(name)
 
   if (subgenus && !epithet) {

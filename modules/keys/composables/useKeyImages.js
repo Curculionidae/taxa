@@ -17,6 +17,7 @@
 import { reactive } from 'vue'
 import axios from 'axios'
 import { makeAPIRequest } from '@/utils/request'
+import TaxonWorks from '@/modules/otus/services/TaxonWorks'
 import { finestRank } from '../lib/completeness.js'
 import { normalizeKeyImages, indexTaxonMeta } from '../lib/images.js'
 import {
@@ -103,10 +104,9 @@ export function useKeyImages(terminalOtusRef) {
   }
 
   async function loadInventory(otuId) {
-    const { data } = await makeAPIRequest.get(
-      `/otus/${otuId}/inventory/images.json`,
-      { params: { extend: ['depictions', 'attribution', 'source', 'citations'] } }
-    )
+    const { data } = await TaxonWorks.getOtuImages(otuId, {
+      params: { extend: ['depictions', 'attribution', 'source', 'citations'] }
+    })
     const order = Array.isArray(data?.image_order) ? data.image_order.filter(Boolean) : []
     const raw = order.map((id) => data?.images?.[id]).filter(Boolean)
     return normalizeKeyImages(raw, { sourceTag: 'taxonworks' })

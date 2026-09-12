@@ -568,6 +568,7 @@ import { resolveSpecimenRef } from './specimenRef.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
 import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
+import { formatEventDate } from './eventDate.js'
 import ReferenceModal from './ReferenceModal.vue'
 
 // Lets a host that renders this above its own overlay (ImageLightbox's ⓘ button)
@@ -657,12 +658,7 @@ function hasAny(...keys) {
 const hasMoreDetails = computed(() => !!dwc.value)
 
 // Date shown next to the collector's name
-const metaDate = computed(() => {
-  if (!dwc.value) return null
-  if (dwc.value.eventDate) return dwc.value.eventDate
-  if (dwc.value.year) return [dwc.value.day, dwc.value.month, dwc.value.year].filter(Boolean).join('.')
-  return null
-})
+const metaDate = computed(() => formatEventDate(dwc.value || {}))
 
 const scientificNameParts = computed(() =>
   dwc.value?.scientificName ? splitScientificName(dwc.value.scientificName) : { italic: '', plain: '' }

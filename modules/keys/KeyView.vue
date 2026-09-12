@@ -66,6 +66,7 @@ import { effectiveTaxonNameId } from './lib/validTaxonName.js'
 import { territoryLabel } from './lib/geoNormalize.js'
 import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
 import { GEOGRAPHY_PRESETS as geoCategories } from './lib/geoData.js'
+import { stripHtml, shortCitation } from '../../panels/_shared/citationText.js'
 
 const route = useRoute()
 
@@ -363,7 +364,7 @@ async function loadCitations(leadIds, myGen) {
       const key = String(c.citation_object_id)
       ;(map[key] ||= []).push({
         id: c.id,
-        short: c.citation_source_body || c.source?.author_year || 'reference',
+        short: shortCitation(stripHtml(c.citation_source_body || '')) || c.source?.author_year || 'reference',
         full: c.source?.cached || c.citation_source_body || ''
       })
     }

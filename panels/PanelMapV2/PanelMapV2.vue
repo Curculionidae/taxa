@@ -2,18 +2,10 @@
   <VCard>
     <div class="relative">
       <Teleport to="body">
-        <VModal
-          v-if="activeCitation"
+        <ReferenceModal
+          :citation="activeCitation"
           @close="activeCitation = null"
-        >
-          <template #header>
-            <div class="text-sm font-medium">Reference</div>
-          </template>
-          <div
-            class="px-4 pb-4 text-sm leading-relaxed"
-            v-html="linkify(activeCitation.full)"
-          />
-        </VModal>
+        />
       </Teleport>
       <ClientOnly>
         <VSpinner v-if="isLoading" />
@@ -88,14 +80,6 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-
-function linkify(html) {
-  if (!html) return ''
-  return html.replace(
-    /(?<!href=["'])(?<!">)(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>'
-  )
-}
 import './map-tokens.css'
 import { useDistributionStore } from './store/useDistributionStore.js'
 import { makeClusterIconFor } from './clusters'
@@ -106,6 +90,7 @@ import MapPopup from './components/MapPopup.vue'
 import CachedMap from './components/CachedMap.vue'
 import OtuSearch from './components/Search/OtuSearch.vue'
 import DwcTable from '../_shared/DwcTable.vue'
+import ReferenceModal from '../_shared/ReferenceModal.vue'
 
 const props = defineProps({
   otuId: {

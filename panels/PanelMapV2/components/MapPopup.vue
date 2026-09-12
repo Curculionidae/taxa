@@ -138,6 +138,7 @@ import {
   ASSERTED_ABSENT,
   TYPE_MATERIAL
 } from '@/constants/objectTypes.js'
+import { stripHtml, shortCitation } from '../../_shared/citationText.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
 const AD_TYPES = [ASSERTED_DISTRIBUTION, ASSERTED_ABSENT]
@@ -276,7 +277,7 @@ async function fetchReassessments(adIds) {
         citationByAttrId.set(cit.citation_object_id, {
           id: cit.id,
           display: shortCitation(stripHtml(cit.citation_source_body || '')),
-          full: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
+          citation_source_body: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
         })
       }
 
@@ -414,7 +415,7 @@ watch(
           citationCache.get(cit.citation_object_id).push({
             id: cit.id,
             display: shortCitation(stripHtml(cit.citation_source_body || '')),
-            full: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
+            citation_source_body: sourceMap.get(cit.source_id) || cit.citation_source_body || ''
           })
         }
       }
@@ -455,22 +456,4 @@ function splitName(label) {
   return { name: match[1], author: match[2] }
 }
 
-// citation_source_body can carry an inline topic annotation as raw markup
-// (e.g. a "Distribution" pill: `<span class="annotation__citation_topic">...`).
-// Strip it before use as a plain-text button label - `full` (rendered via
-// v-html in the reference modal) keeps the original markup untouched.
-function stripHtml(s) {
-  return String(s || '').replace(/<[^>]+>/g, '')
-}
-
-function shortCitation(body) {
-  if (!body) return ''
-  const m = body.match(/,\s*(\d{4}[a-z]?(?::[^\s,]+)?)\s*$/)
-  if (!m) return body
-  const year = m[1]
-  const authorsStr = body.slice(0, m.index)
-  const ampIdx = authorsStr.lastIndexOf('&')
-  if (ampIdx < 0 || !authorsStr.slice(0, ampIdx).includes(',')) return body
-  return `${authorsStr.split(',')[0].trim()} et al., ${year}`
-}
 </script>

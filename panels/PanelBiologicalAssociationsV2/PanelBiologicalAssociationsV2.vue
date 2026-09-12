@@ -232,8 +232,7 @@
                 <button
                   class="text-left hover:underline cursor-pointer text-secondary"
                   @click="activeCitation = citation"
-                  v-html="citation.short"
-                />
+                >{{ citation.short }}</button>
               </div>
               <span
                 v-if="!ba.citationList.length && ba.citations"
@@ -251,18 +250,10 @@
 
       <!-- Citation modal -->
       <Teleport to="body">
-        <VModal
-          v-if="activeCitation"
+        <ReferenceModal
+          :citation="activeCitation"
           @close="activeCitation = null"
-        >
-          <template #header>
-            <div class="text-sm font-medium">Reference</div>
-          </template>
-          <div
-            class="px-4 pb-4 text-sm leading-relaxed"
-            v-html="linkify(activeCitation.full)"
-          />
-        </VModal>
+        />
       </Teleport>
 
       <DwcTable ref="dwcTableRef" />
@@ -346,6 +337,8 @@ import {
 } from '@/modules/otus/constants'
 import DwcTable from '../_shared/DwcTable.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
+import ReferenceModal from '../_shared/ReferenceModal.vue'
+import { stripHtml, shortCitation } from '../_shared/citationText.js'
 import {
   makeBiologicalAssociation,
   resolveSpecimenRef,
@@ -483,14 +476,6 @@ function openViewer(ba) {
   viewer.index = 0
 }
 
-function linkify(html) {
-  if (!html) return ''
-  return html.replace(
-    /(?<!href=["'])(?<!">)(https?:\/\/[^\s<>"]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>'
-  )
-}
-
 onMounted(async () => {
   if (isFlatRank.value) {
     await loadBiologicalAssociations()
@@ -624,8 +609,8 @@ async function fetchCitations(associationIds) {
   for (const cit of citations) {
     const entry = {
       id: cit.id,
-      short: cit.citation_source_body || '',
-      full: cit.source?.cached || cit.citation_source_body || ''
+      short: shortCitation(stripHtml(cit.citation_source_body || '')),
+      citation_source_body: cit.source?.cached || cit.citation_source_body || ''
     }
     if (!result.has(cit.citation_object_id)) result.set(cit.citation_object_id, [])
     result.get(cit.citation_object_id).push(entry)

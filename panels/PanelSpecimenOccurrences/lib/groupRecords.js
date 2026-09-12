@@ -53,9 +53,20 @@ function sortGroups(groups) {
   })
 }
 
-function uniformSex(records) {
-  const sexes = new Set(records.map((r) => r.sex).filter(Boolean))
-  return records.every((r) => r.sex) && sexes.size === 1 ? [...sexes][0] : null
+// individualCount summed per sex ('female', 'male', ...), lowercased so it
+// reads as prose ("2 female, 1 male") rather than shouting DWC vocabulary
+// ("2 Female, 1 Male"). Records with no sex recorded are not represented
+// here — groupCountLabel() folds their count into a trailing plain-noun
+// term instead, since "1 unsexed" isn't a term TaxonWorks or DWC uses.
+function sexCounts(records) {
+  const counts = new Map()
+  for (const r of records) {
+    if (!r.sex) continue
+    const key = r.sex.toLowerCase()
+    const n = Number(r.individualCount) || 1
+    counts.set(key, (counts.get(key) || 0) + n)
+  }
+  return counts
 }
 
 function groupBucket(records) {
@@ -94,24 +105,33 @@ export function groupRecords(records) {
       records: group.records,
       isGroup: group.records.length > 1,
       totalCount: group.records.reduce((sum, r) => sum + (Number(r.individualCount) || 1), 0),
-      uniformSex: uniformSex(group.records)
+      sexCounts: sexCounts(group.records)
     })
   )
 }
 
 // Aggregated "count + sex/noun" text for a collapsed group row, replacing
-// the single-record getCountAndSex() output. Sex is only shown when every
-// member of the group shares the same sex; otherwise falls back to a plain
-// noun ("specimens"/"occurrences"). typeStatus is not folded in here — it's
-// a full citation sentence in real data (e.g. "syntype of Pnigodes setosus
-// LeConte, 1876"), not clean DWC vocabulary, and ListRecords.vue already
-// renders it verbatim above the label. Only meaningful for isGroup groups
-// (records.length > 1).
+// the single-record getCountAndSex() output. Breaks down by sex when any
+// member has one recorded — "2 female, 1 male", or "3 female" when every
+// sexed member agrees — falling back to a plain noun only for members with
+// no sex at all ("2 female, 1 specimen" for a group that's part sexed, part
+// not; plain "3 specimens" when none are). typeStatus is not folded in here
+// — it's a full citation sentence in real data (e.g. "syntype of Pnigodes
+// setosus LeConte, 1876"), not clean DWC vocabulary, and ListRecords.vue
+// already renders it verbatim above the label. Only meaningful for isGroup
+// groups (records.length > 1).
 export function groupCountLabel(group) {
-  if (group.uniformSex) {
-    return `${group.totalCount} ${group.uniformSex}`
-  }
   const first = group.records[0]
-  const noun = first.dwc_occurrence_object_type === 'FieldOccurrence' ? 'occurrences' : 'specimens'
-  return `${group.totalCount} ${noun}`
+  const nounBase = first.dwc_occurrence_object_type === 'FieldOccurrence' ? 'occurrence' : 'specimen'
+  const unsexedCount = group.totalCount - [...group.sexCounts.values()].reduce((a, b) => a + b, 0)
+
+  const parts = [...group.sexCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([sex, count]) => `${count} ${sex}`)
+
+  if (unsexedCount > 0) {
+    parts.push(`${unsexedCount} ${nounBase}${unsexedCount > 1 ? 's' : ''}`)
+  }
+
+  return parts.join(', ') || `${group.totalCount} ${nounBase}s`
 }

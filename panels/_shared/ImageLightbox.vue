@@ -152,8 +152,7 @@
           type="button"
           class="ml-1 text-secondary hover:underline cursor-pointer"
           @click="activeCitation = cit"
-          v-html="cit.citation_source_body"
-        /></div>
+        >{{ shortCitation(stripHtml(cit.citation_source_body)) }}</button></div>
 
       <!-- Source -->
       <div
@@ -193,19 +192,10 @@
     <!-- Reference detail. A direct child, NOT teleported: VModal's own overlay is
          only z-[2000], so from <body> it would sit behind this z-[10000] viewer.
          Inside the viewer's stacking context it paints on top (same as DwcTable). -->
-    <VModal
-      v-if="activeCitation"
-      aria-label="Reference"
+    <ReferenceModal
+      :citation="activeCitation"
       @close="closeCitation"
-    >
-      <template #header>
-        <div class="text-sm font-medium">Reference</div>
-      </template>
-      <div
-        class="px-4 pb-4 text-sm leading-relaxed [&_a]:text-secondary [&_a]:hover:underline"
-        v-html="sanitizeAndLinkifyHtml(activeCitation.source?.cached || activeCitation.citation_source_body || '')"
-      />
-    </VModal>
+    />
   </div>
 </template>
 
@@ -214,8 +204,9 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, defineAsyncComp
 import ControlImageNext from '@/components/ImageViewer/ControlImageNext.vue'
 import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.vue'
 import { makeAPIRequest } from '@/utils/request'
-import { sanitizeAndLinkifyHtml } from '@/utils'
 import { fetchImageCitations, imageIdFromOriginalPng } from './imageCitations.js'
+import { stripHtml, shortCitation } from './citationText.js'
+import ReferenceModal from './ReferenceModal.vue'
 
 // Async both ways: DwcTable imports this file back (its media strip opens this
 // lightbox). Splitting DwcTable into its own chunk also keeps it out of the

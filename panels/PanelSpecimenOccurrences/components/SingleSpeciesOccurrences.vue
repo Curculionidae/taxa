@@ -445,7 +445,7 @@ function getDepositoryData(data) {
 }
 
 function getCountAndSex({ individualCount, sex, dwc_occurrence_object_type }) {
-  if (sex) return `${individualCount} ${sex}`
+  if (sex) return `${individualCount} ${sex.toLowerCase()}`
   const noun = dwc_occurrence_object_type === 'FieldOccurrence' ? 'occurrence' : 'specimen'
   return `${individualCount} ${noun}${individualCount > 1 ? 's' : ''}`
 }

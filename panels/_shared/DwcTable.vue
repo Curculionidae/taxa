@@ -4,6 +4,12 @@
   or 'FieldOccurrence' (see @/constants/objectTypes). Fetches
   /collection_objects/:id/dwc or /field_occurrences/:id/dwc and renders it,
   plus a GRSciColl institution-name lookup and associatedMedia thumbnails.
+  Also fetches the specimen's own citations from /citations — the DwC record
+  itself has no bibliographicCitation (TaxonWorks' DwcOccurrence builder
+  doesn't map one for CollectionObjects) — plus, when the record is type
+  material, its TypeMaterial citation(s) too (listed first). Each is shown
+  short ("Author et al., Year", ./citationText.js) and clickable, opening
+  ./ReferenceModal.vue with the full source.
 
   Depended on by (relative import paths from panels/_shared/):
     - ../PanelMapV2/PanelMapV2.vue                        — marker/list-row "show details"
@@ -72,6 +78,21 @@
             class="mt-1.5 inline-block text-xs font-medium bg-danger text-white rounded px-1.5 py-0.5"
             v-html="typeStatusHtml"
           />
+          <!-- Citations: the specimen's own (not part of the DwC record itself — TaxonWorks'
+               DwcOccurrence cache has no bibliographicCitation builder for CollectionObjects),
+               plus, for type material, the TypeMaterial's own citation(s) first. Short form,
+               clickable to open the full reference, same as an image citation
+               (./ImageLightbox.vue) and PanelAssertedDistributions/MapPopup's citation buttons. -->
+          <div
+            v-if="citations.length"
+            class="mt-1 text-xs"
+          ><span class="text-base-soft">{{ citations.length > 1 ? 'Citations:' : 'Citation:' }}</span><button
+              v-for="cit in citations"
+              :key="cit.id"
+              type="button"
+              class="ml-1 text-secondary hover:underline cursor-pointer"
+              @click="activeCitation = cit"
+            >{{ shortCitation(stripHtml(cit.citation_source_body)) }}</button></div>
 
           <!-- Determination: who called it this, and when — as important as the name itself -->
           <div
@@ -512,6 +533,15 @@
     </div>
   </VModal>
 
+  <!-- Reference detail for a clicked type material citation. A direct child
+       of this component (not the outer VModal): VModal renders its own
+       overlay, so nesting a second one here stacks correctly on close/reopen
+       the same way ImageLightbox.vue's does. -->
+  <ReferenceModal
+    :citation="activeCitation"
+    @close="activeCitation = null"
+  />
+
   <!-- Media strip opens the shared lightbox. show-info-button=false: this
        lightbox must not offer its own ⓘ back into a DwcTable (recursion). -->
   <Teleport to="body">
@@ -535,6 +565,8 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef } from './specimenRef.js'
+import { stripHtml, shortCitation } from './citationText.js'
+import ReferenceModal from './ReferenceModal.vue'
 
 // Lets a host that renders this above its own overlay (ImageLightbox's ⓘ button)
 // know when the modal has been dismissed — so it can re-take key handling / the
@@ -561,6 +593,8 @@ const mediaImages = ref([])
 const lightboxIndex = ref(null)  // media-strip lightbox: index of open image, null = closed
 const bioAssociations = ref([])
 const isLoadingBioAssociations = ref(false)
+const citations = ref([])
+const activeCitation = ref(null)
 
 const ENDPOINTS = {
   [COLLECTION_OBJECT]: (id) => `/collection_objects/${id}/dwc`,
@@ -801,6 +835,63 @@ async function fetchBioAssociations(otuIdVal, specimenType, specimenId) {
   return matches
 }
 
+/**
+ * CollectionObject and FieldOccurrence both support citations directly
+ * (Shared::Citations) — fetched here since the DwC record itself has no
+ * bibliographicCitation (TaxonWorks' DwcOccurrence builder doesn't map one
+ * for CollectionObjects). When the record is type material, its
+ * TypeMaterial's own citation(s) are fetched too and listed first — a
+ * TypeMaterial's citations are the ones that actually matter most (they're
+ * what designated this specimen as the type), while a plain CollectionObject
+ * citation just documents where the specimen itself was reported/cited.
+ *
+ * extend[]=source so a clicked citation can open ReferenceModal with the
+ * full source (source.cached), not just the short citation_source_body —
+ * same shape imageCitations.js fetches for image citations.
+ */
+async function loadCitations(id, type, dwcData) {
+  // Own-citation and type-material fetches are independent and fail independently:
+  // a broken/unsupported type-material lookup must not also blank out the
+  // specimen's own, already-working citations (or vice versa).
+  const ownPromise = makeAPIRequest
+    .get('/citations', {
+      params: { citation_object_type: type, citation_object_id: [id], extend: ['source'] }
+    })
+    .then(({ data }) => data)
+    .catch(() => [])
+
+  const typeMaterialPromise = (type === COLLECTION_OBJECT && dwcData.typeStatus)
+    ? loadTypeMaterialCitations(id).catch(() => [])
+    : Promise.resolve([])
+
+  const [ownCitations, typeMaterialCitations] = await Promise.all([ownPromise, typeMaterialPromise])
+
+  const seen = new Set()
+  citations.value = [...typeMaterialCitations, ...ownCitations].filter((c) => {
+    if (seen.has(c.id)) return false
+    seen.add(c.id)
+    return true
+  })
+}
+
+// The TypeMaterial record isn't reachable from the CollectionObject's own
+// /dwc payload — look it up via extend[]=type_material, then fetch its
+// citations the same way.
+async function loadTypeMaterialCitations(collectionObjectId) {
+  const { data } = await makeAPIRequest.get(`/collection_objects/${collectionObjectId}`, {
+    params: { extend: ['type_material'] }
+  })
+  const typeMaterialIds = (data.type_material || [])
+    .map((t) => t.global_id?.match(/TypeMaterial\/(\d+)/)?.[1])
+    .filter(Boolean)
+  if (!typeMaterialIds.length) return []
+
+  const { data: citations } = await makeAPIRequest.get('/citations', {
+    params: { citation_object_type: 'TypeMaterial', citation_object_id: typeMaterialIds, extend: ['source'] }
+  })
+  return citations
+}
+
 function show({ id, type }) {
   isModalVisible.value = true
   isLoading.value = true
@@ -813,6 +904,8 @@ function show({ id, type }) {
   mediaImages.value = []
   lightboxIndex.value = null
   bioAssociations.value = []
+  citations.value = []
+  activeCitation.value = null
 
   makeAPIRequest(ENDPOINTS[type](id))
     .then(({ data }) => {
@@ -836,6 +929,7 @@ function show({ id, type }) {
           .catch(() => {})
           .finally(() => { isLoadingBioAssociations.value = false })
       }
+      loadCitations(id, type, data)
     })
     .catch(() => {})
     .finally(() => {

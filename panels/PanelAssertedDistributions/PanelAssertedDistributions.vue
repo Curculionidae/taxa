@@ -174,18 +174,10 @@
 
       <!-- Citation modal -->
       <Teleport to="body">
-        <VModal
-          v-if="activeCitation"
+        <ReferenceModal
+          :citation="activeCitation"
           @close="activeCitation = null"
-        >
-          <template #header>
-            <div class="text-sm font-medium">Reference</div>
-          </template>
-          <div
-            class="px-4 pb-4 text-sm leading-relaxed"
-            v-html="convertUrlsToLinks(activeCitation.full)"
-          />
-        </VModal>
+        />
       </Teleport>
 
       <div
@@ -279,9 +271,8 @@ import { computed, onMounted, ref } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { fetchAllPages } from '../_shared/fetchAllPages.js'
 import { fetchAssertedDistributionTags } from '../_shared/assertedDistributionTags.js'
-function convertUrlsToLinks(text = '') {
-  return text.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-}
+import { stripHtml, shortCitation } from '../_shared/citationText.js'
+import ReferenceModal from '../_shared/ReferenceModal.vue'
 
 const props = defineProps({
   otuId: {
@@ -464,16 +455,6 @@ async function openMapModal(item) {
   }
 }
 
-function shortCitation(body) {
-  if (!body) return ''
-  const m = body.match(/,\s*(\d{4}[a-z]?(?::[^\s,]+)?)\s*$/)
-  if (!m) return body
-  const year = m[1]
-  const authorsStr = body.slice(0, m.index)
-  const ampIdx = authorsStr.lastIndexOf('&')
-  if (ampIdx < 0 || !authorsStr.slice(0, ampIdx).includes(',')) return body
-  return `${authorsStr.split(',')[0].trim()} et al., ${year}`
-}
 
 // Citations, tags, and data attributes are all fetched by id-set, and that
 // id-set is exactly what step 1/2's own pagination fix was guarding against
@@ -494,8 +475,8 @@ async function fetchCitations(distributionIds) {
   for (const cit of citations) {
     const entry = {
       id: cit.id,
-      display: shortCitation(cit.citation_source_body || ''),
-      full: cit.source?.cached || cit.citation_source_body || ''
+      display: shortCitation(stripHtml(cit.citation_source_body || '')),
+      citation_source_body: cit.source?.cached || cit.citation_source_body || ''
     }
     if (!result.has(cit.citation_object_id)) result.set(cit.citation_object_id, [])
     result.get(cit.citation_object_id).push(entry)
@@ -520,8 +501,8 @@ async function fetchDataAttributeCitations(dataAttributeIds) {
     if (result.has(cit.citation_object_id)) continue // one citation per attribute
     result.set(cit.citation_object_id, {
       id: cit.id,
-      display: shortCitation(cit.citation_source_body || ''),
-      full: cit.source?.cached || cit.citation_source_body || ''
+      display: shortCitation(stripHtml(cit.citation_source_body || '')),
+      citation_source_body: cit.source?.cached || cit.citation_source_body || ''
     })
   }
   return result

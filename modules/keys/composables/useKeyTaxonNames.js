@@ -21,13 +21,7 @@
 
 import { reactive, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
-
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
+import { escHtml } from '../../../panels/_shared/scientificName.js'
 
 export function useKeyTaxonNames(terminalOtusRef) {
   // otuId -> { html, authorYear, plain }

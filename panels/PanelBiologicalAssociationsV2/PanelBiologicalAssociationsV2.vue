@@ -326,7 +326,7 @@
  */
 
 import { computed, onMounted, reactive, ref } from 'vue'
-import { makeAPIRequest } from '@/utils'
+import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest.js'
 import {
   HIGHER_CLASSIFICATION_GROUP,
@@ -587,7 +587,7 @@ async function fetchDepictions(associationIds) {
       for (const image of allImages) {
         const src = sourceByImageId.get(image.id)
         if (src?.label) {
-          image.source = { label: src.label.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">$1</a>') }
+          image.source = { label: sanitizeAndLinkifyHtml(src.label) }
         }
       }
     } catch { /* source unavailable */ }

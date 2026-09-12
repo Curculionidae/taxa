@@ -157,7 +157,7 @@
       <!-- Source -->
       <div
         v-if="image.source?.label"
-        class="opacity-60 my-1"
+        class="opacity-60 my-1 [&_a]:hover:underline"
         v-html="image.source.label"
       />
 

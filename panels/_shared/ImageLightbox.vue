@@ -206,6 +206,7 @@ import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.
 import { makeAPIRequest } from '@/utils/request'
 import { fetchImageCitations, imageIdFromOriginalPng } from './imageCitations.js'
 import { stripHtml, shortCitation } from './citationText.js'
+import { splitScientificName as splitName } from './scientificName.js'
 import ReferenceModal from './ReferenceModal.vue'
 
 // Async both ways: DwcTable imports this file back (its media strip opens this
@@ -390,23 +391,6 @@ function italicizeNames(text) {
     /\b([A-Z][a-z]+(?:\s+\([A-Z][a-z]+\))?)(\s+(?:\[[^\]]*\]\s+)?[a-z][a-z]{2,}(?:\s+[a-z][a-z]{2,})*)/g,
     '<em>$1$2</em>'
   )
-}
-
-// Split "Genus (Subgenus) species (Author, year)" into italic name and plain authorship.
-// Rules:
-//   lowercase word                        → species/subspecies epithet → italic
-//   (Word) where next word is lowercase   → subgenus → italic
-//   anything else                         → authorship → plain
-function splitName(name) {
-  const words = (name || '').trim().split(/\s+/)
-  let i = 1
-  while (i < words.length) {
-    const w = words[i]
-    if (/^[a-z]/.test(w)) { i++; continue }
-    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) { i++; continue }
-    break
-  }
-  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
 }
 
 const image = computed(() => props.images[props.index] || {})

@@ -42,6 +42,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { makeAPIRequest } from '@/utils'
+import TaxonWorks from '@/modules/otus/services/TaxonWorks'
 import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
@@ -269,8 +270,8 @@ function loadDwc() {
     props.preloadedData
       ? Promise.resolve({ data: props.preloadedData })
       : makeAPIRequest.get(`/otus/${props.otuId}/inventory/dwc.json`),
-    makeAPIRequest
-      .get(`/otus/${props.otuId}/inventory/type_material.json`)
+    TaxonWorks
+      .getOtuTypeMaterial(props.otuId)
       .catch(() => ({ data: { type_materials_catalog_labels: [] } })),
     fetchBioAssociationsForOtu(props.otuId)
   ])

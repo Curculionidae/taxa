@@ -121,6 +121,11 @@ import { CHECKLIST_KEY, deriveScientificName } from '../_gbifShared/useGbifMatch
 import { TYPE_STATUSES } from '../_gbifShared/typeStatuses'
 import { gbifOccurrencesToImages } from '../_gbifShared/gbifTypeImages'
 import { resolveGbifTaxonScope } from '../_gbifShared/gbifTaxonScope'
+import {
+  resolveInatTaxonId as resolveInatTaxonIdFor,
+  makeTaxonPhotoImage,
+  makeObservationImage
+} from '../_shared/inatFallback.js'
 
 const INAT_MAX = 10
 const SUB_IMAGE_TIMEOUT_MS = 8000
@@ -631,94 +636,13 @@ async function fetchSubordinateSample() {
 
 // ── iNaturalist ──────────────────────────────────────────────────────────────
 
-/**
- * Copied from PaneliNaturalist.vue. Uses props.taxon.expanded_name directly —
- * otu.object_label may include authorship, breaking the exact-name match.
- */
-function parseName(expandedName) {
-  const subgenusMatch = expandedName.match(/^(\S+)\s+\((\S+)\)(?:\s+(\S+))?$/)
-  if (subgenusMatch) {
-    return {
-      genus: subgenusMatch[1],
-      subgenus: subgenusMatch[2],
-      epithet: subgenusMatch[3] || null
-    }
-  }
-  const parts = expandedName.trim().split(/\s+/)
-  return {
-    genus: parts[0],
-    subgenus: null,
-    epithet: parts[1] || null
-  }
-}
-
+// Uses props.taxon.expanded_name directly — otu.object_label may include
+// authorship, breaking the exact-name match. Memoized per-component-instance
+// (shared/inatFallback.js's resolveInatTaxonId itself does no caching).
 async function resolveInatTaxonId() {
   if (cache.inatTaxonId) return cache.inatTaxonId
-  if (!props.taxon?.expanded_name) return null
-
-  const { genus, subgenus, epithet } = parseName(props.taxon.expanded_name)
-
-  if (subgenus && !epithet) {
-    const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
-      params: { q: subgenus, rank: 'subgenus', per_page: 10, all_names: true }
-    })
-    const match = data.results.find((t) => {
-      if (t.name.toLowerCase() !== subgenus.toLowerCase()) return false
-      if (t.ancestors?.length) {
-        return t.ancestors.some(
-          (a) => a.rank === 'genus' && a.name.toLowerCase() === genus.toLowerCase()
-        )
-      }
-      return true
-    })
-    cache.inatTaxonId = match ? match.id : null
-    return cache.inatTaxonId
-  }
-
-  const plainName = subgenus && epithet
-    ? `${genus} ${epithet}`
-    : props.taxon.expanded_name
-
-  const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
-    params: { q: plainName, rank: props.taxon.rank, per_page: 10 }
-  })
-  const match = data.results.find(
-    (t) => t.name.toLowerCase() === plainName.toLowerCase()
-  )
-  cache.inatTaxonId = match ? match.id : null
+  cache.inatTaxonId = await resolveInatTaxonIdFor(props.taxon?.expanded_name, props.taxon?.rank)
   return cache.inatTaxonId
-}
-
-function makeTaxonPhotoImage(taxonPhoto) {
-  const photo = taxonPhoto.photo
-  const photoUrl = `https://www.inaturalist.org/photos/${photo.id}`
-  const taxonName = taxonPhoto.taxon?.name || ''
-  return {
-    id: photo.id,
-    thumb: photo.medium_url || photo.url.replace('square', 'medium'),
-    medium: photo.medium_url || photo.url.replace('square', 'medium'),
-    original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
-    attribution: { label: photo.attribution || '' },
-    source: {
-      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${photoUrl}</a>`
-    },
-    depictions: taxonName ? [{ label: taxonName }] : []
-  }
-}
-
-function makeObservationImage(obs, photo) {
-  const obsUrl = `https://www.inaturalist.org/observations/${obs.id}`
-  return {
-    id: photo.id,
-    thumb: photo.url.replace('square', 'medium'),
-    medium: photo.url.replace('square', 'medium'),
-    original: photo.url.replace('square', 'original'),
-    attribution: { label: photo.attribution || '' },
-    source: {
-      label: `<a href="${obsUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${obsUrl}</a>`
-    },
-    depictions: obs.taxon?.name ? [{ label: obs.taxon.name }] : []
-  }
 }
 
 async function fetchInatRecord() {

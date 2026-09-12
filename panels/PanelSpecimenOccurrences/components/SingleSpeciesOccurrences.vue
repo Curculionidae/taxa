@@ -39,14 +39,6 @@
   </div>
 </template>
 
-<script>
-// True module scope (a plain <script> block runs once per module load, unlike
-// <script setup>'s top level which re-runs on every component instantiation —
-// SpeciesBars.vue mounts/unmounts this component via v-if/v-else on every bar
-// click, so this must live outside <script setup> to actually survive that).
-const instNameCache = new Map()
-</script>
-
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { makeAPIRequest } from '@/utils'
@@ -55,6 +47,7 @@ import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
 import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
+import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { groupRecords, groupCountLabel } from '../lib/groupRecords'
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -101,33 +94,6 @@ async function fetchMissingTypeSpecimens(typeLabels, existingRecords) {
   )
 
   return found
-}
-
-async function resolveInstitutionName(code, institutionID) {
-  if (!code) return null
-  if (instNameCache.has(code)) return instNameCache.get(code)
-  try {
-    if (institutionID) {
-      const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?identifier=${encodeURIComponent(institutionID)}`)
-      if (r.ok) {
-        const j = await r.json()
-        if (j.results?.length === 1) {
-          instNameCache.set(code, j.results[0].name)
-          return j.results[0].name
-        }
-      }
-    }
-    const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?code=${encodeURIComponent(code)}`)
-    if (r.ok) {
-      const j = await r.json()
-      if (j.results?.length === 1) {
-        instNameCache.set(code, j.results[0].name)
-        return j.results[0].name
-      }
-    }
-  } catch {}
-  instNameCache.set(code, null)
-  return null
 }
 
 const MAX = 10
@@ -438,7 +404,7 @@ function getCatalogNumberHtml({ catalogNumber }) {
 function getDepositoryData(data) {
   const { institutionCode, institutionID } = data
   if (!institutionCode) return
-  const fullName = instNameCache.get(institutionCode)
+  const fullName = getCachedInstitutionName(institutionCode)
   const display = fullName ? `${fullName} (${institutionCode})` : institutionCode
   return institutionID
     ? `<a href="${institutionID}" target="_blank">${display}</a>`

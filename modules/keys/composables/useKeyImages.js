@@ -19,85 +19,13 @@ import axios from 'axios'
 import { makeAPIRequest } from '@/utils/request'
 import { finestRank } from '../lib/completeness.js'
 import { normalizeKeyImages, indexTaxonMeta } from '../lib/images.js'
+import {
+  resolveInatTaxonId,
+  makeTaxonPhotoImage,
+  makeObservationImage
+} from '../../../panels/_shared/inatFallback.js'
 
 const INAT_MAX = 10
-
-// ── iNaturalist helpers — ported from PanelGallery.vue ────────────────────────
-
-function parseName(expandedName) {
-  const subgenusMatch = String(expandedName).match(/^(\S+)\s+\((\S+)\)(?:\s+(\S+))?$/)
-  if (subgenusMatch) {
-    return {
-      genus: subgenusMatch[1],
-      subgenus: subgenusMatch[2],
-      epithet: subgenusMatch[3] || null
-    }
-  }
-  const parts = String(expandedName).trim().split(/\s+/)
-  return { genus: parts[0], subgenus: null, epithet: parts[1] || null }
-}
-
-async function resolveInatTaxonId(name, rank) {
-  if (!name) return null
-  const { genus, subgenus, epithet } = parseName(name)
-
-  if (subgenus && !epithet) {
-    const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', {
-      params: { q: subgenus, rank: 'subgenus', per_page: 10, all_names: true }
-    })
-    const match = (data.results || []).find((t) => {
-      if (t.name.toLowerCase() !== subgenus.toLowerCase()) return false
-      if (t.ancestors?.length) {
-        return t.ancestors.some(
-          (a) => a.rank === 'genus' && a.name.toLowerCase() === genus.toLowerCase()
-        )
-      }
-      return true
-    })
-    return match ? match.id : null
-  }
-
-  const plainName = subgenus && epithet ? `${genus} ${epithet}` : name
-  const params = { q: plainName, per_page: 10 }
-  if (rank) params.rank = rank
-  const { data } = await axios.get('https://api.inaturalist.org/v1/taxa', { params })
-  const match = (data.results || []).find(
-    (t) => t.name.toLowerCase() === plainName.toLowerCase()
-  )
-  return match ? match.id : null
-}
-
-function makeTaxonPhotoImage(taxonPhoto) {
-  const photo = taxonPhoto.photo
-  const photoUrl = `https://www.inaturalist.org/photos/${photo.id}`
-  const taxonName = taxonPhoto.taxon?.name || ''
-  return {
-    id: photo.id,
-    thumb: photo.medium_url || photo.url.replace('square', 'medium'),
-    medium: photo.medium_url || photo.url.replace('square', 'medium'),
-    original: photo.original_url || photo.large_url || photo.url.replace('square', 'original'),
-    attribution: { label: photo.attribution || '' },
-    source: {
-      label: `<a href="${photoUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${photoUrl}</a>`
-    },
-    depictions: taxonName ? [{ label: taxonName }] : []
-  }
-}
-
-function makeObservationImage(obs, photo) {
-  const obsUrl = `https://www.inaturalist.org/observations/${obs.id}`
-  return {
-    id: photo.id,
-    thumb: photo.url.replace('square', 'medium'),
-    medium: photo.url.replace('square', 'medium'),
-    original: photo.url.replace('square', 'original'),
-    attribution: { label: photo.attribution || '' },
-    source: {
-      label: `<a href="${obsUrl}" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">${obsUrl}</a>`
-    },
-    depictions: obs.taxon?.name ? [{ label: obs.taxon.name }] : []
-  }
-}
 
 // ── loader ───────────────────────────────────────────────────────────────────
 

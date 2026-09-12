@@ -74,24 +74,10 @@ import { ref, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import { rankIndex } from './lib/completeness.js'
+import { extractOtuTagSpan as scopeNameFromObjectTag } from '../../panels/_shared/otuTag.js'
 
 const loading = ref(true)
 const keys = ref([])
-
-// Pull the marked-up scope name ("<i>Adosomus</i> Faust, 1904", "Entimini
-// Schönherr, 1823") out of an OTU object_tag: the inner HTML of the
-// otu_tag_taxon_name / otu_tag_otu_name span, author-year kept, verbatim. The
-// trailing valid-name ✓ sits outside that inner span, so matching to the first
-// </span> already excludes it. `[^>]*>` after the class name tolerates the
-// span's other attributes (title=…) and any extra classes; the otu_name
-// alternative covers name-only OTUs with no linked taxon name.
-// (PanelBiologicalAssociationsV2 matches the same span but reduces it to the
-//  italic construct + "sp." — a different name policy, kept separate on purpose.)
-function scopeNameFromObjectTag(tag) {
-  if (!tag) return null
-  const m = String(tag).match(/otu_tag_(?:taxon_name|otu_name)[^>]*>([\s\S]*?)<\/span>/)
-  return m ? m[1].trim() || null : null
-}
 
 onMounted(async () => {
   try {

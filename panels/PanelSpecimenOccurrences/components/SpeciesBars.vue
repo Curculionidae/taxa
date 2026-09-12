@@ -144,39 +144,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { fetchAllPages } from '../../_shared/fetchAllPages.js'
+import { escHtml, splitScientificName } from '../../_shared/scientificName.js'
 import SingleSpeciesOccurrences from './SingleSpeciesOccurrences.vue'
-
-function escHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-// Mirrors SingleSpeciesOccurrences.vue's splitScientificName exactly (kept
-// as a local duplicate, same reasoning as that file's own escHtml/typeStatusHtml
-// comments) — used only to build display names for species Query 1's
-// complete result adds/replaces once it supersedes Query 2 (see
-// loadOwnTaxonSpecimens), since those species may not have gone through
-// Query 2's own name lookup (taxon_names.json) at all.
-function splitScientificName(name) {
-  const words = (name || '').trim().split(/\s+/)
-  let i = 1
-  while (i < words.length) {
-    const w = words[i]
-    if (/^[a-z]/.test(w)) {
-      i++
-      continue
-    }
-    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) {
-      i++
-      continue
-    }
-    if (/^\[/.test(w)) {
-      i++
-      continue
-    }
-    break
-  }
-  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
-}
 
 const props = defineProps({
   taxonId: {

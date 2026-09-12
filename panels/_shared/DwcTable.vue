@@ -566,6 +566,7 @@ import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef } from './specimenRef.js'
 import { stripHtml, shortCitation } from './citationText.js'
+import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
 import ReferenceModal from './ReferenceModal.vue'
 
 // Lets a host that renders this above its own overlay (ImageLightbox's ⓘ button)
@@ -718,23 +719,6 @@ const metaDate = computed(() => {
   return null
 })
 
-function escHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function splitScientificName(name) {
-  const words = (name || '').trim().split(/\s+/)
-  let i = 1
-  while (i < words.length) {
-    const w = words[i]
-    if (/^[a-z]/.test(w)) { i++; continue }
-    if (/^\(/.test(w) && /^[a-z]/.test(words[i + 1] || '')) { i++; continue }
-    if (/^\[/.test(w)) { i++; continue }
-    break
-  }
-  return { italic: words.slice(0, i).join(' '), plain: words.slice(i).join(' ') }
-}
-
 const scientificNameParts = computed(() =>
   dwc.value?.scientificName ? splitScientificName(dwc.value.scientificName) : { italic: '', plain: '' }
 )
@@ -744,15 +728,7 @@ const scientificNameSuffix = computed(() => {
   return plain ? ' ' + escHtml(plain) : ''
 })
 
-const typeStatusHtml = computed(() => {
-  const s = dwc.value?.typeStatus
-  if (!s) return ''
-  const idx = s.indexOf(' of ')
-  if (idx === -1) return escHtml(s)
-  const prefix = s.slice(0, idx + 4)
-  const { italic, plain } = splitScientificName(s.slice(idx + 4))
-  return escHtml(prefix) + (italic ? `<em>${escHtml(italic)}</em>` : '') + (plain ? ` ${escHtml(plain)}` : '')
-})
+const typeStatusHtml = computed(() => buildTypeStatusHtml(dwc.value?.typeStatus))
 
 async function loadMediaImages(associatedMedia) {
   const links = associatedMedia.split('|').map(l => l.trim()).filter(Boolean)

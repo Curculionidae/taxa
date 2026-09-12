@@ -567,6 +567,7 @@ import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef } from './specimenRef.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
+import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
 import ReferenceModal from './ReferenceModal.vue'
 
 // Lets a host that renders this above its own overlay (ImageLightbox's ⓘ button)
@@ -621,62 +622,6 @@ const taxonWorksUrl = computed(() => {
   if (!currentId.value || !itemType.value) return null
   return `${TW_BASE}${TW_RECORD_PATH[itemType.value](currentId.value)}`
 })
-
-// Module-level caches: code → full name (institution and collection are
-// separate GRSciColl record types, e.g. code "NHRS" resolves to the
-// institution "Swedish Museum of Natural History" but is also, confusingly,
-// the code of its "Department of Entomology" collection — cache separately).
-const instNameCache = new Map()
-const collNameCache = new Map()
-
-async function resolveInstitutionName(code, institutionID) {
-  if (!code) return null
-  if (instNameCache.has(code)) return instNameCache.get(code)
-  try {
-    if (institutionID) {
-      const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?identifier=${encodeURIComponent(institutionID)}`)
-      if (r.ok) {
-        const j = await r.json()
-        if (j.results?.length === 1) {
-          instNameCache.set(code, j.results[0].name)
-          return j.results[0].name
-        }
-      }
-    }
-    const r = await fetch(`https://api.gbif.org/v1/grscicoll/institution?code=${encodeURIComponent(code)}`)
-    if (r.ok) {
-      const j = await r.json()
-      if (j.results?.length === 1) {
-        instNameCache.set(code, j.results[0].name)
-        return j.results[0].name
-      }
-    }
-  } catch {}
-  instNameCache.set(code, null)
-  return null
-}
-
-// Only called when collectionCode differs from institutionCode, i.e. it
-// names a sub-collection — pass institutionCode to disambiguate the search.
-async function resolveCollectionName(code, institutionCode) {
-  if (!code) return null
-  const cacheKey = `${institutionCode || ''}|${code}`
-  if (collNameCache.has(cacheKey)) return collNameCache.get(cacheKey)
-  try {
-    const params = new URLSearchParams({ code })
-    if (institutionCode) params.set('institutionCode', institutionCode)
-    const r = await fetch(`https://api.gbif.org/v1/grscicoll/collection?${params}`)
-    if (r.ok) {
-      const j = await r.json()
-      if (j.results?.length === 1) {
-        collNameCache.set(cacheKey, j.results[0].name)
-        return j.results[0].name
-      }
-    }
-  } catch {}
-  collNameCache.set(cacheKey, null)
-  return null
-}
 
 const typeLabel = computed(() => TYPE_LABELS[itemType.value] ?? itemType.value)
 

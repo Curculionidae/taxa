@@ -48,6 +48,7 @@ import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
 import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
+import { formatEventDate } from '../../_shared/eventDate.js'
 import { groupRecords, groupCountLabel } from '../lib/groupRecords'
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -425,9 +426,7 @@ function getCollector({ recordedBy }) {
   return recordedBy ? `leg. ${recordedBy}` : ''
 }
 
-function getDate({ eventDate, year, month, day }) {
-  return eventDate || [year, month, day].filter(Boolean).join('-')
-}
+const getDate = formatEventDate
 
 // Matches the ±250m / ±2.5km convention already established for this exact
 // field elsewhere (CollectionDatabase's format_coordinates): meters below

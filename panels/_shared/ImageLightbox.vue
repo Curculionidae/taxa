@@ -206,7 +206,7 @@ import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.
 import { makeAPIRequest } from '@/utils/request'
 import { fetchImageCitations, imageIdFromOriginalPng } from './imageCitations.js'
 import { stripHtml, shortCitation } from './citationText.js'
-import { splitScientificName as splitName } from './scientificName.js'
+import { escHtml, splitScientificName as splitName } from './scientificName.js'
 import ReferenceModal from './ReferenceModal.vue'
 
 // Async both ways: DwcTable imports this file back (its media strip opens this
@@ -386,7 +386,7 @@ watch(
 // Minimum 3 chars per lowercase word to skip prepositions (of, at, in).
 function italicizeNames(text) {
   if (!text) return ''
-  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const escaped = escHtml(text)
   return escaped.replace(
     /\b([A-Z][a-z]+(?:\s+\([A-Z][a-z]+\))?)(\s+(?:\[[^\]]*\]\s+)?[a-z][a-z]{2,}(?:\s+[a-z][a-z]{2,})*)/g,
     '<em>$1$2</em>'

@@ -8,7 +8,7 @@
  *
  * Depended on by:
  *   - ./DwcTable.vue
- *   - ./ImageLightbox.vue (splitScientificName only, imported as splitName)
+ *   - ./ImageLightbox.vue (escHtml + splitScientificName, the latter imported as splitName)
  *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
  *   - ../PanelSpecimenOccurrences/components/SpeciesBars.vue
  *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js

@@ -21,7 +21,12 @@
       link: /keys
 
     - label: Bibliography
-      link: /resources/tw/filter/bibliography
+      submenu:
+        - label: Search
+          link: /resources/tw/filter/bibliography
+
+        - label: Recent additions
+          link: /bibliography/recent
 
     - label: About
       submenu:

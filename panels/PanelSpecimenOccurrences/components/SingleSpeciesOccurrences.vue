@@ -403,13 +403,24 @@ function getCatalogNumberHtml({ catalogNumber }) {
   return catalogNumber ? `<span class="font-mono text-secondary">${escHtml(catalogNumber)}</span>` : ''
 }
 
+// Only http(s) institutionIDs become links (a GRBio/GRSciColl URL in practice);
+// anything else (a bare identifier, or a javascript: URL) renders as plain text.
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || '').trim())
+}
+
+// escHtml doesn't escape quotes, so an href attribute needs its own pass.
+function escAttr(s) {
+  return escHtml(s).replace(/"/g, '&quot;')
+}
+
 function getDepositoryData(data) {
   const { institutionCode, institutionID } = data
   if (!institutionCode) return
   const fullName = getCachedInstitutionName(institutionCode)
-  const display = fullName ? `${fullName} (${institutionCode})` : institutionCode
-  return institutionID
-    ? `<a href="${institutionID}" target="_blank">${display}</a>`
+  const display = escHtml(fullName ? `${fullName} (${institutionCode})` : institutionCode)
+  return isHttpUrl(institutionID)
+    ? `<a href="${escAttr(institutionID.trim())}" target="_blank" rel="noopener">${display}</a>`
     : `<span>${display}</span>`
 }
 

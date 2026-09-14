@@ -220,7 +220,7 @@
                     <span v-if="item.identificationQualifierHtml" class="shrink-0" v-html="item.identificationQualifierHtml" />
                   </div>
                   <span class="font-medium">{{ item.headline }}</span>
-                  <span class="text-xs" v-html="item.summary" />
+                  <span class="text-xs">{{ item.summary }}</span>
                 </div>
                 <details v-if="item.recordEntries" class="text-xs group">
                   <summary class="cursor-pointer text-secondary opacity-60 hover:opacity-100 select-none list-none flex items-center gap-1.5">

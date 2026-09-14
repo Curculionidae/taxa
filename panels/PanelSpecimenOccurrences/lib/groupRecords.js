@@ -2,41 +2,73 @@
 // list. No network calls, no Vue — testable with a plain Node script.
 // See docs/superpowers/specs/2026-08-26-merge-specimen-occurrence-panels-design.md
 
+// Records collapse into one row when they share a collecting event.
+//
+// A CollectionObject carries `collectingEventId` (TaxonWorks'
+// collecting_event_id, attached by SingleSpeciesOccurrences.vue from
+// /collection_objects, since DwC has no event ID). That is the exact
+// identity, so those records group on it.
+//
+// FieldOccurrences have no public route exposing their collecting event,
+// and a CollectionObject lookup can fail, so those fall back to comparing
+// every DwC field a collecting event populates. The fallback must list all
+// of them, not just the ones the row text shows: a sample of 5000 sfg
+// specimens had 20 of 110 field-key groups mixing different events that
+// differed only in habitat or samplingProtocol (2026-09-14).
 const EVENT_FIELDS = [
   'country',
   'stateProvince',
   'county',
+  'municipality',
+  'waterBody',
+  'islandGroup',
+  'island',
+  'locality',
   'verbatimLocality',
+  'verbatimCoordinates',
+  'decimalLatitude',
+  'decimalLongitude',
+  'coordinateUncertaintyInMeters',
+  'minimumElevationInMeters',
+  'maximumElevationInMeters',
+  'habitat',
+  'samplingProtocol',
+  'fieldNumber',
   'eventDate',
+  'verbatimEventDate',
+  'eventTime',
+  'year',
+  'month',
+  'day',
   'recordedBy'
 ]
 
-// Grouping key also splits by institutionCode (fix #5: same-event specimens
-// held at different institutions must not collapse into one row) and by
-// year/month/day (the display layer's getDate() falls back to these when
-// eventDate is blank — common for older, partially-dated museum lots — so
-// two records with blank eventDate but different year/month/day must not
-// collapse into a group whose date label can only show one of them). All
-// kept separate from EVENT_FIELDS because hasNoEventFields() below must
-// only look at genuine collecting-event data, not institution.
-const KEY_FIELDS = [...EVENT_FIELDS, 'institutionCode', 'year', 'month', 'day']
-
+// Every key also splits by object type, typeStatus and institutionCode:
+// same-event specimens held at different institutions must not collapse
+// into one row. institutionCode stays out of EVENT_FIELDS because
+// hasNoEventFields() below must only look at genuine collecting-event data.
 export function buildGroupKey(record) {
-  return JSON.stringify(
-    [record.dwc_occurrence_object_type, record.typeStatus || ''].concat(
-      KEY_FIELDS.map((f) => record[f] || '')
-    )
-  )
+  const base = [record.dwc_occurrence_object_type, record.typeStatus || '', record.institutionCode || '']
+  if (hasCollectingEventId(record)) {
+    return JSON.stringify([...base, 'collecting_event', record.collectingEventId])
+  }
+  // String(): endpoints disagree on numeric DwC fields (year 1999 vs "1999").
+  return JSON.stringify([...base, ...EVENT_FIELDS.map((f) => String(record[f] ?? ''))])
+}
+
+function hasCollectingEventId(record) {
+  return record.dwc_occurrence_object_type === 'CollectionObject' && record.collectingEventId != null
 }
 
 // A record with no collecting-event data at all (old, unlocalized museum
 // specimens) gets its own singleton group rather than key-matching other
-// blank records. Must check only EVENT_FIELDS, not institutionCode: an
-// unlocalized specimen almost always has institutionCode populated, so
-// including it here would collapse unrelated unlocalized specimens at the
-// same institution into one row.
+// blank records. Only applies to the field fallback: a shared
+// collectingEventId is a real shared event even when its fields are empty.
+// Must check only EVENT_FIELDS, not institutionCode: an unlocalized
+// specimen almost always has institutionCode populated, so including it
+// would collapse unrelated unlocalized specimens at the same institution.
 function hasNoEventFields(record) {
-  return EVENT_FIELDS.every((f) => !record[f])
+  return !hasCollectingEventId(record) && EVENT_FIELDS.every((f) => !record[f])
 }
 
 function hasMedia(records) {

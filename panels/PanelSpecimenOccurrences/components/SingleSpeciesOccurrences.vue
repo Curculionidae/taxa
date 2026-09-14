@@ -50,6 +50,7 @@ import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js
 import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
+import { mapPool } from '../../_shared/concurrencyPool.js'
 import { groupRecords, groupCountLabel } from '../lib/groupRecords'
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -96,6 +97,42 @@ async function fetchMissingTypeSpecimens(typeLabels, existingRecords) {
   )
 
   return found
+}
+
+const COLLECTING_EVENT_BATCH = 200
+
+// DwC rows carry no collecting event ID, so groupRecords.js would have to
+// guess shared events from field text. /collection_objects does expose
+// collecting_event_id; look it up by the exact CO ids in hand (not by
+// otu_id, since preloaded genus data and fetchMissingTypeSpecimens() can
+// hold records determined to other OTUs). Returns Map<coId, ceId>; on any
+// failure an empty map, and grouping falls back to the DwC field key.
+async function fetchCollectingEventIds(records) {
+  const ids = [...new Set(
+    records
+      .filter((r) => r.dwc_occurrence_object_type === 'CollectionObject')
+      .map((r) => r.dwc_occurrence_object_id)
+      .filter(Boolean)
+  )]
+  const batches = []
+  for (let i = 0; i < ids.length; i += COLLECTING_EVENT_BATCH) {
+    batches.push(ids.slice(i, i + COLLECTING_EVENT_BATCH))
+  }
+
+  const eventIdByCo = new Map()
+  try {
+    await mapPool(batches, 4, async (batch) => {
+      const { data } = await makeAPIRequest.get('/collection_objects.json', {
+        params: { collection_object_id: batch, per: COLLECTING_EVENT_BATCH }
+      })
+      data.forEach((co) => {
+        if (co.collecting_event_id != null) eventIdByCo.set(co.id, co.collecting_event_id)
+      })
+    })
+  } catch {
+    return new Map()
+  }
+  return eventIdByCo
 }
 
 const MAX = 10
@@ -330,10 +367,18 @@ function loadDwc() {
           .map((d) => resolveInstitutionName(d.institutionCode, d.institutionID))
       )
 
-      await Promise.all([mediaPromise, institutionPromise])
+      const [eventIdByCo] = await Promise.all([
+        fetchCollectingEventIds(scoped),
+        mediaPromise,
+        institutionPromise
+      ])
 
       dwcRecords.value = scoped.map((d) => ({
         ...d,
+        collectingEventId:
+          d.dwc_occurrence_object_type === 'CollectionObject'
+            ? eventIdByCo.get(d.dwc_occurrence_object_id) ?? null
+            : null,
         headline: getHeadline(d),
         summary: makeSummary(d)
       }))
@@ -384,10 +429,12 @@ function getLocalityDetail(data) {
 }
 
 // The detail line under the identity line: everything about WHEN/WHERE it
-// was collected. Locality/date/coordinates/collector are shared across
-// every record in a collapsed group (that's what groupRecords.js groups
-// by), so this is safe to compute once per record at load time and reuse
-// as-is for a group row (see toListItem's `first.summary`).
+// was collected. A collapsed group shares one collecting event (the real
+// collecting_event_id for specimens, else every DwC event field is equal,
+// see groupRecords.js), and each field read here belongs to the collecting
+// event, so computing it once per record and reusing `first.summary` for a
+// group row (see toListItem) cannot misattribute a place or date. Any field
+// added here must be a collecting-event field listed in EVENT_FIELDS there.
 function makeSummary(item) {
   return [
     getLocalityDetail(item),

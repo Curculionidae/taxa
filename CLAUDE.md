@@ -26,11 +26,29 @@ CLI: `taxonpages package list/add/remove/unpack` manages panels and packages.
 - To do list for CLAUDE: `docs/Task_toDo.md`
 - TaxonWorks API documentation: https://github.com/SpeciesFileGroup/taxonworks_api (local copy may be available)
 - TaxonWorks source repo: https://github.com/SpeciesFileGroup/taxonworks (local copy may be avalable)
+- TaxonPages framework source (the actual npm package's upstream dev repo, SpeciesFileGroup/taxonpages, forked as weevil-see/taxonpages): sibling directory `../taxonpages` (i.e. `TaxonPagesDev/taxonpages`). Its `setup` branch there is just a config scaffold; the real framework source history is on its `development` branch. Currently running `@sfgrp/taxonpages` v0.7.4 there vs this project's pinned v0.7.2 — useful for checking what changed before upgrading, or for reading the framework's own panel/service code when `node_modules` alone isn't enough context.
+- This repo's own branches not merged into `setup`: `bibliography-source-records` and `home-stats-strip` (each carry one unmerged file, `panels/PanelKeys/geographyCategories.js`, superseded by `modules/keys/lib/geoData.js`, check before assuming it's fully dead) and remote `origin/lightbox-consolidation` (one unmerged commit reworking `panels/_shared/ImageLightbox.vue`, including a `minimal`-prop idea for caption-only rendering that `modules/keys/components/LeadFigures.vue` currently solves differently via implicit data-absence guards).
 
 ## Critical: path alias
 
 `@/` resolves to **`node_modules/@sfgrp/taxonpages/src/`**, NOT to the local `taxa/` tree.
 So `@/utils/request`, `@/components/...`, `@/constants/objectTypes` etc. all come from the package.
+
+## Framework internals: panel/module discovery
+
+Verified against the framework's own `src/plugins/vite/discoverPackages.js`: a `panels/<Name>/` folder
+only registers as a real panel if it contains a `main.js` (`discoverLocalPanels` filters on
+`existsSync(.../main.js)`); a `modules/<name>/` folder only registers as a module if it has a `router/`
+subdirectory. This is why `panels/_shared/` and `panels/_gbifShared/` (no `main.js`) are silently
+invisible to the panel system, not an assumption, confirmed from source.
+
+The framework also ships its own built-in panels
+(`node_modules/@sfgrp/taxonpages/src/modules/otus/components/Panel/*`) and, notably, its own built-in
+dichotomous-key viewer at `node_modules/@sfgrp/taxonpages/src/modules/keys/` (built on a `VuePinpoint`
+library, an entirely different UI/architecture from ours). Per the framework's local-folder-priority
+rule, this project's own `modules/keys/` fully shadows and replaces that core module, the core keys
+viewer is dead code as far as this project is concerned. Don't be confused finding "keys" in both
+places; only this project's own `modules/keys/` is ever reached.
 
 ## Tailwind v4 — color utilities
 
@@ -215,6 +233,30 @@ Import example (from `panels/PanelBiologicalAssociationsV2/`): `import DwcTable 
 ## specimenRef.js
 
 `panels/_shared/specimenRef.js` — exports `isSpecimenType(type)` and `resolveSpecimenRef(entity)`. Resolves a biological-association subject/object entity to the physical CollectionObject/FieldOccurrence it refers to, even when the entity is an `AnatomicalPart` wrapping one (parses `"nidus: FieldOccurrence 4996; <uuid>; ..."`-style `object_label` text — TaxonWorks never exposes the wrapped specimen as a structured field). Depended on by `PanelBiologicalAssociationsV2/makeBiologicalAssociation.js` (locality/collector lookup, the "ⓘ" button), `_shared/DwcTable.vue` (finding associations reachable via a wrapping AnatomicalPart), and `PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue` (indexing every association for the OTU once to show the primary one inline on each list row). If you change it, check all three call sites.
+
+## scientificName.js
+
+`panels/_shared/scientificName.js` — shared scientific-name text helpers: `escHtml` (null-safe HTML
+escaping), `splitScientificName` (splits "Genus (Subgenus) species [sic] Author, Year" into an italic
+name part + plain authorship part), `typeStatusHtml` (builds italicized HTML for a DwC typeStatus
+string, e.g. "holotype of Genus species Author, Year").
+
+Consolidated 2026-09-12 from 7 independently copy-pasted implementations across `DwcTable.vue`,
+`ImageLightbox.vue`, `PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue`,
+`PanelSpecimenOccurrences/components/SpeciesBars.vue`,
+`PanelBiologicalAssociationsV2/makeBiologicalAssociation.js`, `PanelMapV2/components/MapPopup.vue`,
+`modules/keys/composables/useKeyTaxonNames.js`, `modules/keys/components/TaxonLink.vue`. Fixed two real
+bugs found in the process:
+- `typeStatusHtml` splits on the LAST `" of "` (not the first): `DwcTable.vue` and
+  `SingleSpeciesOccurrences.vue` previously split on the first, mis-italicizing statuses like "one of
+  the syntypes of Aus bus Author, 1900".
+- `escHtml` is null/undefined-safe (returns `''`, not the literal string "null"/"undefined"): 6 of the
+  7 prior copies weren't.
+
+`MapPopup.vue` keeps its own separate `splitName` (a different regex-based algorithm for OTU
+target-label name/author splitting, not typeStatus parsing), deliberately not folded in.
+
+If you change this file, sanity-check all 8 call sites (listed in the file's own docblock).
 
 ## Institution name lookup
 

@@ -33,6 +33,7 @@
             <VTableHeaderRow>
               <VTableHeaderCell class="w-2" />
               <VTableHeaderCell>Sources</VTableHeaderCell>
+              <VTableHeaderCell class="whitespace-nowrap">Added</VTableHeaderCell>
             </VTableHeaderRow>
           </VTableHeader>
           <VTableBody>
@@ -53,6 +54,9 @@
                 class="break-all text-base-content"
                 v-html="sanitizeAndLinkifyHtml(item.cached)"
               />
+              <VTableBodyCell class="whitespace-nowrap text-base-content align-top">
+                {{ formatDate(item.created_at) }}
+              </VTableBodyCell>
             </VTableBodyRow>
           </VTableBody>
         </VTable>
@@ -74,6 +78,7 @@
 <script setup>
 import { ref, onBeforeMount } from 'vue'
 import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
+import { getPagination } from '@/modules/bibliography/utils'
 import DropdownMenu from '@/modules/bibliography/components/DropdownMenu.vue'
 import OtuModal from '@/modules/bibliography/components/OtuModal.vue'
 
@@ -84,12 +89,12 @@ const isLoading = ref(false)
 const pagination = ref({ page: 1, total: 0, per: PER })
 const requestData = ref()
 
-function getPagination(headers) {
-  return {
-    page: Number(headers['pagination-page']),
-    per: Number(headers['pagination-per-page']),
-    total: Number(headers['pagination-total'])
-  }
+function formatDate(date) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(date))
 }
 
 function loadList(page = 1) {

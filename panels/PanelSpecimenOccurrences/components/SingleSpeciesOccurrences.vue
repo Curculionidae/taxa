@@ -50,8 +50,7 @@ import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js
 import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
-import { mapPool } from '../../_shared/concurrencyPool.js'
-import { groupRecords, groupCountLabel } from '../lib/groupRecords'
+import { groupRecords, groupCountLabel, PER_RECORD_EVENT_FIELDS } from '../lib/groupRecords'
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
@@ -97,42 +96,6 @@ async function fetchMissingTypeSpecimens(typeLabels, existingRecords) {
   )
 
   return found
-}
-
-const COLLECTING_EVENT_BATCH = 200
-
-// DwC rows carry no collecting event ID, so groupRecords.js would have to
-// guess shared events from field text. /collection_objects does expose
-// collecting_event_id; look it up by the exact CO ids in hand (not by
-// otu_id, since preloaded genus data and fetchMissingTypeSpecimens() can
-// hold records determined to other OTUs). Returns Map<coId, ceId>; on any
-// failure an empty map, and grouping falls back to the DwC field key.
-async function fetchCollectingEventIds(records) {
-  const ids = [...new Set(
-    records
-      .filter((r) => r.dwc_occurrence_object_type === 'CollectionObject')
-      .map((r) => r.dwc_occurrence_object_id)
-      .filter(Boolean)
-  )]
-  const batches = []
-  for (let i = 0; i < ids.length; i += COLLECTING_EVENT_BATCH) {
-    batches.push(ids.slice(i, i + COLLECTING_EVENT_BATCH))
-  }
-
-  const eventIdByCo = new Map()
-  try {
-    await mapPool(batches, 4, async (batch) => {
-      const { data } = await makeAPIRequest.get('/collection_objects.json', {
-        params: { collection_object_id: batch, per: COLLECTING_EVENT_BATCH }
-      })
-      data.forEach((co) => {
-        if (co.collecting_event_id != null) eventIdByCo.set(co.id, co.collecting_event_id)
-      })
-    })
-  } catch {
-    return new Map()
-  }
-  return eventIdByCo
 }
 
 const MAX = 10
@@ -367,18 +330,10 @@ function loadDwc() {
           .map((d) => resolveInstitutionName(d.institutionCode, d.institutionID))
       )
 
-      const [eventIdByCo] = await Promise.all([
-        fetchCollectingEventIds(scoped),
-        mediaPromise,
-        institutionPromise
-      ])
+      await Promise.all([mediaPromise, institutionPromise])
 
       dwcRecords.value = scoped.map((d) => ({
         ...d,
-        collectingEventId:
-          d.dwc_occurrence_object_type === 'CollectionObject'
-            ? eventIdByCo.get(d.dwc_occurrence_object_id) ?? null
-            : null,
         headline: getHeadline(d),
         summary: makeSummary(d)
       }))
@@ -429,12 +384,11 @@ function getLocalityDetail(data) {
 }
 
 // The detail line under the identity line: everything about WHEN/WHERE it
-// was collected. A collapsed group shares one collecting event (the real
-// collecting_event_id for specimens, else every DwC event field is equal,
-// see groupRecords.js), and each field read here belongs to the collecting
-// event, so computing it once per record and reusing `first.summary` for a
-// group row (see toListItem) cannot misattribute a place or date. Any field
-// added here must be a collecting-event field listed in EVENT_FIELDS there.
+// was collected. Records in a collapsed group are equal in every field read
+// here (groupRecords.js keys on all DwC collecting-event fields), so
+// computing it once per record and reusing `first.summary` for a group row
+// (see toListItem) cannot misattribute a place or date. Any field added
+// here must be listed in EVENT_FIELDS there, never PER_RECORD_EVENT_FIELDS.
 function makeSummary(item) {
   return [
     getLocalityDetail(item),
@@ -634,9 +588,35 @@ function makeIdentityHtml(group) {
     if (det) parts.push(det)
     const bio = bioAssociationHtml(first)
     if (bio) parts.push(bio)
+  } else {
+    // An association every record in the group shares is a group fact;
+    // differing ones are listed per record instead (recordDifferencesHtml).
+    const bios = new Set(group.records.map(bioAssociationHtml))
+    const [bio] = bios
+    if (bios.size === 1 && bio) parts.push(bio)
   }
 
   return parts.join(' <span class="opacity-30">·</span> ')
+}
+
+const PER_RECORD_FIELD_LABELS = { habitat: 'habitat', samplingProtocol: 'sampling protocol' }
+const DOT_HTML = ' <span class="opacity-30">·</span> '
+
+// What sets one record of a collapsed group apart: the fields groupRecords.js
+// allows to differ inside a group (habitat, samplingProtocol) and its
+// biological associations, each shown only when it actually differs across
+// the group. A value missing on some records reads "not recorded".
+function recordDifferencesHtml(record, records) {
+  const parts = []
+  PER_RECORD_EVENT_FIELDS.forEach((field) => {
+    if (new Set(records.map((r) => String(r[field] ?? ''))).size < 2) return
+    const value = record[field] ? escHtml(record[field]) : '<span class="opacity-60">not recorded</span>'
+    parts.push(`<span class="opacity-60">${PER_RECORD_FIELD_LABELS[field]}</span> ${value}`)
+  })
+  if (new Set(records.map(bioAssociationHtml)).size > 1) {
+    parts.push(bioAssociationHtml(record) || '<span class="opacity-60">no association</span>')
+  }
+  return parts.length ? DOT_HTML + parts.join(DOT_HTML) : ''
 }
 
 // The only place raw dwc_occurrence_object_id/dwc_occurrence_object_type are
@@ -649,10 +629,11 @@ function toDetailRef(record) {
 
 // Catalog numbers aren't a primary identifier for this database, so a plain
 // ordinal fallback is fine when one isn't recorded.
-function toRecordEntry(record, index) {
+function toRecordEntry(record, index, records) {
   return {
     key: record.id ?? index,
     label: record.catalogNumber || `Record ${index + 1}`,
+    differencesHtml: recordDifferencesHtml(record, records),
     detail: toDetailRef(record)
   }
 }
@@ -720,7 +701,7 @@ function toListItem(group) {
     headline: first.headline,
     summary: first.summary,
     associatedMedia: media,
-    recordEntries: group.records.map(toRecordEntry),
+    recordEntries: group.records.map((record, index) => toRecordEntry(record, index, group.records)),
     detail: null
   }
 }

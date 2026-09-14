@@ -6,6 +6,7 @@ const co = (id, fields = {}) => ({
   id,
   dwc_occurrence_object_type: 'CollectionObject',
   dwc_occurrence_object_id: id,
+  scientificName: 'Lixus cardui',
   country: 'Ukraine',
   verbatimLocality: 'Vinnytsia',
   eventDate: '2020-06-01',
@@ -15,45 +16,32 @@ const co = (id, fields = {}) => ({
 const fo = (id, fields = {}) => ({ ...co(id, fields), dwc_occurrence_object_type: 'FieldOccurrence' })
 const sizes = (records) => groupRecords(records).map((g) => g.records.length).sort()
 
-test('specimens with different collecting events stay separate even when DwC text matches', () => {
-  assert.deepEqual(sizes([co(1, { collectingEventId: 10 }), co(2, { collectingEventId: 11 })]), [1, 1])
+test('records differing only in habitat or samplingProtocol collapse', () => {
+  assert.deepEqual(sizes([co(1, { habitat: 'meadow' }), co(2, { habitat: 'marsh', samplingProtocol: 'sweeping' })]), [2])
+  assert.deepEqual(sizes([fo(1, { samplingProtocol: 'light trap' }), fo(2)]), [2])
 })
 
-test('specimens sharing a collecting event collapse even when a DwC field differs', () => {
-  assert.deepEqual(sizes([co(1, { collectingEventId: 10 }), co(2, { collectingEventId: 10, habitat: 'marsh' })]), [2])
-})
-
-test('a shared collecting event with no event fields still collapses', () => {
-  const blank = { country: null, verbatimLocality: null, eventDate: null, recordedBy: null }
-  assert.deepEqual(sizes([co(1, { ...blank, collectingEventId: 10 }), co(2, { ...blank, collectingEventId: 10 })]), [2])
-})
-
-test('institutionCode still splits a shared collecting event', () => {
-  assert.deepEqual(
-    sizes([co(1, { collectingEventId: 10, institutionCode: 'A' }), co(2, { collectingEventId: 10, institutionCode: 'B' })]),
-    [1, 1]
-  )
-})
-
-test('fallback splits on fields the row text shows (coordinates, locality)', () => {
+test('fields the row text shows split groups (coordinates, locality)', () => {
   assert.deepEqual(sizes([fo(1, { verbatimCoordinates: 'N44.73 E34.33' }), fo(2, { verbatimCoordinates: 'N44.75 E34.31' })]), [1, 1])
   assert.deepEqual(sizes([fo(1, { locality: 'A' }), fo(2, { locality: 'B' })]), [1, 1])
 })
 
-test('fallback splits on event fields not shown in the row (habitat)', () => {
-  assert.deepEqual(sizes([fo(1, { habitat: 'meadow' }), fo(2, { habitat: 'marsh' })]), [1, 1])
+test('event fields not shown in the row still split groups (elevation, fieldNumber)', () => {
+  assert.deepEqual(sizes([co(1, { minimumElevationInMeters: 100 }), co(2, { minimumElevationInMeters: 900 })]), [1, 1])
+  assert.deepEqual(sizes([co(1, { fieldNumber: 'A1' }), co(2)]), [1, 1])
 })
 
-test('fallback collapses identical events and ignores number vs string', () => {
+test('institutionCode and scientificName split groups', () => {
+  assert.deepEqual(sizes([co(1, { institutionCode: 'A' }), co(2, { institutionCode: 'B' })]), [1, 1])
+  assert.deepEqual(sizes([co(1), co(2, { scientificName: 'Lixus cardui cardui' })]), [1, 1])
+})
+
+test('identical events collapse, number vs string is ignored', () => {
   assert.deepEqual(sizes([fo(1, { year: 2020 }), fo(2, { year: '2020' })]), [2])
 })
 
-test('specimen without a collecting event id uses the fallback', () => {
-  assert.deepEqual(sizes([co(1), co(2)]), [2])
-  assert.deepEqual(sizes([co(1), co(2, { habitat: 'marsh' })]), [1, 1])
-})
-
-test('records with no event data stay singletons', () => {
+test('records with no event data stay singletons, even with a habitat', () => {
   const blank = { country: null, verbatimLocality: null, eventDate: null, recordedBy: null, institutionCode: 'A' }
   assert.deepEqual(sizes([fo(1, blank), fo(2, blank)]), [1, 1])
+  assert.deepEqual(sizes([fo(1, { ...blank, habitat: 'marsh' }), fo(2, { ...blank, habitat: 'marsh' })]), [1, 1])
 })

@@ -12,19 +12,19 @@ per-species aggregate view).
 
 ## Grouping by collecting event
 
-DwC rows carry no collecting event id. `fetchCollectingEventIds()` looks up
-`collecting_event_id` for every CollectionObject via
-`/collection_objects.json?collection_object_id[]=` (batches of 200), and
-`groupRecords.js` collapses specimens that share it (still split by type status
-and institutionCode). FieldOccurrences have no public route to their collecting
-event, so they, and every record when that lookup fails, use a fallback key over
-all DwC collecting-event fields (`EVENT_FIELDS`). A group row shows its first
-record's summary, so any field added to the row summary must be a
-collecting-event field and must be listed in `EVENT_FIELDS`.
+`groupRecords.js` collapses records only when they are otherwise exactly the
+same: object type, type status, institutionCode, scientificName and every DwC
+collecting-event field (`EVENT_FIELDS`). The only fields allowed to differ inside
+a group are `habitat` and `samplingProtocol` (`PER_RECORD_EVENT_FIELDS`), plus
+biological associations. Wherever those differ, the group's "Individual records"
+list shows them per record (`recordDifferencesHtml()` in
+`SingleSpeciesOccurrences.vue`); an association shared by the whole group is
+shown once on the group row.
 
-TaxonWorks contains duplicate collecting events with identical data; with ids
-they stay separate rows, in the fallback they merge. Tests:
-`lib/groupRecords.test.js` (part of `npm test`).
+A group row shows its first record's summary, so any field added to the row
+summary must be listed in `EVENT_FIELDS`. Grouping deliberately ignores
+`collecting_event_id`: records differing in habitat are on different collecting
+events by definition. Tests: `lib/groupRecords.test.js` (part of `npm test`).
 - `SpeciesBars.vue` — per-species bars for a higher taxon; expanding one mounts
   `SingleSpeciesOccurrences` for that species.
 - `ListRecords.vue`, `MultiSelect.vue` — presentational.

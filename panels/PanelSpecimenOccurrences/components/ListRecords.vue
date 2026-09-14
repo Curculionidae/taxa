@@ -235,7 +235,7 @@
                       class="rounded px-1 py-0.5 -mx-1"
                       :class="entry.detail ? 'cursor-pointer text-secondary hover:bg-base-muted' : ''"
                       @click="entry.detail && emit('show-detail', entry.detail)"
-                    >{{ entry.label }}</li>
+                    >{{ entry.label }}<span v-if="entry.differencesHtml" class="text-base-content" v-html="entry.differencesHtml" /></li>
                   </ul>
                 </details>
                 <GalleryThumbnailList

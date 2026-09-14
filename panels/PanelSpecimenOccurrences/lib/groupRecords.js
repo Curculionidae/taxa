@@ -2,19 +2,20 @@
 // list. No network calls, no Vue — testable with a plain Node script.
 // See docs/superpowers/specs/2026-08-26-merge-specimen-occurrence-panels-design.md
 
-// Records collapse into one row when they share a collecting event.
+// Records collapse into one row only when they are otherwise exactly the
+// same: object type, typeStatus, institutionCode, scientificName and every
+// DwC collecting-event field below. The one exception (user decision
+// 2026-09-14) is PER_RECORD_EVENT_FIELDS, which may differ inside a group,
+// as may biological associations (never part of the key). Those
+// differences are listed per record in the group's "Individual records"
+// disclosure (SingleSpeciesOccurrences.vue recordDifferencesHtml), so the
+// group row never implies one value for all of its records.
 //
-// A CollectionObject carries `collectingEventId` (TaxonWorks'
-// collecting_event_id, attached by SingleSpeciesOccurrences.vue from
-// /collection_objects, since DwC has no event ID). That is the exact
-// identity, so those records group on it.
-//
-// FieldOccurrences have no public route exposing their collecting event,
-// and a CollectionObject lookup can fail, so those fall back to comparing
-// every DwC field a collecting event populates. The fallback must list all
-// of them, not just the ones the row text shows: a sample of 5000 sfg
-// specimens had 20 of 110 field-key groups mixing different events that
-// differed only in habitat or samplingProtocol (2026-09-14).
+// Deliberately not keyed on collecting_event_id: two records differing only
+// in habitat sit on two different collecting events by definition, and
+// TaxonWorks also holds duplicate collecting events with identical data.
+export const PER_RECORD_EVENT_FIELDS = ['habitat', 'samplingProtocol']
+
 const EVENT_FIELDS = [
   'country',
   'stateProvince',
@@ -31,8 +32,6 @@ const EVENT_FIELDS = [
   'coordinateUncertaintyInMeters',
   'minimumElevationInMeters',
   'maximumElevationInMeters',
-  'habitat',
-  'samplingProtocol',
   'fieldNumber',
   'eventDate',
   'verbatimEventDate',
@@ -43,32 +42,29 @@ const EVENT_FIELDS = [
   'recordedBy'
 ]
 
-// Every key also splits by object type, typeStatus and institutionCode:
-// same-event specimens held at different institutions must not collapse
-// into one row. institutionCode stays out of EVENT_FIELDS because
+// Same-event specimens held at different institutions must not collapse
+// into one row, and the group row shows the first record's depository and
+// minority scientificName for all. Those stay out of EVENT_FIELDS because
 // hasNoEventFields() below must only look at genuine collecting-event data.
 export function buildGroupKey(record) {
-  const base = [record.dwc_occurrence_object_type, record.typeStatus || '', record.institutionCode || '']
-  if (hasCollectingEventId(record)) {
-    return JSON.stringify([...base, 'collecting_event', record.collectingEventId])
-  }
+  const base = [
+    record.dwc_occurrence_object_type,
+    record.typeStatus || '',
+    record.institutionCode || '',
+    record.scientificName || ''
+  ]
   // String(): endpoints disagree on numeric DwC fields (year 1999 vs "1999").
   return JSON.stringify([...base, ...EVENT_FIELDS.map((f) => String(record[f] ?? ''))])
 }
 
-function hasCollectingEventId(record) {
-  return record.dwc_occurrence_object_type === 'CollectionObject' && record.collectingEventId != null
-}
-
 // A record with no collecting-event data at all (old, unlocalized museum
 // specimens) gets its own singleton group rather than key-matching other
-// blank records. Only applies to the field fallback: a shared
-// collectingEventId is a real shared event even when its fields are empty.
-// Must check only EVENT_FIELDS, not institutionCode: an unlocalized
-// specimen almost always has institutionCode populated, so including it
-// would collapse unrelated unlocalized specimens at the same institution.
+// blank records. Must check only EVENT_FIELDS, not institutionCode: an
+// unlocalized specimen almost always has institutionCode populated, so
+// including it would collapse unrelated unlocalized specimens at the same
+// institution.
 function hasNoEventFields(record) {
-  return !hasCollectingEventId(record) && EVENT_FIELDS.every((f) => !record[f])
+  return EVENT_FIELDS.every((f) => !record[f])
 }
 
 function hasMedia(records) {

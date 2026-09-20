@@ -9,7 +9,9 @@
   doesn't map one for CollectionObjects) — plus, when the record is type
   material, its TypeMaterial citation(s) too (listed first). Each is shown
   short ("Author et al., Year", ./citationText.js) and clickable, opening
-  ./ReferenceModal.vue with the full source.
+  ./ReferenceModal.vue with the full source. A record TaxonWorks imported
+  from iNaturalist additionally gets a "Source: iNaturalist observation by …"
+  row linking to the observation (./inatObservation.js).
 
   Depended on by (relative import paths from panels/_shared/):
     - ../PanelMapV2/PanelMapV2.vue                        — marker/list-row "show details"
@@ -93,6 +95,22 @@
               class="ml-1 text-secondary hover:underline cursor-pointer"
               @click="activeCitation = cit"
             >{{ shortCitation(stripHtml(cit.citation_source_body)) }}</button></div>
+
+          <!-- Source, for a specimen TaxonWorks imported from iNaturalist: the
+               observation it came from, reading like the citation row above it
+               ("Citation: Skuhrovec, 2012" / "Source: iNaturalist observation by
+               Jakob Jilg"). Independent of citations — a record can have either,
+               both, or neither. An <a> rather than a <button> because this one
+               leaves the site instead of opening ReferenceModal. -->
+          <div
+            v-if="inatObservation"
+            class="mt-1 text-xs"
+          ><span class="text-base-soft">Source:</span><a
+              :href="inatObservation.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ml-1 text-secondary hover:underline"
+            >{{ inatSourceText }}</a></div>
 
           <!-- Determination: who called it this, and when — as important as the name itself -->
           <div
@@ -564,7 +582,8 @@
 import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
-import { resolveSpecimenRef } from './specimenRef.js'
+import { resolveSpecimenRef, specimenKey } from './specimenRef.js'
+import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
 import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
@@ -598,6 +617,7 @@ const bioAssociations = ref([])
 const isLoadingBioAssociations = ref(false)
 const citations = ref([])
 const activeCitation = ref(null)
+const inatObservation = ref(null)  // { uuid, url } when imported from iNaturalist, else null
 
 const ENDPOINTS = {
   [COLLECTION_OBJECT]: (id) => `/collection_objects/${id}/dwc`,
@@ -623,6 +643,10 @@ const taxonWorksUrl = computed(() => {
   if (!currentId.value || !itemType.value) return null
   return `${TW_BASE}${TW_RECORD_PATH[itemType.value](currentId.value)}`
 })
+
+// Link text for the iNaturalist Source row. recordedBy is the observer on an
+// imported record, and is already in the DwC payload — no extra request.
+const inatSourceText = computed(() => inatSourceLabel(dwc.value?.recordedBy))
 
 const typeLabel = computed(() => TYPE_LABELS[itemType.value] ?? itemType.value)
 
@@ -823,6 +847,17 @@ function show({ id, type }) {
   bioAssociations.value = []
   citations.value = []
   activeCitation.value = null
+  inatObservation.value = null
+
+  // Independent of the DwC request: the iNaturalist origin lives in
+  // /identifiers, not in the DwC payload. Guarded against a fast reopen of a
+  // different record resolving out of order.
+  fetchInatObservations([{ type, id }])
+    .then((bySpecimen) => {
+      if (currentId.value !== id || itemType.value !== type) return
+      inatObservation.value = bySpecimen.get(specimenKey({ type, id })) || null
+    })
+    .catch(() => {})
 
   makeAPIRequest(ENDPOINTS[type](id))
     .then(({ data }) => {

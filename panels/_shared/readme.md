@@ -51,9 +51,52 @@ unit test can import the pure helpers without resolving the `@/` alias.
 
 **Depended on by:** `./ImageLightbox.vue` (lazy, per visible image + neighbours).
 
+## inatObservation.js
+
+`fetchInatObservations(refs)` → batched, chunked, paginated
+`GET /identifiers?identifier_object_type=…&identifier_object_id[]=…`, keeping only
+`Identifier::Global::Uuid::InaturalistObservation` rows, resolving to
+`Map<specimenKey, { uuid, url }>` (empty Map on error / empty input). `refs` are
+`{ type, id }` specimen refs; `specimenKey` is `./specimenRef.js`'s `Type:id`, since
+CollectionObject and FieldOccurrence ids collide as bare numbers. **That one call is
+both the detection and the payload** — a specimen that wasn't imported is simply absent
+from the Map, so callers never need a separate "is this from iNaturalist" test.
+`indexInatIdentifiers`, `observationUrl`, `formatRecordedBy` and `inatSourceLabel` are
+the pure steps, unit-tested in `inatObservation.test.js`.
+
+Exists because **the DwC payload cannot tell you a record was imported**. Every record
+gets an `occurrenceID`: for an import that value *is* the iNaturalist observation uuid
+(FO 5022), for everything else it mirrors the record's own `TaxonworksDwcOccurrence`
+GUID (FO 5024/5025). Indistinguishable by inspection, so linkifying `occurrenceID`
+blindly would yield dead links for most records. `georeferenceSources: "iNaturalist"`
+hints at the importer but carries no id.
+
+**No iNaturalist API call is involved**: `https://www.inaturalist.org/observations/<uuid>`
+resolves the uuid route directly (confirmed in a browser, 2026-09-20), so iNaturalist
+being unreachable cannot affect a page using this. Resolving the numeric observation id
+would need `GET api.inaturalist.org/v1/observations?uuid=a,b,c` — deliberately not done,
+since no caller displays the number.
+
+`type[]` is ignored by `/identifiers` (it returns every type regardless), so the type
+filter is client-side. `@/utils/request` is imported *dynamically* inside
+`fetchInatObservations` so the unit test can import the pure helpers without resolving
+the `@/` alias.
+
+**Depended on by:** `./DwcTable.vue` (the Source row). Batched and `Type:id`-keyed so a
+list view can resolve a whole page in one request — `PanelBiologicalAssociationsV2` is
+the intended next consumer, for the linkified collector name in its Citations column,
+once that panel's rework lands.
+
 ## DwcTable.vue
 
 Modal showing the full DarwinCore record for a CollectionObject or FieldOccurrence: institution (resolved to full name via GRSciColl), identification, collection event, location, coordinates (with OpenStreetMap link), biological associations, and associated media thumbnails. Fetches `/collection_objects/:id/dwc` or `/field_occurrences/:id/dwc`.
+
+**Source row**: a record TaxonWorks imported from iNaturalist shows
+`Source: iNaturalist observation by <recordedBy>` in the identity block, directly under
+the citation row and styled to match it, linking to the observation (`./inatObservation.js`).
+Independent of citations — a record can have either, both, or neither. It is an `<a
+target="_blank">` rather than the citation row's `<button>` because it leaves the site
+instead of opening `ReferenceModal`.
 
 Exposes `show({ id, type })` via `defineExpose`, where `type` is `'CollectionObject'` or `'FieldOccurrence'` (see `@/constants/objectTypes`). Callers hold a `ref` to the component and call `.show(...)` from a click handler; the modal renders itself (a `VModal`).
 

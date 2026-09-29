@@ -33,7 +33,8 @@ Apart from this project, you can get in touch with the Weevil Workers community 
 * [Samuel Brown](https://orcid.org/0000-0001-7112-421X) - Curator (Entiminae)
 * [Jakob Jilg](https://orcid.org/0000-0002-9910-4146) - Curator (Lixinae)
 * <span style="font-weight:500">Tristan Schirok</span> - Curator (Central European Curculionoidea; Host plant associations)
-* [Ryan J. Whitehouse](https://orcid.org/0000-0001-9149-3127) - Curator (Bariditae)
+* [Lourdes Chamorro](https://orcid.org/0000-0002-3536-9372) - Curator (Adding and updating the catalog of weevils of America north of Mexico)
+* [Ryan J. Whitehouse](https://orcid.org/0000-0001-9149-3127) - Curator (Baridinae)
 * [Massimo Meregalli](https://orcid.org/0000-0001-5309-3974) - Main author for Lixinae: Cleonini
 * [Robert S. Anderson](https://orcid.org/0000-0003-0665-2977) - Data contributor (Type images)
 * [Guadalupe del Río](https://orcid.org/0000-0001-9865-6099) - Curator (Entiminae: Naupactini)

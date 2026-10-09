@@ -114,7 +114,9 @@
 
           <!-- Determination: who called it this, and when — as important as the name itself.
                "(as …)" is the name the determiner actually used, shown when TaxonWorks has
-               since re-pointed the record to a valid name (see identifiedAsNameHtml in ./otuTag.js). -->
+               since re-pointed the record to a valid name (see identifiedAsNameHtml in ./otuTag.js),
+               unless the type-status badge above already states that same name. A type with
+               no recorded determination therefore has no row at all. -->
           <div
             v-if="dwc.identifiedBy || dwc.dateIdentified || dwc.identificationQualifier || identifiedAsHtml"
             class="mt-2 text-sm flex flex-wrap items-baseline gap-x-1.5"
@@ -585,7 +587,7 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef, specimenKey } from './specimenRef.js'
-import { identifiedAsNameHtml } from './otuTag.js'
+import { identifiedAsNameHtml, repeatsTypeStatusName } from './otuTag.js'
 import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
@@ -701,8 +703,13 @@ const scientificNameSuffix = computed(() => {
 
 const typeStatusHtml = computed(() => buildTypeStatusHtml(dwc.value?.typeStatus))
 
-// "(as <i>Genus species</i> Author, Year)", italics as TaxonWorks marked them
-const identifiedAsHtml = computed(() => (identifiedAs.value ? `(as ${identifiedAs.value})` : ''))
+// "(as <i>Genus species</i> Author, Year)", italics as TaxonWorks marked them.
+// Empty when the type-status badge already states that very name: a type
+// designation is its own identification, so "(as …)" would only repeat it.
+const identifiedAsHtml = computed(() => {
+  if (!identifiedAs.value || repeatsTypeStatusName(identifiedAs.value, dwc.value?.typeStatus)) return ''
+  return `(as ${identifiedAs.value})`
+})
 
 // Every loader started by show() checks this before writing, so a slow
 // response for a record the user has already moved on from is dropped.

@@ -73,3 +73,43 @@ export function identifiedAsNameHtml(objectTag) {
     .trim()
   return html || null
 }
+
+// Plain, comparable form of a name: tags and entities resolved, case and
+// spacing ignored.
+function comparableName(s) {
+  return String(s || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/**
+ * Whether the name a specimen was identified as (identifiedAsNameHtml's
+ * result) is the very name its type status already states, as in "paratype
+ * of Afghanocleonus kabakovi Ter-Minassian, 1976". A type designation is its
+ * own identification, so repeating that name as "(as …)" adds nothing. False
+ * when the two names differ, and for a bare status ("paratype") that names no
+ * taxon. The name is taken after the last " of ", same as typeStatusHtml in
+ * ./scientificName.js.
+ *
+ * Depended on by:
+ *   - ./DwcTable.vue (drops the "(as …)" fragment, and the whole "Identified
+ *     by" row when nothing else is recorded)
+ *
+ * @param {string|null} identifiedAsHtml
+ * @param {string|null} typeStatus
+ * @returns {boolean}
+ */
+export function repeatsTypeStatusName(identifiedAsHtml, typeStatus) {
+  const status = String(typeStatus || '')
+  const idx = status.lastIndexOf(' of ')
+  if (!identifiedAsHtml || idx === -1) return false
+  return comparableName(identifiedAsHtml) === comparableName(status.slice(idx + 4))
+}

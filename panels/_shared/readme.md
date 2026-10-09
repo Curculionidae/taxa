@@ -146,6 +146,14 @@ determination's own OTU (`dwc.otu_id`, one extra `GET /otus/:id`), whose `object
 keeping TaxonWorks' own `<i>` italics. Example: the specimens listed on the page of OTU
 722800 (their `dwc.otu_id` is the synonym's OTU, 722802).
 
+A type designation counts as its own identification. When the identified-as name is the
+very name the type-status badge states ("paratype of *Afghanocleonus kabakovi*
+Ter-Minassian, 1976"), the `(as …)` part is dropped (`repeatsTypeStatusName()` in
+`./otuTag.js`, a tag/entity/case-insensitive comparison against the name after the last
+" of "). With no determiner, date or qualifier recorded either, the row then disappears
+entirely instead of reading `Identified by unknown (as …)`. A differing name, or a bare
+status such as "paratype" that names no taxon, still shows `(as …)`.
+
 Exposes `show({ id, type })` via `defineExpose`, where `type` is `'CollectionObject'` or `'FieldOccurrence'` (see `@/constants/objectTypes`). Callers hold a `ref` to the component and call `.show(...)` from a click handler; the modal renders itself (a `VModal`).
 
 **Depended on by:**

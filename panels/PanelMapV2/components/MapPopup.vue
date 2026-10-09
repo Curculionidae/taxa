@@ -139,7 +139,7 @@ import {
   TYPE_MATERIAL
 } from '@/constants/objectTypes.js'
 import { stripHtml, shortCitation } from '../../_shared/citationText.js'
-import { escHtml as escapeHtml, typeStatusHtml as buildTypeStatusHtml } from '../../_shared/scientificName.js'
+import { escHtml as escapeHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from '../../_shared/scientificName.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
 const AD_TYPES = [ASSERTED_DISTRIBUTION, ASSERTED_ABSENT]
@@ -432,11 +432,10 @@ function parseBaRelationship(label) {
   return m ? m[1] : label
 }
 
+// Name / authorship split for an OTU label, by the shared italicising rules
 function splitName(label) {
-  if (!label) return { name: '', author: '' }
-  const match = label.match(/^((?:.*\s)?[a-z]\S*)\s+(.+)$/)
-  if (!match) return { name: label, author: '' }
-  return { name: match[1], author: match[2] }
+  const { italic, plain } = splitScientificName(label)
+  return { name: italic, author: plain }
 }
 
 </script>

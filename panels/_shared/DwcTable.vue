@@ -112,16 +112,18 @@
               class="ml-1 text-secondary hover:underline"
             >{{ inatSourceText }}</a></div>
 
-          <!-- Determination: who called it this, and when — as important as the name itself -->
+          <!-- Determination: who called it this, and when — as important as the name itself.
+               "(as …)" is the name the determiner actually used, shown when TaxonWorks has
+               since re-pointed the record to a valid name (see identifiedAsNameHtml in ./otuTag.js). -->
           <div
-            v-if="dwc.identifiedBy || dwc.dateIdentified || dwc.identificationQualifier"
+            v-if="dwc.identifiedBy || dwc.dateIdentified || dwc.identificationQualifier || identifiedAsHtml"
             class="mt-2 text-sm flex flex-wrap items-baseline gap-x-1.5"
           >
             <span class="text-base-soft shrink-0">Identified by</span>
-            <a v-if="dwc.identifiedByID?.startsWith('http')" :href="dwc.identifiedByID" target="_blank" rel="noopener noreferrer" class="hover:text-secondary hover:underline">{{ dwc.identifiedBy }}</a>
-            <span v-else-if="dwc.identifiedBy">{{ dwc.identifiedBy }}</span>
-            <span v-if="dwc.dateIdentified">{{ dwc.identifiedBy ? ', ' : '' }}{{ dwc.dateIdentified }}</span>
+            <span><a v-if="dwc.identifiedBy && dwc.identifiedByID?.startsWith('http')" :href="dwc.identifiedByID" target="_blank" rel="noopener noreferrer" class="hover:text-secondary hover:underline">{{ dwc.identifiedBy }}</a><template v-else>{{ dwc.identifiedBy || 'unknown' }}</template><template v-if="dwc.dateIdentified">,</template></span>
+            <span v-if="dwc.dateIdentified">{{ dwc.dateIdentified }}</span>
             <span v-if="dwc.identificationQualifier" class="italic">({{ dwc.identificationQualifier }})</span>
+            <span v-if="identifiedAsHtml" v-html="identifiedAsHtml" />
           </div>
 
           <!-- Repository: where the specimen is physically held -->
@@ -583,6 +585,7 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef, specimenKey } from './specimenRef.js'
+import { identifiedAsNameHtml } from './otuTag.js'
 import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
@@ -618,6 +621,7 @@ const isLoadingBioAssociations = ref(false)
 const citations = ref([])
 const activeCitation = ref(null)
 const inatObservation = ref(null)  // { uuid, url } when imported from iNaturalist, else null
+const identifiedAs = ref(null)  // HTML of the name the specimen was identified as when that name is now a synonym, else null
 
 const ENDPOINTS = {
   [COLLECTION_OBJECT]: (id) => `/collection_objects/${id}/dwc`,
@@ -685,7 +689,9 @@ const hasMoreDetails = computed(() => !!dwc.value)
 const metaDate = computed(() => formatEventDate(dwc.value || {}))
 
 const scientificNameParts = computed(() =>
-  dwc.value?.scientificName ? splitScientificName(dwc.value.scientificName) : { italic: '', plain: '' }
+  dwc.value?.scientificName
+    ? splitScientificName(dwc.value.scientificName, { rank: dwc.value.taxonRank })
+    : { italic: '', plain: '' }
 )
 
 const scientificNameSuffix = computed(() => {
@@ -695,7 +701,30 @@ const scientificNameSuffix = computed(() => {
 
 const typeStatusHtml = computed(() => buildTypeStatusHtml(dwc.value?.typeStatus))
 
-async function loadMediaImages(associatedMedia) {
+// "(as <i>Genus species</i> Author, Year)", italics as TaxonWorks marked them
+const identifiedAsHtml = computed(() => (identifiedAs.value ? `(as ${identifiedAs.value})` : ''))
+
+// Every loader started by show() checks this before writing, so a slow
+// response for a record the user has already moved on from is dropped.
+function isShowing(id, type) {
+  return currentId.value === id && itemType.value === type
+}
+
+// OTU tag per OTU id, kept for the session: many specimens share one OTU and
+// almost all of them sit on a valid name.
+const otuTagCache = new Map()
+function fetchOtuTag(otuIdVal) {
+  if (!otuTagCache.has(otuIdVal)) {
+    const request = makeAPIRequest
+      .get(`/otus/${otuIdVal}`)
+      .then(({ data }) => data.object_tag || '')
+      .catch((e) => { otuTagCache.delete(otuIdVal); throw e })
+    otuTagCache.set(otuIdVal, request)
+  }
+  return otuTagCache.get(otuIdVal)
+}
+
+async function loadMediaImages(associatedMedia, id, type) {
   const links = associatedMedia.split('|').map(l => l.trim()).filter(Boolean)
   const results = await Promise.all(
     links.map(link => {
@@ -710,6 +739,7 @@ async function loadMediaImages(associatedMedia) {
         .catch(() => null)
     })
   )
+  if (!isShowing(id, type)) return
   mediaImages.value = results.filter(Boolean)
 }
 
@@ -807,6 +837,7 @@ async function loadCitations(id, type, dwcData) {
 
   const [ownCitations, typeMaterialCitations] = await Promise.all([ownPromise, typeMaterialPromise])
 
+  if (!isShowing(id, type)) return
   const seen = new Set()
   citations.value = [...typeMaterialCitations, ...ownCitations].filter((c) => {
     if (seen.has(c.id)) return false
@@ -845,46 +876,62 @@ function show({ id, type }) {
   mediaImages.value = []
   lightboxIndex.value = null
   bioAssociations.value = []
+  isLoadingBioAssociations.value = false
   citations.value = []
   activeCitation.value = null
   inatObservation.value = null
+  identifiedAs.value = null
 
   // Independent of the DwC request: the iNaturalist origin lives in
-  // /identifiers, not in the DwC payload. Guarded against a fast reopen of a
-  // different record resolving out of order.
+  // /identifiers, not in the DwC payload. For a CollectionObject this makes no
+  // request: fetchInatObservations drops the types that can't carry the
+  // identifier. Guarded against a fast reopen of a different record resolving
+  // out of order.
   fetchInatObservations([{ type, id }])
     .then((bySpecimen) => {
-      if (currentId.value !== id || itemType.value !== type) return
+      if (!isShowing(id, type)) return
       inatObservation.value = bySpecimen.get(specimenKey({ type, id })) || null
     })
     .catch(() => {})
 
   makeAPIRequest(ENDPOINTS[type](id))
     .then(({ data }) => {
+      if (!isShowing(id, type)) return
       dwc.value = data
       otuId.value = data.otu_id ?? null
       if (data.institutionCode) {
         resolveInstitutionName(data.institutionCode, data.institutionID).then((name) => {
+          if (!isShowing(id, type)) return
           institutionFullName.value = name
         })
       }
       if (data.collectionCode) {
         resolveCollectionName(data.collectionCode, data.institutionCode).then((name) => {
+          if (!isShowing(id, type)) return
           collectionFullName.value = name
         })
       }
-      if (data.associatedMedia) loadMediaImages(data.associatedMedia)
+      if (data.associatedMedia) loadMediaImages(data.associatedMedia, id, type)
       if (data.otu_id) {
+        // The DwC names are already re-pointed to the valid name; only the
+        // determination's own OTU still says what it was identified as.
+        fetchOtuTag(data.otu_id)
+          .then((tag) => {
+            if (!isShowing(id, type)) return
+            identifiedAs.value = identifiedAsNameHtml(tag)
+          })
+          .catch(() => {})
         isLoadingBioAssociations.value = true
         fetchBioAssociations(data.otu_id, type, id)
-          .then((matches) => { bioAssociations.value = matches })
+          .then((matches) => { if (isShowing(id, type)) bioAssociations.value = matches })
           .catch(() => {})
-          .finally(() => { isLoadingBioAssociations.value = false })
+          .finally(() => { if (isShowing(id, type)) isLoadingBioAssociations.value = false })
       }
       loadCitations(id, type, data)
     })
     .catch(() => {})
     .finally(() => {
+      if (!isShowing(id, type)) return
       isLoading.value = false
     })
 }

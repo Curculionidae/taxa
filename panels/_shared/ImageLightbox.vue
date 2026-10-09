@@ -65,11 +65,12 @@
           v-if="imageDisplay.otuFigLabel"
           class="opacity-70"
         >{{ imageDisplay.otuFigLabel }}</div>
+        <!-- Free text, shown verbatim like every caption here: see the note
+             on the plain figure caption below. -->
         <div
           v-if="imageDisplay.otuDesc"
           class="opacity-70"
-          v-html="italicizeNames(imageDisplay.otuDesc)"
-        />
+        >{{ imageDisplay.otuDesc }}</div>
       </div>
 
       <!-- CO/FO entries: badge + ⓘ, type status, figure label, caption -->
@@ -91,7 +92,7 @@
         <div
           v-if="co.typeStatus"
           class="font-semibold"
-          v-html="italicizeNames(co.typeStatus)"
+          v-html="typeStatusHtml(co.typeStatus)"
         />
         <div
           v-if="co.figureLabel"
@@ -100,8 +101,7 @@
         <div
           v-if="co.caption"
           class="opacity-70 text-xs"
-          v-html="italicizeNames(co.caption)"
-        />
+        >{{ co.caption }}</div>
       </div>
 
       <!-- Plain figure caption: images with no OTU / CO / FO structure (e.g. a
@@ -109,9 +109,11 @@
            caption at the top level. Label in bold, caption below it.
            `figure_label` / `caption` are free-text (often prose that mentions a
            binomial: "…feeding on Achillea millefolium", "rostrum, dorsal view")
-           and are rendered verbatim — the name-italiciser greedily italicises
-           the prose that trails a Genus+epithet pair. The package ImageViewer
-           showed these plain.
+           and are rendered verbatim: no rule can tell a genus from any other
+           capitalised word in a sentence, and false italics ("Photo taken
+           near") read worse than a missing one. Only fields that are a name by
+           definition are italicised (../_shared/scientificName.js). The package
+           ImageViewer showed these plain.
            `captionHtml` is pre-sanitised HTML (keys, already linkified). -->
       <div
         v-if="showPlainCaption"
@@ -206,7 +208,10 @@ import ControlImagePrevious from '@/components/ImageViewer/ControlImagePrevious.
 import { makeAPIRequest } from '@/utils/request'
 import { fetchImageCitations, imageIdFromOriginalPng } from './imageCitations.js'
 import { stripHtml, shortCitation } from './citationText.js'
-import { escHtml, splitScientificName as splitName } from './scientificName.js'
+import {
+  splitScientificName as splitName,
+  typeStatusHtml
+} from './scientificName.js'
 import ReferenceModal from './ReferenceModal.vue'
 
 // Async both ways: DwcTable imports this file back (its media strip opens this
@@ -380,18 +385,6 @@ watch(
   },
   { immediate: true }
 )
-
-// Wraps genus+epithet sequences in <em> within plain-text strings (type status, captions).
-// Handles optional [sic] or similar bracketed notes between genus and epithet.
-// Minimum 3 chars per lowercase word to skip prepositions (of, at, in).
-function italicizeNames(text) {
-  if (!text) return ''
-  const escaped = escHtml(text)
-  return escaped.replace(
-    /\b([A-Z][a-z]+(?:\s+\([A-Z][a-z]+\))?)(\s+(?:\[[^\]]*\]\s+)?[a-z][a-z]{2,}(?:\s+[a-z][a-z]{2,})*)/g,
-    '<em>$1$2</em>'
-  )
-}
 
 const image = computed(() => props.images[props.index] || {})
 

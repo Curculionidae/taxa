@@ -64,6 +64,14 @@ from the Map, so callers never need a separate "is this from iNaturalist" test.
 `indexInatIdentifiers`, `observationUrl`, `formatRecordedBy` and `inatSourceLabel` are
 the pure steps, unit-tested in `inatObservation.test.js`.
 
+`canHaveInatObservation(type)` → **`FieldOccurrence` only**, and it is the single place
+that rule lives on our side. TaxonWorks enforces it: the identifier model validates
+`object_is_field_occurrence`, so it cannot be saved on a CollectionObject (details in
+the function's JSDoc). `fetchInatObservations` filters refs on it and short-circuits
+**before** its dynamic import, so a caller holding only CollectionObjects costs no
+request and no module load, and `DwcTable` just calls it for every record.
+`indexInatIdentifiers` stays type-agnostic, so widening this is a one-line edit.
+
 Exists because **the DwC payload cannot tell you a record was imported**. Every record
 gets an `occurrenceID`: for an import that value *is* the iNaturalist observation uuid
 (FO 5022), for everything else it mirrors the record's own `TaxonworksDwcOccurrence`
@@ -87,6 +95,36 @@ list view can resolve a whole page in one request — `PanelBiologicalAssociatio
 the intended next consumer, for the linkified collector name in its Citations column,
 once that panel's rework lands.
 
+## scientificName.js
+
+The one place that decides how a plain-text scientific name is italicised. Two functions
+(plus `typeStatusHtml`) over one parser, so the rules cannot drift apart again (until 2026-10 `MapPopup` and
+`ImageLightbox` each had their own, differing, guesser):
+
+| Function | For |
+|---|---|
+| `splitScientificName(name, { rank })` | `{ italic, plain }` for templates that render `<em>{{ italic }}</em>` themselves |
+| `scientificNameHtml(name, { tag, rank })` | ready `v-html` string; also sets `subsp.`, `cf.`, `[sic]`, `×` upright inside the name |
+
+Rules: must start with a capitalised word; names above genus are upright (by `rank` when the
+caller has it, e.g. DwC `taxonRank`, else by ending: `-idae`, `-inae`, `-oidea`, `-ini`,
+`-aceae`, `-oideae`, plus a short list of common higher taxa); `(Subgenus)` after the genus
+belongs to the name; lowercase words are epithets until an author particle (`de`, `von`,
+`d'Orbigny`), a connective (`in`, `ex`, `sensu`) or anything capitalised.
+
+Checked against TaxonWorks' own markup (`cached_html`) for 12,000 names of this project:
+same italics for all but two when the rank is passed (a `[sic]` inside a subgenus bracket,
+and the placeholder name "Root"), 99.5% without it. The rank-less misses are subtribes in `-ina`, which cannot be told from
+genera (*Chrysolina*) by spelling. Pass `rank` wherever it is at hand.
+
+Only fields that are a name by definition go through it (DwC `scientificName`, the name
+in `typeStatus`, OTU labels). Free text such as captions and figure descriptions is shown
+verbatim: in a sentence nothing tells a genus from any other capitalised word, and a scanner
+for that was tried and removed (it italicised "Photo taken near").
+
+It stays a guess from text. Where TaxonWorks delivers markup (`object_tag`, `cached_html`),
+use that instead, see `otuTag.js`.
+
 ## DwcTable.vue
 
 Modal showing the full DarwinCore record for a CollectionObject or FieldOccurrence: institution (resolved to full name via GRSciColl), identification, collection event, location, coordinates (with OpenStreetMap link), biological associations, and associated media thumbnails. Fetches `/collection_objects/:id/dwc` or `/field_occurrences/:id/dwc`.
@@ -97,6 +135,16 @@ the citation row and styled to match it, linking to the observation (`./inatObse
 Independent of citations — a record can have either, both, or neither. It is an `<a
 target="_blank">` rather than the citation row's `<button>` because it leaves the site
 instead of opening `ReferenceModal`.
+
+**Identified by row**: `Identified by <identifiedBy>, <dateIdentified>`, with `unknown`
+standing in for a missing determiner. When the specimen was identified as a name that is
+now a synonym, TaxonWorks re-points every name field in the DwC payload to the valid name,
+so the row appends the name actually used: `Identified by unknown, 2012 (as *Otiorhynchus
+(Arammichnus) dieckmanni* Magnano, 1979)`. That name is only recoverable from the
+determination's own OTU (`dwc.otu_id`, one extra `GET /otus/:id`), whose `object_tag` reads
+`<old name> <em>now</em> <valid name>`; `identifiedAsNameHtml()` in `./otuTag.js` parses it,
+keeping TaxonWorks' own `<i>` italics. Example: the specimens listed on the page of OTU
+722800 (their `dwc.otu_id` is the synonym's OTU, 722802).
 
 Exposes `show({ id, type })` via `defineExpose`, where `type` is `'CollectionObject'` or `'FieldOccurrence'` (see `@/constants/objectTypes`). Callers hold a `ref` to the component and call `.show(...)` from a click handler; the modal renders itself (a `VModal`).
 

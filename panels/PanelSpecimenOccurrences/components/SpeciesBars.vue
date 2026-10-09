@@ -144,7 +144,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { fetchAllPages } from '../../_shared/fetchAllPages.js'
-import { escHtml, splitScientificName } from '../../_shared/scientificName.js'
+import { escHtml, splitScientificName, scientificNameHtml } from '../../_shared/scientificName.js'
 import { mapPool } from '../../_shared/concurrencyPool.js'
 import SingleSpeciesOccurrences from './SingleSpeciesOccurrences.vue'
 
@@ -536,11 +536,12 @@ async function loadOwnTaxonSpecimens() {
         // (the common case, no resolution needed) yet somehow isn't in the
         // table (e.g. Query 2 found zero species at all for this taxon).
         if (!tn) {
-          const { italic, plain } = splitScientificName(records[0].scientificName)
+          const scientificName = records[0].scientificName
           return {
             otuId: speciesOtuId,
-            name: italic,
-            fullNameHtml: plain ? `<em>${escHtml(italic)}</em> ${escHtml(plain)}` : `<em>${escHtml(italic)}</em>`,
+            // italic is empty for a name above genus rank
+            name: splitScientificName(scientificName).italic || scientificName,
+            fullNameHtml: scientificNameHtml(scientificName),
             count: records.length
           }
         }

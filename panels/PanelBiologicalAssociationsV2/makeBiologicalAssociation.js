@@ -14,7 +14,7 @@
  */
 
 import { isSpecimenType, resolveSpecimenRef, specimenKey } from '../_shared/specimenRef.js'
-import { escHtml, splitScientificName } from '../_shared/scientificName.js'
+import { scientificNameHtml } from '../_shared/scientificName.js'
 import { extractOtuTagSpan } from '../_shared/otuTag.js'
 export { isSpecimenType, resolveSpecimenRef, specimenKey }
 
@@ -50,9 +50,7 @@ function extractNameHtml(objectTag) {
 }
 
 function nameHtmlFromScientificName(scientificName) {
-  const { italic, plain } = splitScientificName(scientificName)
-  if (!italic) return escHtml(scientificName || '')
-  return `<i>${escHtml(italic)}</i>${plain ? ' ' + escHtml(plain) : ''}`
+  return scientificNameHtml(scientificName, { tag: 'i' })
 }
 
 /**

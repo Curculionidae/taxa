@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 
 import {
   INAT_OBSERVATION_IDENTIFIER,
+  canHaveInatObservation,
+  fetchInatObservations,
   observationUrl,
   indexInatIdentifiers,
   formatRecordedBy,
@@ -126,4 +128,31 @@ test('inatSourceLabel: drops the "by" clause when there is no observer', () => {
   assert.equal(inatSourceLabel(''), 'iNaturalist observation')
   assert.equal(inatSourceLabel(null), 'iNaturalist observation')
   assert.equal(inatSourceLabel(undefined), 'iNaturalist observation')
+})
+
+test('canHaveInatObservation: only FieldOccurrence, the type the importer creates', () => {
+  // TaxonWorks validates this identifier type as FieldOccurrence-only (see the
+  // JSDoc on canHaveInatObservation).
+  assert.equal(canHaveInatObservation('FieldOccurrence'), true)
+  assert.equal(canHaveInatObservation('CollectionObject'), false)
+  assert.equal(canHaveInatObservation('AnatomicalPart'), false)
+  assert.equal(canHaveInatObservation(undefined), false)
+})
+
+test('fetchInatObservations: CollectionObject refs resolve empty without touching the network', async () => {
+  // This also proves no request is made: the dynamic import of `@/utils/request`
+  // is unresolvable under node --test, so reaching it would reject rather than
+  // return an empty Map.
+  const m = await fetchInatObservations([
+    { type: 'CollectionObject', id: 5000 },
+    { type: 'CollectionObject', id: 5001 }
+  ])
+  assert.equal(m.size, 0)
+})
+
+test('fetchInatObservations: empty / malformed ref lists short-circuit the same way', async () => {
+  assert.equal((await fetchInatObservations([])).size, 0)
+  assert.equal((await fetchInatObservations(undefined)).size, 0)
+  assert.equal((await fetchInatObservations([{ type: 'FieldOccurrence' }])).size, 0)
+  assert.equal((await fetchInatObservations([{ id: 5022 }])).size, 0)
 })

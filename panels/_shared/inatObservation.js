@@ -1,9 +1,10 @@
 /**
  * inatObservation.js
  *
- * Resolves specimens (CollectionObject / FieldOccurrence) that were imported
- * from iNaturalist to their iNaturalist observation, so a panel can link out
- * to the original observation.
+ * Resolves records that were imported from iNaturalist to their iNaturalist
+ * observation, so a panel can link out to the original observation. Only a
+ * FieldOccurrence can be one (see canHaveInatObservation); refs of any other
+ * type are accepted and resolve to nothing.
  *
  * Why this exists: TaxonWorks records the import as a typed Identifier, and
  * the DwC payload gives you no reliable way to recognise it. Every record
@@ -63,6 +64,32 @@ export const INAT_OBSERVATION_IDENTIFIER =
 const ID_CHUNK = 80
 const PER = 500
 const MAX_PAGES = 20
+
+/**
+ * Can a record of this type carry an iNaturalist observation identifier?
+ *
+ * Only FieldOccurrence, and TaxonWorks enforces it: the model
+ * `Identifier::Global::Uuid::InaturalistObservation` validates
+ * `object_is_field_occurrence` ("must be a FieldOccurrence"), so the identifier
+ * cannot be saved on a CollectionObject by any route (TaxonWorks source,
+ * app/models/identifier/global/uuid/inaturalist_observation.rb, read 2026-10-09).
+ *
+ * This is the single place that rule lives on our side. `fetchInatObservations`
+ * filters on it, so its callers need no knowledge of it and can pass any
+ * specimen ref. If TaxonWorks ever lifts the validation, widening is a one-line
+ * edit here: `indexInatIdentifiers` is deliberately type-agnostic and will key
+ * whatever rows come back.
+ *
+ * The literal rather than FIELD_OCCURRENCE from `@/constants/objectTypes`
+ * (which is exactly this string) so the unit test can import this module
+ * without resolving the `@/` build alias.
+ *
+ * @param {string} type  'FieldOccurrence' | 'CollectionObject' | …
+ * @returns {boolean}
+ */
+export function canHaveInatObservation(type) {
+  return type === 'FieldOccurrence'
+}
 
 /**
  * The public observation URL for an observation UUID.
@@ -144,15 +171,18 @@ export function inatSourceLabel(recordedBy) {
  */
 export async function fetchInatObservations(refs) {
   // Group by object type: /identifiers takes one identifier_object_type per
-  // request, so a mixed list costs one request per distinct type (max two).
+  // request, so a mixed list costs one request per distinct importable type
+  // (today that is FieldOccurrence alone, see canHaveInatObservation).
   const idsByType = new Map()
   for (const ref of Array.isArray(refs) ? refs : []) {
     const id = Number(ref?.id)
     const type = ref?.type
-    if (!id || !type) continue
+    if (!id || !canHaveInatObservation(type)) continue
     if (!idsByType.has(type)) idsByType.set(type, new Set())
     idsByType.get(type).add(id)
   }
+  // Short-circuits before the dynamic import below, so a caller with nothing
+  // importable (every CollectionObject) costs no request and no module load.
   if (!idsByType.size) return new Map()
 
   const { makeAPIRequest } = await import('@/utils/request')

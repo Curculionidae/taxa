@@ -77,7 +77,8 @@
           </div>
           <div
             v-if="dwc.typeStatus"
-            class="mt-1.5 inline-block text-xs font-medium bg-danger text-white rounded px-1.5 py-0.5"
+            class="mt-1.5 inline-block text-xs font-medium rounded px-1.5 py-0.5"
+            :style="typeLabelStyle(dwc.typeStatus)"
             v-html="typeStatusHtml"
           />
           <!-- Citations: the specimen's own (not part of the DwC record itself — TaxonWorks'
@@ -176,7 +177,7 @@
 
         <!-- ── Primary details: always visible ── -->
         <dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-0.5 pt-4">
-          <template v-if="hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','locationRemarks')">
+          <template v-if="hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','habitat','locationRemarks')">
             <div class="col-span-2 mb-1">
               <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Location</h4>
             </div>
@@ -235,6 +236,10 @@
               <dt class="opacity-50 whitespace-nowrap">Verbatim locality</dt>
               <dd>{{ dwc.verbatimLocality }}</dd>
             </template>
+            <template v-if="dwc.habitat">
+              <dt class="opacity-50 whitespace-nowrap">Habitat</dt>
+              <dd>{{ dwc.habitat }}</dd>
+            </template>
             <template v-if="dwc.locationRemarks">
               <dt class="opacity-50 whitespace-nowrap">Location remarks</dt>
               <dd>{{ dwc.locationRemarks }}</dd>
@@ -243,7 +248,7 @@
 
           <template v-if="hasAny('minimumElevationInMeters','verbatimElevation','minimumDepthInMeters')">
             <div class="col-span-2 mt-3 mb-1">
-              <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Elevation / Depth</h4>
+              <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Elevation</h4>
             </div>
             <template v-if="dwc.minimumElevationInMeters">
               <dt class="opacity-50 whitespace-nowrap">Elevation</dt>
@@ -263,7 +268,7 @@
             </template>
           </template>
 
-          <template v-if="hasAny('decimalLatitude','verbatimCoordinates')">
+          <template v-if="dwc.decimalLatitude">
             <div class="col-span-2 mt-3 mb-1">
               <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Coordinates</h4>
             </div>
@@ -278,10 +283,6 @@
             <template v-if="dwc.geodeticDatum">
               <dt class="opacity-50 whitespace-nowrap">Datum</dt>
               <dd>{{ dwc.geodeticDatum }}</dd>
-            </template>
-            <template v-if="dwc.verbatimCoordinates">
-              <dt class="opacity-50 whitespace-nowrap">Verbatim</dt>
-              <dd>{{ dwc.verbatimCoordinates }}</dd>
             </template>
             <template v-if="dwc.decimalLatitude && dwc.decimalLongitude">
               <dt class="opacity-50 whitespace-nowrap">Map</dt>
@@ -298,7 +299,7 @@
         </dl>
 
         <p
-          v-if="!hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','locationRemarks','minimumElevationInMeters','verbatimElevation','minimumDepthInMeters','decimalLatitude','verbatimCoordinates')"
+          v-if="!hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','habitat','locationRemarks','minimumElevationInMeters','verbatimElevation','minimumDepthInMeters','decimalLatitude')"
           class="pt-4 text-xs opacity-50"
         >No location or collection event data recorded.</p>
 
@@ -405,13 +406,17 @@
             </template>
 
             <!-- ── Collection event (detail) ── -->
-            <template v-if="hasAny('verbatimEventDate','eventTime','fieldNumber','samplingProtocol','samplingEffort','habitat','fieldNotes','eventRemarks')">
+            <template v-if="hasAny('verbatimEventDate','verbatimCoordinates','eventTime','fieldNumber','samplingProtocol','samplingEffort','fieldNotes','eventRemarks')">
               <div class="col-span-2 mt-3 mb-1">
                 <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Collection event</h4>
               </div>
               <template v-if="dwc.verbatimEventDate && dwc.verbatimEventDate !== dwc.eventDate">
                 <dt class="opacity-50 whitespace-nowrap">Verbatim date</dt>
                 <dd>{{ dwc.verbatimEventDate }}</dd>
+              </template>
+              <template v-if="dwc.verbatimCoordinates">
+                <dt class="opacity-50 whitespace-nowrap">Verbatim coordinates</dt>
+                <dd>{{ dwc.verbatimCoordinates }}</dd>
               </template>
               <template v-if="dwc.eventTime">
                 <dt class="opacity-50 whitespace-nowrap">Time</dt>
@@ -428,10 +433,6 @@
               <template v-if="dwc.samplingEffort">
                 <dt class="opacity-50 whitespace-nowrap">Sampling effort</dt>
                 <dd>{{ dwc.samplingEffort }}</dd>
-              </template>
-              <template v-if="dwc.habitat">
-                <dt class="opacity-50 whitespace-nowrap">Habitat</dt>
-                <dd>{{ dwc.habitat }}</dd>
               </template>
               <template v-if="dwc.fieldNotes">
                 <dt class="opacity-50 whitespace-nowrap">Field notes</dt>
@@ -591,6 +592,8 @@ import { identifiedAsNameHtml, repeatsTypeStatusName } from './otuTag.js'
 import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
+import './panel-tokens.css'
+import { typeLabelStyle } from './typeStatus.js'
 import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
 import { formatEventDate } from './eventDate.js'
 import ReferenceModal from './ReferenceModal.vue'

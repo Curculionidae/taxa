@@ -31,7 +31,7 @@ Clicking a Collection Object or Field Occurrence row in the popup opens a struct
 - Identification
 - Collection event
 - Location
-- Elevation / Depth
+- Elevation
 - Coordinates (with OpenStreetMap link)
 - Other
 - Specimen (shown last)

@@ -17,8 +17,14 @@
  */
 :root {
   --pp-accent-identified: #f97316; /* phenology timeline — "Identified" series (PanelSpecimenOccurrences) */
+  --pp-type-label: #e81c1c;        /* type-status chip, name-bearing type — red label (ListRecords, DwcTable) */
+  --pp-type-label-other: #facc15;  /* type-status chip, other type material (paratype, ...) — yellow label */
+  --pp-type-label-ink: #000;       /* their print: black, 4.6:1 on the red */
 }
 
 .dark {
   --pp-accent-identified: #fb923c;
+  --pp-type-label: #f03a3a;
+  --pp-type-label-other: #facc15;
+  --pp-type-label-ink: #000;
 }

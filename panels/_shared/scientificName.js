@@ -10,11 +10,12 @@
  * Depended on by:
  *   - ./DwcTable.vue
  *   - ./ImageLightbox.vue (splitScientificName as splitName, typeStatusHtml)
+ *   - ./TypeStatusChip.vue (typeStatusHtml)
  *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
  *   - ../PanelSpecimenOccurrences/components/SpeciesBars.vue
  *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js (scientificNameHtml)
  *   - ../PanelMapV2/components/MapPopup.vue (splitScientificName for OTU target
- *     labels, typeStatusHtml)
+ *     labels)
  *   - ../../modules/keys/composables/useKeyTaxonNames.js (escHtml only)
  *   - ../../modules/keys/components/TaxonLink.vue (escHtml only)
  *

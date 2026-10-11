@@ -210,11 +210,10 @@
                 @click="item.detail && emit('show-detail', item.detail)"
               >
                 <div class="flex flex-col">
-                  <span
+                  <TypeStatusChip
                     v-if="item.typeStatus"
-                    class="inline-block w-fit text-xs font-medium rounded px-1.5 py-0.5 mb-1"
-                    :style="typeLabelStyle(item.typeStatus)"
-                    v-html="item.typeStatusHtml"
+                    class="mb-1"
+                    :status="item.typeStatus"
                   />
                   <div v-if="item.identity || item.identificationQualifierHtml" class="flex items-baseline gap-2 text-xs">
                     <span class="flex-1 min-w-0" v-html="item.identity" />
@@ -292,7 +291,7 @@ import GalleryThumbnailList from '@/components/Gallery/GalleryThumbnailList.vue'
 import MultiSelect from './MultiSelect.vue'
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import '../../_shared/panel-tokens.css'
-import { typeLabelStyle } from '../../_shared/typeStatus.js'
+import TypeStatusChip from '../../_shared/TypeStatusChip.vue'
 
 // Colour of the phenology timeline's "Identified" series — defined in
 // panels/_shared/panel-tokens.css (theme-aware, host-overridable), imported

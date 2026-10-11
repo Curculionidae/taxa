@@ -46,7 +46,7 @@ import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
-import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
+import { escHtml, splitScientificName } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
 import { fetchTypeSpecimens, fetchTypeSpecimenRecord } from '../../_shared/typeMaterialSpecimen.js'
@@ -663,7 +663,6 @@ function toListItem(group) {
     return {
       key,
       typeStatus: first.typeStatus,
-      typeStatusHtml: typeStatusHtml(first.typeStatus),
       identity: makeIdentityHtml(group),
       identificationQualifierHtml: identificationQualifierHtml(first),
       headline: first.headline,
@@ -681,7 +680,6 @@ function toListItem(group) {
   return {
     key,
     typeStatus: first.typeStatus,
-    typeStatusHtml: typeStatusHtml(first.typeStatus),
     identity: makeIdentityHtml(group),
     identificationQualifierHtml: '',
     headline: first.headline,

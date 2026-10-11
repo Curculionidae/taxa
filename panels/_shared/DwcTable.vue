@@ -75,11 +75,10 @@
               <template v-else><em>{{ scientificNameParts.italic }}</em><span v-html="scientificNameSuffix" /></template>
             </span>
           </div>
-          <div
+          <TypeStatusChip
             v-if="dwc.typeStatus"
-            class="mt-1.5 inline-block text-xs font-medium rounded px-1.5 py-0.5"
-            :style="typeLabelStyle(dwc.typeStatus)"
-            v-html="typeStatusHtml"
+            class="mt-1.5"
+            :status="dwc.typeStatus"
           />
           <!-- Citations: the specimen's own (not part of the DwC record itself — TaxonWorks'
                DwcOccurrence cache has no bibliographicCitation builder for CollectionObjects),
@@ -591,9 +590,8 @@ import { resolveSpecimenRef, specimenKey } from './specimenRef.js'
 import { identifiedAsNameHtml, repeatsTypeStatusName } from './otuTag.js'
 import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
-import { escHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from './scientificName.js'
-import './panel-tokens.css'
-import { typeLabelStyle } from './typeStatus.js'
+import { escHtml, splitScientificName } from './scientificName.js'
+import TypeStatusChip from './TypeStatusChip.vue'
 import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
 import { formatEventDate } from './eventDate.js'
 import ReferenceModal from './ReferenceModal.vue'
@@ -703,8 +701,6 @@ const scientificNameSuffix = computed(() => {
   const plain = scientificNameParts.value.plain
   return plain ? ' ' + escHtml(plain) : ''
 })
-
-const typeStatusHtml = computed(() => buildTypeStatusHtml(dwc.value?.typeStatus))
 
 // "(as <i>Genus species</i> Author, Year)", italics as TaxonWorks marked them.
 // Empty when the type-status badge already states that very name: a type

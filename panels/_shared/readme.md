@@ -137,6 +137,12 @@ for that was tried and removed (it italicised "Photo taken near").
 It stays a guess from text. Where TaxonWorks delivers markup (`object_tag`, `cached_html`),
 use that instead, see `otuTag.js`.
 
+## TypeStatusChip.vue
+
+The type-status chip: "holotype of *Aus bus* Author, 1900" on a red label for a name-bearing type, a yellow one for other type material (paratype, ...), black print on both. One prop, `status`: one status or a whole DwC `typeStatus` cell (" | "-joined). Every status gets a chip of its own, coloured on its own; nothing is rendered for an empty one. Colour comes from `typeLabelStyle()` in `typeStatus.js`, the italics from `typeStatusHtml()` in `scientificName.js`, the tokens from `panel-tokens.css`, which the component imports itself. Spacing is the caller's: pass a margin class.
+
+Depended on by `DwcTable.vue` (identity block), `PanelSpecimenOccurrences/components/ListRecords.vue` (list rows) and `PanelMapV2/components/MapPopup.vue` (specimen and type material rows). Until 2026-10-11 the first two each had their own copy of the markup and the map popup printed the status as plain text. If you change it, check all three.
+
 ## DwcTable.vue
 
 Modal showing the full DarwinCore record for a CollectionObject or FieldOccurrence: institution (resolved to full name via GRSciColl), identification, collection event, location, coordinates (with OpenStreetMap link), biological associations, and associated media thumbnails. Fetches `/collection_objects/:id/dwc` or `/field_occurrences/:id/dwc`.

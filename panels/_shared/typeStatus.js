@@ -3,8 +3,8 @@
 //
 // Depended on by:
 //   - ../PanelMapV2/composables/enrichedStyle.js (re-exports the classifiers)
-//   - ./DwcTable.vue, ../PanelSpecimenOccurrences/components/ListRecords.vue
-//     (typeLabelStyle, the type-status chip)
+//   - ./TypeStatusChip.vue (typeLabelStyle, typeStatusLabels; the chip
+//     DwcTable, the specimen list and the map popup all render)
 
 // A DwC `typeStatus` cell is a " | "-joined list of "<type_type> of <name>"
 // labels (TaxonWorks builds it as `type_materials.map { label_for_type_material }
@@ -47,7 +47,8 @@ export function classifyTypeStatus(cell) {
 
 // Inline style for the type-status chip, after the pinned-label convention:
 // red for a name-bearing type, yellow for any other type material, black
-// print on both. Tokens live in ./panel-tokens.css (the caller imports it).
+// print on both. Tokens live in ./panel-tokens.css, which ./TypeStatusChip.vue
+// imports: render the chip with that component rather than calling this directly.
 export function typeLabelStyle(cell) {
   const paper = classifyTypeStatus(cell) === 'other' ? '--pp-type-label-other' : '--pp-type-label'
   return { backgroundColor: `var(${paper})`, color: 'var(--pp-type-label-ink)' }

@@ -19,11 +19,9 @@
               {{ ' ' + splitName(targets?.[i]?.label ?? item.label).author }}
             </span>
           </div>
-          <div
-            v-for="status in typeStatusList(item.id)"
-            :key="status"
-            class="text-xs text-base-content mt-0.5 [&_i]:italic"
-            v-html="formatTypeStatus(status)"
+          <TypeStatusChip
+            class="mt-1"
+            :status="typeStatusList(item).join(' | ')"
           />
         </template>
 
@@ -118,24 +116,27 @@
             >{{ reassessment.citation.display }}</button>:</b> {{ reassessment.value }}</div>
         </template>
 
-        <!-- TypeMaterial whose specimen has no determination, so it never
-             arrives as a CollectionObject row of its own: same shape as the
-             CollectionObject row above, minus the determined name. -->
-        <template v-else-if="specimenFor(item)">
-          <div class="text-sm font-medium text-base-content">{{ TYPE_LABELS[COLLECTION_OBJECT] }}</div>
-          <div
-            class="text-xs truncate [&_i]:italic"
-            v-html="formatTypeStatus(item.label)"
-          />
-        </template>
-
-        <!-- TypeMaterial (specimen not resolved) and other bare types. Redundant
+        <!-- TypeMaterial: its specimen has no determination, so it never
+             arrives as a CollectionObject row of its own. Once the specimen is
+             found (resolveTypeSpecimens) the row gets the same heading as the
+             CollectionObject row above, minus the determined name. Redundant
              TypeMaterial rows are already dropped from `rows` (see
              typeMaterialIsDuplicate). -->
+        <template v-else-if="item.type === TYPE_MATERIAL">
+          <div
+            v-if="specimenFor(item)"
+            class="text-sm font-medium text-base-content mb-1"
+          >
+            {{ TYPE_LABELS[COLLECTION_OBJECT] }}
+          </div>
+          <TypeStatusChip :status="item.label" />
+        </template>
+
+        <!-- other bare types -->
         <span
           v-else
-          class="truncate [&_i]:italic"
-          v-html="item.type === TYPE_MATERIAL ? formatTypeStatus(item.label) : escapeHtml(item.label)"
+          class="truncate"
+          v-html="escapeHtml(item.label)"
         />
       </li>
     </ul>
@@ -153,7 +154,8 @@ import {
   TYPE_MATERIAL
 } from '@/constants/objectTypes.js'
 import { stripHtml, shortCitation } from '../../_shared/citationText.js'
-import { escHtml as escapeHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from '../../_shared/scientificName.js'
+import { escHtml as escapeHtml, splitScientificName } from '../../_shared/scientificName.js'
+import TypeStatusChip from '../../_shared/TypeStatusChip.vue'
 import { fetchTypeSpecimens, specimenByTypeMaterialId as indexByTypeMaterialId } from '../../_shared/typeMaterialSpecimen.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
@@ -192,8 +194,11 @@ function tagList(adId) {
 
 // verbatim DwC type-status strings for a CollectionObject ("holotype of X",
 // "paratype of X", ...). A specimen can carry more than one.
-function typeStatusList(coId) {
-  return props.typeStatusByCoId?.get?.(coId)?.statuses || []
+// The map is keyed by CollectionObject id: a FieldOccurrence with the same
+// number is a different record and has no type status.
+function typeStatusList(item) {
+  if (item.type !== COLLECTION_OBJECT) return []
+  return props.typeStatusByCoId?.get?.(item.id)?.statuses || []
 }
 // A TypeMaterial popup row is redundant only when another row in the SAME popup
 // is a CollectionObject that already renders the very same "<type> of <name>"
@@ -205,7 +210,7 @@ function typeMaterialIsDuplicate(item) {
   if (item.type !== TYPE_MATERIAL) return false
   return props.items.some(
     (it) =>
-      CLICKABLE_TYPES.includes(it.type) && typeStatusList(it.id).includes(item.label)
+      CLICKABLE_TYPES.includes(it.type) && typeStatusList(it).includes(item.label)
   )
 }
 
@@ -217,13 +222,6 @@ const rows = computed(() =>
     .map((item, i) => ({ item, i }))
     .filter(({ item }) => !typeMaterialIsDuplicate(item))
 )
-
-// "holotype of Parexophthalmus vitiensis Marshall, 1941" ->
-// "holotype of <i>Parexophthalmus vitiensis</i> Marshall, 1941"
-// tag: 'i' matches this component's own `[&_i]:italic` wrapping classes.
-function formatTypeStatus(s) {
-  return buildTypeStatusHtml(s, { tag: 'i' })
-}
 
 const emit = defineEmits(['selected', 'citation-selected'])
 

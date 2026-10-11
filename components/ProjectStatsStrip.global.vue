@@ -33,12 +33,10 @@
 // the correction only ever counts upward; the catalog only grows. A failed
 // request just leaves the estimate showing.
 //
-// weevilNames / plantNames back the "taxon names" tooltip only (not animated):
-// they come from two extra header-count queries so the "how many of these are
-// non-weevil / plant names" line stays live rather than a written-in guess.
-// Both seed as null and the tooltip only spells out the breakdown once every
-// figure it needs is a real fetched number (see the sanity guard in the title
-// function) — a half-loaded or failed pair never renders a bogus subtraction.
+// "taxon names" is NOT the /stats figure: that one is project-wide and also
+// counts the host plants and other taxa that only exist as partners in
+// biological associations. It is a header count of the names under
+// Curculionoidea instead, same root as "valid species".
 
 import { reactive, computed, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils'
@@ -56,8 +54,6 @@ const ROOT_TAXON_NAME_ID = CURCULIONOIDEA_TAXON_NAME_ID
 const counts = reactive({
   species: 14000,
   names: 22000,
-  weevilNames: null,
-  plantNames: null,
   specimens: 16000,
   distributions: 32000,
   bioassoc: 1900,
@@ -74,26 +70,8 @@ const META = [
   {
     key: 'names',
     label: 'taxon names',
-    title: (c) => {
-      const base =
-        'Every scientific name in the project, all ranks, valid and invalid.'
-      // Only add the breakdown when every figure it needs is a real fetched
-      // number and the arithmetic is sane (a failed /stats leaves c.names at
-      // its seed, which can be below the weevil-only count).
-      if (
-        c.weevilNames == null ||
-        c.plantNames == null ||
-        c.names <= c.weevilNames
-      )
-        return base
-      const nonWeevil = c.names - c.weevilNames
-      return (
-        base +
-        ` Includes ${nonWeevil.toLocaleString()} names outside Curculionoidea ` +
-        `(host plants and other taxa in biological associations), ` +
-        `${c.plantNames.toLocaleString()} of them plants.`
-      )
-    }
+    title:
+      'Every scientific name within Curculionoidea, all ranks, valid and invalid.'
   },
   {
     key: 'specimens',
@@ -125,11 +103,7 @@ const META = [
 ]
 
 const pills = computed(() =>
-  META.map((m) => ({
-    ...m,
-    count: counts[m.key],
-    title: typeof m.title === 'function' ? m.title(counts) : m.title
-  }))
+  META.map((m) => ({ ...m, count: counts[m.key] }))
 )
 
 onMounted(() => {
@@ -141,7 +115,6 @@ onMounted(() => {
       const co = num('Collection objects')
       const fo = num('Field occurrences')
       if (co != null || fo != null) counts.specimens = (co || 0) + (fo || 0)
-      if (num('Taxon names') != null) counts.names = num('Taxon names')
       if (num('Asserted distributions') != null)
         counts.distributions = num('Asserted distributions')
       if (num('Biological associations') != null)
@@ -157,8 +130,8 @@ onMounted(() => {
     })
     .catch(() => {})
 
-  // Non-weevil share of "Taxon names": total (from /stats) minus everything
-  // under Curculionoidea. Header count only, feeds the tooltip.
+  // Every name under Curculionoidea, all ranks, valid and invalid. Header
+  // count only.
   makeAPIRequest
     .get('/taxon_names.json', {
       params: {
@@ -169,18 +142,7 @@ onMounted(() => {
     })
     .then((response) => {
       const total = Number(response.headers['pagination-total'])
-      if (Number.isFinite(total)) counts.weevilNames = total
-    })
-    .catch(() => {})
-
-  // Of those non-weevil names, how many are botanical (ICN code).
-  makeAPIRequest
-    .get('/taxon_names.json', {
-      params: { per: 1, nomenclature_group: 'Icn' }
-    })
-    .then((response) => {
-      const total = Number(response.headers['pagination-total'])
-      if (Number.isFinite(total)) counts.plantNames = total
+      if (Number.isFinite(total)) counts.names = total
     })
     .catch(() => {})
 })

@@ -24,8 +24,8 @@ function citationEntry(row, sources) {
   const source = sources?.get(String(row.source_id))
   return {
     id: row.id,
-    // Same label the standard view shows: two or more authors collapse to
-    // "First et al., Year"; a single author is left alone. Plain text, so the
+    // Same label the standard view shows: three or more authors collapse
+    // to "First et al., Year"; one or two authors are left alone. Plain text, so the
     // filter list, the sort key and the clipboard all read like the cell.
     short: shortCitation(stripHtml(row.citation_source_body || '')),
     sourceId: row.source_id ?? null,

@@ -100,7 +100,7 @@ export function advancedParticipant(row, side, taxa, original = false, classific
   const participant = {
     ...names, family, subfamily: taxonomy.subfamily || '', tribe: taxonomy.tribe || '',
     genusOtuId: taxonomy.genusOtuId || null,
-    part: displayFamily(part) || (entity.type !== 'AnatomicalPart' && side === 'subject' ? 'adult' : ''),
+    part: displayFamily(part),
     otuId: linked && family ? (!original && otu?.accepted_otu_id) || otuId : null,
     specimen, italic: linked && !!scientificName, dwc, hasTaxonName: linked
   }

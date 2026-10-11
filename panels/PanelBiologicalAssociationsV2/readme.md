@@ -297,8 +297,8 @@ Active name filters are translated when switching synonyms or authorship.
   default, so moving it would drop the name from the table entirely.
 - A vertical rule separates the four column groups (Subject, Relationship,
   Object, Metadata) and nothing else — there is none between Family and Genus.
-- Both taxonomy sides have separate anatomical columns. Missing Subject anatomy
-  displays **adult**; missing Object anatomy leaves the cell blank.
+- Both taxonomy sides have separate anatomical columns. Missing anatomy leaves
+  the cell blank on either side — nothing is filled in.
 - Tags and attributes belong to each **BiologicalAssociation**, not its
   BiologicalRelationship type. Attribute names and values appear in two aligned,
   numbered lists. A combined attribute-name/value filter matches the same

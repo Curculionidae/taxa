@@ -23,7 +23,7 @@
     - label: Bibliography
       submenu:
         - label: Search
-          link: /resources/tw/filter/bibliography
+          link: /bibliography/search
 
         - label: Recent additions
           link: /bibliography/recent

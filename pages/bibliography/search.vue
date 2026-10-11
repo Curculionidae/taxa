@@ -95,10 +95,20 @@
             <VButton
               size="sm"
               :disabled="isDownloading"
-              title="Download the whole bibliography as a BibTeX file"
+              :title="
+                isFiltered
+                  ? 'Download the search results as a BibTeX file'
+                  : 'Download the whole bibliography as a BibTeX file'
+              "
               @click="() => downloadBibliography()"
             >
-              {{ isDownloading ? 'Preparing file...' : 'Download .bib' }}
+              {{
+                isDownloading
+                  ? 'Preparing file...'
+                  : isFiltered
+                    ? 'Download search results (.bib)'
+                    : 'Download whole bibliography (.bib)'
+              }}
             </VButton>
             <DropdownMenu :request="requestData" />
           </div>
@@ -150,14 +160,16 @@
 </template>
 
 <script setup>
-import { ref, onBeforeMount } from 'vue'
+import { ref, computed, watch, onBeforeMount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getPagination, getAll, toBibtex } from '../utils'
 import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
-import DropdownMenu from '../components/DropdownMenu.vue'
-import YearPicker from '../components/YearPicker.vue'
-import VSlider from '../components/VSlider.vue'
-import OtuModal from '../components/OtuModal.vue'
+import { getPagination } from '@/modules/bibliography/utils'
+import DropdownMenu from '@/modules/bibliography/components/DropdownMenu.vue'
+import YearPicker from '@/modules/bibliography/components/YearPicker.vue'
+import VSlider from '@/modules/bibliography/components/VSlider.vue'
+import { getAll } from './utils/sourceRecords.js'
+import { toBibtex } from './utils/bibtex.js'
+import OtuModal from './components/OtuModal.vue'
 
 const PER = 50
 const MIN_YEAR = 1650
@@ -175,12 +187,32 @@ const requestData = ref()
 const isDownloading = ref(false)
 const hasDownloadFailed = ref(false)
 
-// Always the whole project bibliography, whatever the filters say.
+// What the table shows: the filters of the last search that was run, not
+// what is typed in the form since.
+const searched = ref({})
+
+// The default year range alone is not a search. It is left out then, because
+// it would drop the few sources that have no year.
+const isFiltered = computed(() => {
+  const { year_start, year_end, author, query_term } = searched.value
+
+  return Boolean(
+    author ||
+      query_term ||
+      Number(year_start ?? MIN_YEAR) !== MIN_YEAR ||
+      Number(year_end ?? MAX_YEAR) !== MAX_YEAR
+  )
+})
+
+// The search results, or the whole project bibliography without a search.
 function downloadBibliography() {
   isDownloading.value = true
   hasDownloadFailed.value = false
 
-  getAll(makeAPIRequest, '/sources', { in_project: true })
+  getAll(makeAPIRequest, '/sources', {
+    in_project: true,
+    ...(isFiltered.value ? searched.value : {})
+  })
     .then((sources) => {
       sources.sort(
         (a, b) =>
@@ -196,7 +228,9 @@ function downloadBibliography() {
       const link = document.createElement('a')
 
       link.href = url
-      link.download = 'bibliography.bib'
+      link.download = isFiltered.value
+        ? 'bibliography-search.bib'
+        : 'bibliography.bib'
       link.click()
       URL.revokeObjectURL(url)
     })
@@ -208,31 +242,42 @@ function downloadBibliography() {
     })
 }
 
-async function loadList(page = 1) {
+// Counts the searches, so a slow answer cannot replace a later one.
+let lastRequest = 0
+
+// The table, the download and the URL all follow the search that was
+// answered, not what has been typed in the form since.
+function showList({ filters, replace }, { data, total, page, url }) {
+  pagination.value = { page, total, per: PER }
+  list.value = data
+  searched.value = filters
+  requestData.value = { data, url }
+
+  setQuery(toQuery(filters, page), replace)
+}
+
+// `replace`: the search comes from the URL (first load, Back, Forward), so
+// it must not add a history entry of its own.
+function loadList(page = 1, { replace = false } = {}) {
+  const filters = { ...parameters.value }
+  const id = ++lastRequest
+
   isLoading.value = true
 
   makeAPIRequest
     .get('/sources', {
-      params: {
-        in_project: true,
-        page,
-        per: pagination.value.per,
-        ...parameters.value
-      }
+      params: { in_project: true, page, per: PER, ...filters }
     })
     .then(({ data, headers, request }) => {
-      pagination.value = getPagination(headers)
-      list.value = data
+      if (id !== lastRequest) return
 
-      requestData.value = {
-        data,
-        url: request.responseURL
-      }
-
-      setQuery()
+      showList(
+        { filters, replace },
+        { data, url: request.responseURL, ...getPagination(headers) }
+      )
     })
     .finally(() => {
-      isLoading.value = false
+      if (id === lastRequest) isLoading.value = false
     })
 }
 
@@ -259,15 +304,53 @@ function reset() {
   loadList()
 }
 
-function setQuery() {
-  router.push({
-    query: { ...parameters.value, page: pagination.value.page }
-  })
+// The URL form of a search: strings only, nothing empty.
+function toQuery(filters, page) {
+  return Object.fromEntries(
+    Object.entries({ ...filters, page })
+      .filter(([, value]) => value != null && value !== '')
+      .map(([key, value]) => [key, String(value)])
+  )
 }
 
-onBeforeMount(() => {
+function isSameQuery(a, b) {
+  const keys = Object.keys(a)
+
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => String(a[key]) === String(b[key]))
+  )
+}
+
+// What this page last wrote to the URL, to tell its own changes from a
+// Back or Forward.
+let writtenQuery = {}
+
+function setQuery(query, replace) {
+  writtenQuery = query
+
+  if (isSameQuery(query, route.query)) return
+
+  if (replace) {
+    router.replace({ query })
+  } else {
+    router.push({ query })
+  }
+}
+
+function loadFromRoute() {
   setParameters(route.query)
   setPagination(route.query)
-  loadList(pagination.value.page)
-})
+  loadList(pagination.value.page, { replace: true })
+}
+
+// Back and Forward change the URL without going through the form.
+watch(
+  () => route.query,
+  (query) => {
+    if (!isSameQuery(query, writtenQuery)) loadFromRoute()
+  }
+)
+
+onBeforeMount(() => loadFromRoute())
 </script>

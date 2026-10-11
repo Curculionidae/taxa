@@ -1,3 +1,6 @@
+import { escHtml } from '../../../panels/_shared/scientificName.js'
+import { getRelationshipKind, getStatusKind } from './citationLabels.js'
+
 /**
  * The ways a citation can lead to an OTU, as `/otus` filter facets. A source
  * is cited on a taxon name, on the OTU itself, on an asserted distribution,
@@ -25,8 +28,9 @@ const OTU_PATHS = [
 
 /**
  * Citation types that belong to a taxon name rather than to an OTU. Each
- * resolver turns the citations of its type into `{ nameId, citation }` pairs.
- * The citation is then shown on the rows of that name.
+ * resolver turns the citations of its type into `{ nameId, citation }` pairs,
+ * with a `kind` where the type alone says too little (which relationship,
+ * which status). The citation is then shown on the rows of that name.
  */
 const NAME_RESOLVERS = {
   TaxonName: (citations) =>
@@ -64,16 +68,6 @@ export function getCitationColor(type) {
   if (BIOLOGY_TYPES.includes(type)) return 'green'
 
   return 'yellow'
-}
-
-// Citation topics are project vocabulary, matched by name. A topic not
-// listed here is grey.
-const TOPIC_COLORS = {
-  biology: 'green'
-}
-
-export function getTopicColor(topic) {
-  return TOPIC_COLORS[topic.name.trim().toLowerCase()] || 'gray'
 }
 
 const PER = 1000
@@ -139,13 +133,6 @@ function unique(list) {
 
 function plainText(html = '') {
   return html.replace(/<[^>]+>/g, '')
-}
-
-function escapeHtml(text) {
-  return String(text ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
 }
 
 // The `/otus` facet for biological associations returns both sides, so a
@@ -236,13 +223,20 @@ async function getPathOtus({ param, load }, sourceId, request) {
 // object led to it: the OTU itself, its taxon name, or the ids a path's
 // `load` reports. For the other paths the API only says which OTUs are
 // involved.
-function getOwnCitations(otu, type, citations, objectIds) {
+//
+// `byObject` is the citations of the type, grouped by the id they cite.
+function getOwnCitations(otu, type, byObject, objectIds) {
   const ids = new Set(objectIds.get(otu.id))
 
   if (type === 'Otu') ids.add(otu.id)
   if (type === 'TaxonName' && otu.taxon_name_id) ids.add(otu.taxon_name_id)
 
-  return citations.filter((c) => ids.has(c.citation_object_id))
+  return [...ids].flatMap((id) => byObject.get(id) || [])
+}
+
+// Whether a path can tell which citation led to which OTU.
+function isTraceable(type, objectIds) {
+  return type === 'Otu' || type === 'TaxonName' || objectIds.size > 0
 }
 
 // A relationship is listed with its subject: the name the statement is
@@ -254,14 +248,13 @@ async function resolveRelationships(citations, { request }) {
     'taxon_name_relationship_id',
     unique(citations.map((c) => c.citation_object_id))
   )
-  const nameIds = new Map(
-    relationships.map((r) => [r.id, r.subject_taxon_name_id])
-  )
+  const byId = new Map(relationships.map((r) => [r.id, r]))
 
   return citations
-    .filter((c) => nameIds.has(c.citation_object_id))
+    .filter((c) => byId.has(c.citation_object_id))
     .map((citation) => ({
-      nameId: nameIds.get(citation.citation_object_id),
+      nameId: byId.get(citation.citation_object_id).subject_taxon_name_id,
+      kind: getRelationshipKind(byId.get(citation.citation_object_id).type),
       citation
     }))
 }
@@ -269,20 +262,21 @@ async function resolveRelationships(citations, { request }) {
 // The list endpoint ignores an id filter, so classifications are read one
 // at a time.
 async function resolveClassifications(citations, { request }) {
-  const nameIds = new Map()
+  const byId = new Map()
   const ids = unique(citations.map((c) => c.citation_object_id))
 
   await inBatches(ids.slice(0, MAX_SINGLE_REQUESTS), (id) =>
     request
       .get(`/taxon_name_classifications/${id}`, { params: {} })
-      .then(({ data }) => nameIds.set(id, data.taxon_name_id))
+      .then(({ data }) => byId.set(id, data))
       .catch(() => {})
   )
 
   return citations
-    .filter((c) => nameIds.has(c.citation_object_id))
+    .filter((c) => byId.has(c.citation_object_id))
     .map((citation) => ({
-      nameId: nameIds.get(citation.citation_object_id),
+      nameId: byId.get(citation.citation_object_id).taxon_name_id,
+      kind: getStatusKind(byId.get(citation.citation_object_id).type),
       citation
     }))
 }
@@ -360,7 +354,8 @@ async function getRowsForNames(nameIds, request) {
         id: `name:${name.id}`,
         otuId: otuIdByName.get(name.cached_valid_taxon_name_id) ?? null,
         taxon_name_id: name.id,
-        object_tag: [name.cached_html, escapeHtml(name.cached_author_year)]
+        isCombination: name.type === 'Combination',
+        object_tag: [name.cached_html, escHtml(name.cached_author_year)]
           .filter(Boolean)
           .join(' ')
       })
@@ -372,36 +367,81 @@ function makeRow(record) {
   return { ...record, parts: new Map() }
 }
 
-function addPart(row, type, citations) {
-  if (!row.parts.has(type)) row.parts.set(type, new Set())
-  citations.forEach((citation) => row.parts.get(type).add(citation))
+// A part is a citation on one kind of record, with the `kind` its resolver
+// found, if any.
+function addPart(row, type, citations, kind) {
+  if (!row.parts.has(type)) row.parts.set(type, new Map())
+  citations.forEach((citation) => row.parts.get(type).set(citation, kind))
 }
 
-function makeCitedOn(type, citations) {
-  const pages = unique(citations.map((c) => c.pages || null))
+// What the origin citation of a name amounts to. Flagged on a name it is the
+// original description, on a misspelling ("[sic]") the source of that
+// misspelling, on a combination the first use of the combination.
+function getNameKind(citation, row) {
+  if (!citation.is_original) return undefined
+  if (row.isCombination) return 'combination'
+  if (plainText(row.object_tag).includes('[sic]')) return 'misspelling'
 
-  return (pages.length ? pages : [null]).map((page) => ({ type, pages: page }))
+  return 'original'
 }
 
-function finishRow({ parts, ...row }) {
+const NAME_KIND_ORDER = ['original', 'combination', 'misspelling', undefined]
+
+// One pill per kind and page, carrying the topics tagged on its citations.
+function makeCitedOn(type, part, row) {
+  // Some paths only say that an OTU is involved, not through which citation.
+  if (!part.size) return [{ type, pages: null }]
+
+  const pills = new Map()
+
+  for (const [citation, partKind] of part) {
+    const kind = type === 'TaxonName' ? getNameKind(citation, row) : partKind
+    const pages = citation.pages || null
+    const key = `${kind}:${pages}`
+
+    if (!pills.has(key)) pills.set(key, { kind, pages, topics: new Map() })
+
+    for (const { topic } of citation.citation_topics || []) {
+      pills.get(key).topics.set(topic.id, topic)
+    }
+  }
+
+  // A citation without pages says nothing that a pill of the same kind with
+  // pages does not say already, unless it has topics of its own.
+  const hasPages = new Set(
+    [...pills.values()].filter((pill) => pill.pages).map((pill) => pill.kind)
+  )
+
+  return [...pills.values()]
+    .filter(
+      (pill) => pill.pages || pill.topics.size || !hasPages.has(pill.kind)
+    )
+    .sort(
+      (a, b) =>
+        NAME_KIND_ORDER.indexOf(a.kind) - NAME_KIND_ORDER.indexOf(b.kind)
+    )
+    .map(({ kind, pages, topics }) => ({
+      type,
+      pages,
+      ...(kind ? { kind } : {}),
+      ...(topics.size ? { topics: [...topics.values()] } : {})
+    }))
+}
+
+function finishRow({ parts, isCombination, ...row }) {
   const types = TYPE_ORDER.filter((type) => parts.has(type))
-  const topics = new Map()
-
-  types
-    .flatMap((type) => [...parts.get(type)])
-    .flatMap((citation) => citation.citation_topics || [])
-    .forEach(({ topic }) => topics.set(topic.id, topic))
 
   return {
     ...row,
-    citedOn: types.flatMap((type) => makeCitedOn(type, [...parts.get(type)])),
-    topics: [...topics.values()]
+    citedOn: types.flatMap((type) =>
+      makeCitedOn(type, parts.get(type), { ...row, isCombination })
+    )
   }
 }
 
 /**
  * One row per taxon a source is cited for, each with what the citations sit
- * on (name, distribution, type material, ...), their pages and topics, plus
+ * on (name, distribution, type material, ...), with pages and topics, plus
  * a count of the citations that could not be tied to a taxon.
  *
  * A row's `otuId` is null for a cited name with no OTU to link to.
@@ -422,24 +462,28 @@ export async function getSourceRecords(sourceId, request) {
   )
 
   const rows = new Map()
-  const linkedTypes = new Set()
   const linkedCitations = new Set()
+
+  // Types whose path only says which OTUs are involved. Once it finds any,
+  // all citations of the type count as shown, there is no telling them apart.
+  const untraceable = new Set()
 
   paths.forEach(({ type }, index) => {
     const { otus, objectIds } = results[index]
+    const byObject = groupBy(
+      citationsByType.get(type),
+      (c) => c.citation_object_id
+    )
+
+    if (otus.length && !isTraceable(type, objectIds)) untraceable.add(type)
 
     for (const otu of otus) {
-      const own = getOwnCitations(
-        otu,
-        type,
-        citationsByType.get(type),
-        objectIds
-      )
+      const own = getOwnCitations(otu, type, byObject, objectIds)
 
       if (!rows.has(otu.id)) rows.set(otu.id, makeRow({ ...otu, otuId: otu.id }))
 
       addPart(rows.get(otu.id), type, own)
-      linkedTypes.add(type)
+      own.forEach((citation) => linkedCitations.add(citation))
     }
   })
 
@@ -461,8 +505,8 @@ export async function getSourceRecords(sourceId, request) {
       nameIds
     })
 
-    for (const { nameId, citation } of resolved) {
-      bound.push({ nameId, type, citation })
+    for (const { nameId, kind, citation } of resolved) {
+      bound.push({ nameId, type, kind, citation })
       if (!nameIds.get(nameId)) nameIds.set(nameId, citation.pages)
     }
   }
@@ -478,9 +522,9 @@ export async function getSourceRecords(sourceId, request) {
 
   const rowsByName = groupBy([...rows.values()], (row) => row.taxon_name_id)
 
-  for (const { nameId, type, citation } of bound) {
+  for (const { nameId, type, kind, citation } of bound) {
     for (const row of rowsByName.get(nameId) || []) {
-      addPart(row, type, [citation])
+      addPart(row, type, [citation], kind)
       linkedCitations.add(citation)
     }
   }
@@ -492,7 +536,7 @@ export async function getSourceRecords(sourceId, request) {
         plainText(a.object_tag).localeCompare(plainText(b.object_tag))
       ),
     unlinked: [...citationsByType]
-      .filter(([type]) => !linkedTypes.has(type))
+      .filter(([type]) => !untraceable.has(type))
       .map(([type, list]) => ({
         type,
         count: list.filter((c) => !linkedCitations.has(c)).length

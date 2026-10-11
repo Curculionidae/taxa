@@ -20,7 +20,17 @@
         </ClientOnly>
 
         <div
-          v-if="!isLoading && !records.otus.length && !records.unlinked.length"
+          v-if="hasFailed"
+          class="text-xl text-center my-8 w-full text-danger"
+        >
+          The records could not be loaded. Please close this window and try
+          again.
+        </div>
+
+        <div
+          v-else-if="
+            !isLoading && !records.otus.length && !records.unlinked.length
+          "
           class="text-xl text-center my-8 w-full"
         >
           No records found.
@@ -58,26 +68,15 @@
                   />
                   <VBadge
                     v-for="item in otu.citedOn"
-                    :key="`${item.type}:${item.pages}`"
-                    class="ml-1"
+                    :key="`${item.type}:${item.kind}:${item.pages}`"
+                    class="ml-1 cursor-help"
                     :color="getCitationColor(item.type)"
+                    :title="describeCitedOn(item).help"
                     shape="pill"
                     size="sm"
                     weight="normal"
                   >
-                    {{ [getTypeLabel(item.type), item.pages].filter(Boolean).join(': ') }}
-                  </VBadge>
-                  <VBadge
-                    v-for="topic in otu.topics"
-                    :key="topic.id"
-                    class="ml-1"
-                    :color="getTopicColor(topic)"
-                    :title="topic.definition"
-                    shape="pill"
-                    size="sm"
-                    weight="normal"
-                  >
-                    {{ topic.name }}
+                    {{ getPillText(item) }}
                   </VBadge>
                 </VTableBodyCell>
               </VTableBodyRow>
@@ -101,13 +100,14 @@
           <VBadge
             v-for="item in records.unlinked"
             :key="item.type"
-            class="ml-1"
+            class="ml-1 cursor-help"
             :color="getCitationColor(item.type)"
+            :title="describeCitedOn(item).help"
             shape="pill"
             size="sm"
             weight="normal"
           >
-            {{ getTypeLabel(item.type) }} ({{ item.count }})
+            {{ describeCitedOn(item).label }} ({{ item.count }})
           </VBadge>
         </div>
       </div>
@@ -118,11 +118,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
-import {
-  getSourceRecords,
-  getCitationColor,
-  getTopicColor
-} from '../utils'
+import { getSourceRecords, getCitationColor } from '../utils/sourceRecords.js'
+import { describeCitedOn } from '../utils/citationLabels.js'
 
 const PER = 50
 
@@ -139,6 +136,7 @@ const props = defineProps({
 })
 
 const isLoading = ref(false)
+const hasFailed = ref(false)
 const isModalVisible = ref(false)
 const records = ref({ otus: [], unlinked: [] })
 const page = ref(1)
@@ -147,37 +145,31 @@ const list = computed(() =>
   records.value.otus.slice((page.value - 1) * PER, page.value * PER)
 )
 
-const TYPE_LABELS = {
-  TaxonName: 'Name',
-  Otu: 'OTU',
-  AssertedDistribution: 'Distribution',
-  BiologicalAssociation: 'Biological association',
-  Content: 'Content',
-  CollectionObject: 'Specimen',
-  Image: 'Image',
-  TaxonNameRelationship: 'Name relationship',
-  TaxonNameClassification: 'Name status',
-  TypeMaterial: 'Type material',
-  Lead: 'Key'
+// "OTU: 22 · Distribution, description": what the source is cited on, the
+// pages, then the topics tagged on that citation.
+function getPillText(item) {
+  const cited = [describeCitedOn(item).label, item.pages]
+    .filter(Boolean)
+    .join(': ')
+  const topics = (item.topics || []).map(({ name }) => name).join(', ')
+
+  return [cited, topics].filter(Boolean).join(' · ')
 }
 
-// A citation type without a label, e.g. one TaxonWorks adds later, falls back
-// to its class name split into words: "FieldOccurrence" becomes
-// "Field occurrence".
-function getTypeLabel(type) {
-  const words = type.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
-
-  return TYPE_LABELS[type] || words.charAt(0).toUpperCase() + words.slice(1)
-}
-
+// A failed lookup must not read as "no records", nor leave the records of an
+// earlier, successful one on screen.
 function loadRecords() {
   isLoading.value = true
+  hasFailed.value = false
   page.value = 1
   getSourceRecords(props.sourceId, makeAPIRequest)
     .then((data) => {
       records.value = data
     })
-    .catch(() => {})
+    .catch(() => {
+      records.value = { otus: [], unlinked: [] }
+      hasFailed.value = true
+    })
     .finally(() => {
       isLoading.value = false
     })

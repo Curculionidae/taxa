@@ -1,10 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  getSourceRecords,
-  getCitationColor,
-  getTopicColor
-} from './sourceRecords.js'
+import { getSourceRecords, getCitationColor } from './sourceRecords.js'
 
 const SOURCE_ID = 7
 
@@ -19,9 +15,14 @@ const otu = (id, label, taxonNameId = null) => ({
   object_tag: `<span class="otu_tag">${label}</span>`
 })
 
-const citation = (type, objectId, { pages = null, topics = [] } = {}) => ({
+const citation = (
+  type,
+  objectId,
+  { pages = null, topics = [], original = false } = {}
+) => ({
   citation_object_type: type,
   citation_object_id: objectId,
+  is_original: original,
   pages,
   citation_topics: topics.map((name, index) => ({
     topic: { id: index + 1, name, definition: `About ${name}` }
@@ -136,11 +137,12 @@ describe('getSourceRecords', () => {
     assert.equal(otus.length, 1)
     assert.deepEqual(otus[0].citedOn, [
       { type: 'TaxonName', pages: '12' },
-      { type: 'Otu', pages: '14' },
+      {
+        type: 'Otu',
+        pages: '14',
+        topics: [{ id: 1, name: 'Biology', definition: 'About Biology' }]
+      },
       { type: 'AssertedDistribution', pages: null }
-    ])
-    assert.deepEqual(otus[0].topics, [
-      { id: 1, name: 'Biology', definition: 'About Biology' }
     ])
   })
 
@@ -243,6 +245,47 @@ describe('getSourceRecords', () => {
     assert.deepEqual(unlinked, [{ type: 'TypeMaterial', count: 2 }])
   })
 
+  it('counts the citations of a type that only partly lead to a taxon', async () => {
+    const request = makeRequest({
+      citations: [
+        citation('AssertedDistribution', 300, { pages: '5' }),
+        citation('AssertedDistribution', 301),
+        citation('AssertedDistribution', 302),
+        citation('TaxonName', 50),
+        citation('TaxonName', 99)
+      ],
+      otus: {
+        [DISTRIBUTION_PARAM]: [otu(1, 'Aus bus', 50)],
+        [NAME_PARAM]: [otu(1, 'Aus bus', 50)]
+      },
+      routes: {
+        '/asserted_distributions': () => [
+          {
+            id: 300,
+            asserted_distribution_object_type: 'Otu',
+            asserted_distribution_object_id: 1
+          },
+          {
+            id: 301,
+            asserted_distribution_object_type: 'BiologicalAssociation',
+            asserted_distribution_object_id: 900
+          }
+        ]
+      }
+    })
+
+    const { otus, unlinked } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonName', pages: null },
+      { type: 'AssertedDistribution', pages: '5' }
+    ])
+    assert.deepEqual(unlinked, [
+      { type: 'AssertedDistribution', count: 2 },
+      { type: 'TaxonName', count: 1 }
+    ])
+  })
+
   it('lists a cited name that has no OTU as a row without a link', async () => {
     const request = makeRequest({
       citations: [citation('TaxonName', 50, { pages: '75' })],
@@ -264,6 +307,176 @@ describe('getSourceRecords', () => {
     assert.equal(otus[0].object_tag, '<i>Aus bus</i> Smith &amp; Jones, 1900')
     assert.deepEqual(otus[0].citedOn, [{ type: 'TaxonName', pages: '75' }])
     assert.deepEqual(unlinked, [])
+  })
+
+  it('tells the original description from other citations of a name', async () => {
+    const request = makeRequest({
+      citations: [
+        citation('TaxonName', 50, { pages: '12', original: true }),
+        citation('TaxonName', 51, { pages: '12' }),
+        citation('TaxonName', 51, { pages: '30' })
+      ],
+      otus: { [NAME_PARAM]: [otu(1, 'Aus bus', 50), otu(2, 'Aus cus', 51)] }
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonName', pages: '12', kind: 'original' }
+    ])
+    assert.deepEqual(otus[1].citedOn, [
+      { type: 'TaxonName', pages: '12' },
+      { type: 'TaxonName', pages: '30' }
+    ])
+  })
+
+  it('does not call the first use of a combination an original description', async () => {
+    const request = makeRequest({
+      citations: [citation('TaxonName', 50, { pages: '75', original: true })],
+      otus: { [NAME_PARAM]: [] },
+      names: [
+        {
+          id: 50,
+          type: 'Combination',
+          cached_html: '<i>Cus bus</i>',
+          cached_author_year: '(Smith, 1900)',
+          cached_valid_taxon_name_id: 50
+        }
+      ]
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonName', pages: '75', kind: 'combination' }
+    ])
+  })
+
+  it('calls the origin citation of a misspelled name a misspelling', async () => {
+    const request = makeRequest({
+      citations: [citation('TaxonName', 50, { pages: '9', original: true })],
+      otus: { [NAME_PARAM]: [otu(1, '<i>Aus bus</i> [sic] Smith, 1900', 50)] }
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonName', pages: '9', kind: 'misspelling' }
+    ])
+  })
+
+  it('names the kind of relationship and status, one pill per kind', async () => {
+    const request = makeRequest({
+      citations: [
+        citation('TaxonNameRelationship', 600, { pages: '80' }),
+        citation('TaxonNameRelationship', 601, { pages: '80' }),
+        citation('TaxonNameRelationship', 602, { pages: '80' }),
+        citation('TaxonNameClassification', 700, { pages: '81' })
+      ],
+      pool: [otu(1, 'Aus bus', 50)],
+      routes: {
+        '/taxon_name_relationships': () => [
+          {
+            id: 600,
+            subject_taxon_name_id: 50,
+            type: 'TaxonNameRelationship::Iczn::Invalidating::Synonym::Subjective'
+          },
+          {
+            id: 601,
+            subject_taxon_name_id: 50,
+            type: 'TaxonNameRelationship::Iczn::Invalidating::Synonym'
+          },
+          {
+            id: 602,
+            subject_taxon_name_id: 50,
+            type: 'TaxonNameRelationship::Typification::Genus::Original::OriginalMonotypy'
+          }
+        ],
+        '/taxon_name_classifications/700': () => ({
+          taxon_name_id: 50,
+          type: 'TaxonNameClassification::Iczn::Unavailable::NomenNudum::NoDescription'
+        })
+      }
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonNameRelationship', pages: '80', kind: 'Synonymy' },
+      { type: 'TaxonNameRelationship', pages: '80', kind: 'Type species' },
+      { type: 'TaxonNameClassification', pages: '81', kind: 'Nomen nudum' }
+    ])
+  })
+
+  it('does not repeat a pill for a citation without pages', async () => {
+    const request = makeRequest({
+      citations: [
+        citation('Otu', 1, { pages: '29' }),
+        citation('Otu', 1),
+        citation('TaxonName', 50)
+      ],
+      otus: {
+        [NAME_PARAM]: [otu(1, 'Aus bus', 50)],
+        [OTU_PARAM]: [otu(1, 'Aus bus', 50)]
+      }
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonName', pages: null },
+      { type: 'Otu', pages: '29' }
+    ])
+  })
+
+  it('keeps a pill without pages when it has topics of its own', async () => {
+    const request = makeRequest({
+      citations: [
+        citation('Otu', 1, { pages: '29' }),
+        citation('Otu', 1, { topics: ['Notes'] })
+      ],
+      otus: { [OTU_PARAM]: [otu(1, 'Aus bus', 50)] }
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'Otu', pages: '29' },
+      {
+        type: 'Otu',
+        pages: null,
+        topics: [{ id: 1, name: 'Notes', definition: 'About Notes' }]
+      }
+    ])
+  })
+
+  it('keeps the topics of a citation with its own pill', async () => {
+    const request = makeRequest({
+      citations: [
+        citation('Otu', 1, { pages: '14', topics: ['Distribution', 'Notes'] }),
+        citation('Otu', 1, { pages: '20' }),
+        citation('TaxonName', 50, { pages: '14' })
+      ],
+      otus: {
+        [NAME_PARAM]: [otu(1, 'Aus bus', 50)],
+        [OTU_PARAM]: [otu(1, 'Aus bus', 50)]
+      }
+    })
+
+    const { otus } = await getSourceRecords(SOURCE_ID, request)
+
+    assert.deepEqual(otus[0].citedOn, [
+      { type: 'TaxonName', pages: '14' },
+      {
+        type: 'Otu',
+        pages: '14',
+        topics: [
+          { id: 1, name: 'Distribution', definition: 'About Distribution' },
+          { id: 2, name: 'Notes', definition: 'About Notes' }
+        ]
+      },
+      { type: 'Otu', pages: '20' }
+    ])
   })
 
   it('links a cited synonym without an OTU to the OTU of its valid name', async () => {
@@ -377,12 +590,5 @@ describe('getCitationColor', () => {
     assert.equal(getCitationColor('BiologicalAssociation'), 'green')
     assert.equal(getCitationColor('AssertedDistribution'), 'yellow')
     assert.equal(getCitationColor('SomethingNew'), 'yellow')
-  })
-})
-
-describe('getTopicColor', () => {
-  it('makes the biology topic green and leaves other topics grey', () => {
-    assert.equal(getTopicColor({ name: 'Biology' }), 'green')
-    assert.equal(getTopicColor({ name: 'description' }), 'gray')
   })
 })

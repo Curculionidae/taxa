@@ -106,13 +106,24 @@ function acceptedName(otu) {
   if (!accepted) return null
   const ownTaxonNameId = otu.taxon_name_id ?? otu.taxon_name?.id
   if (ownTaxonNameId != null && String(accepted.id) === String(ownTaxonNameId)) return null
-  const name = accepted.cached_html || (accepted.cached ? `<i>${escHtml(accepted.cached)}</i>` : '')
+  const html = taxonNameHtml(accepted)
+  return html ? { html, otuId: otu.accepted_otu_id || null } : null
+}
+
+/**
+ * The name a participant OTU was determined as, with its authorship -- the
+ * recorded counterpart to acceptedName(), built the same way. Only needed for a
+ * specimen whose OTU is a synonym: see buildLabelParts().
+ */
+function recordedName(otu) {
+  return taxonNameHtml(otu?.taxon_name)
+}
+
+function taxonNameHtml(taxonName) {
+  const name = taxonName?.cached_html || (taxonName?.cached ? `<i>${escHtml(taxonName.cached)}</i>` : '')
   if (!name) return null
-  const author = accepted.cached_author_year
-  return {
-    html: author ? `${name} ${escHtml(author)}` : name,
-    otuId: otu.accepted_otu_id || null
-  }
+  const author = taxonName.cached_author_year
+  return author ? `${name} ${escHtml(author)}` : name
 }
 
 function nameHtmlFromScientificName(scientificName) {
@@ -126,9 +137,7 @@ function nameHtmlFromScientificName(scientificName) {
  *
  * OTU              → { prefix: null, html: "<i>Genus species</i>" }
  * CO / FO          → { prefix: null, html: "<i>Genus species</i> Author, Year" }
- *                    from the specimen's DWC scientificName (`specimenName`) —
- *                    a CO/FO entity's own object_tag has no clean taxon-name
- *                    span, only a catalog string ("FieldOccurrence 5000; …").
+ *                    from the specimen's DWC scientificName (`specimenName`).
  * AnatomicalPart   → { prefix: "Leaf of ", html: "<i>Genus species</i>" }
  *                    (prefix from object_label "leaf: Artemisia vulgaris"; when
  *                    the part wraps a CO/FO, `specimenName` fills the name)
@@ -141,8 +150,15 @@ function nameHtmlFromScientificName(scientificName) {
  *
  * `dropAcceptedTail` is passed through to extractNameHtml: true once the caller
  * renders the accepted name itself.
+ *
+ * DWC's scientificName is always the *valid* name, not the one the specimen was
+ * determined as. When the determination is a synonym (`dropAcceptedTail`), it
+ * would repeat the accepted name the caller appends ("indefinitus now
+ * indefinitus", OTU 722800). The recorded name then comes from the object_tag's
+ * "det. <otu_tag>" span, or -- for an AnatomicalPart wrapping the specimen,
+ * whose tag has no such span -- from the determination OTU (`recordedHtml`).
  */
-function buildLabelParts(entity, specimenName, dropAcceptedTail = false) {
+function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recordedHtml = null) {
   const speciesHtml = extractNameHtml(entity.object_tag, dropAcceptedTail)
   const isPart = entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)
 
@@ -160,6 +176,10 @@ function buildLabelParts(entity, specimenName, dropAcceptedTail = false) {
       prefix = `${raw.charAt(0).toUpperCase() + raw.slice(1)} of `
       partRemainder = label.slice(colonIdx + 2)
     }
+  }
+
+  if (dropAcceptedTail && (speciesHtml || recordedHtml)) {
+    return { prefix, html: speciesHtml || recordedHtml }
   }
 
   // Preferred for any CO/FO (directly, or wrapped in an AnatomicalPart): the
@@ -202,8 +222,10 @@ export function makeBiologicalAssociation(
   const subjAccepted = acceptedName(subjOtu)
   const objAccepted  = acceptedName(objOtu)
 
-  const subjLabel = buildLabelParts(subj, subjDwc?.scientificName || null, !!subjAccepted)
-  const objLabel  = buildLabelParts(obj, objDwc?.scientificName || null, !!objAccepted)
+  const subjLabel = buildLabelParts(subj, subjDwc?.scientificName || null, !!subjAccepted,
+    subjAccepted ? recordedName(subjOtu) : null)
+  const objLabel  = buildLabelParts(obj, objDwc?.scientificName || null, !!objAccepted,
+    objAccepted ? recordedName(objOtu) : null)
 
   return {
     id: data.id,

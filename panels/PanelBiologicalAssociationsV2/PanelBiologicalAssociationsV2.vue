@@ -1652,10 +1652,9 @@ async function loadBiologicalAssociations(page = 1) {
 
     // Pre-fetch DWC records for CO/FO subjects/objects (grouped by OTU to
     // avoid duplicate fetches). Supplies both the locality shown in the Area
-    // column and — since a CO/FO entity's object_tag carries no clean
-    // taxon-name span, only a catalog-string object_label ("FieldOccurrence
-    // 5000; <uuid>; <locality>") — the determination name (scientificName,
-    // authorship included) used for the label cell.
+    // column and the name (scientificName, authorship included) used for the
+    // label cell. DWC gives the valid name; for a determination under a synonym
+    // makeBiologicalAssociation shows the recorded name instead.
     const specimensByOtuId = new Map()
     for (const item of data) {
       const basic = basicMap.get(item.id)

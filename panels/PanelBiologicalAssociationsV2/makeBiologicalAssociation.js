@@ -14,8 +14,8 @@
  */
 
 import { isSpecimenType, resolveSpecimenRef, specimenKey } from '../_shared/specimenRef.js'
-import { scientificNameHtml } from '../_shared/scientificName.js'
-import { extractOtuTagSpan } from '../_shared/otuTag.js'
+import { escHtml, scientificNameHtml } from '../_shared/scientificName.js'
+import { extractOtuTagSpan, otuOwnName } from '../_shared/otuTag.js'
 export { isSpecimenType, resolveSpecimenRef, specimenKey }
 
 /**
@@ -57,6 +57,7 @@ function nameHtmlFromScientificName(scientificName) {
  * Returns { prefix, html } for the label cell.
  *
  * OTU              → { prefix: null, html: "<i>Genus species</i>" }
+ * OTU with a name of its own → { prefix: null, html: "Carex sp." } (otuOwnName)
  * CO / FO          → { prefix: null, html: "<i>Genus species</i> Author, Year" }
  *                    from the specimen's DWC scientificName (`specimenName`) —
  *                    a CO/FO entity's own object_tag has no clean taxon-name
@@ -72,6 +73,11 @@ function nameHtmlFromScientificName(scientificName) {
  * RouterLink to the OTU page.
  */
 function buildLabelParts(entity, specimenName) {
+  // An OTU carrying a name of its own besides its taxon name ("Carex sp.")
+  // shows that name alone, upright: it is not necessarily a scientific name.
+  const ownName = entity.base_class === 'Otu' ? otuOwnName(entity.object_tag) : null
+  if (ownName) return { prefix: null, html: escHtml(ownName) }
+
   const speciesHtml = extractNameHtml(entity.object_tag)
   const isPart = entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)
 

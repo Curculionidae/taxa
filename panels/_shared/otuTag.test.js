@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractOtuTagSpan, identifiedAsNameHtml, repeatsTypeStatusName } from './otuTag.js'
+import { extractOtuTagSpan, identifiedAsNameHtml, otuOwnName, repeatsTypeStatusName } from './otuTag.js'
 
 test('extractOtuTagSpan: extracts inner HTML of an otu_tag_taxon_name span', () => {
   const tag = '<span class="otu_tag_taxon_name" title="x"><i>Hypera</i> (<i>Kippenbergia</i>) <i>arator</i> (Linnaeus, 1758)</span> <span>&#10003;</span>'
@@ -95,4 +95,18 @@ test('repeatsTypeStatusName: bare type status names no taxon', () => {
 test('repeatsTypeStatusName: nothing identified-as, or no type status -> false', () => {
   assert.equal(repeatsTypeStatusName(null, 'paratype of Aus bus Smith, 1900'), false)
   assert.equal(repeatsTypeStatusName('<i>Aus bus</i> Smith, 1900', null), false)
+})
+
+test('otuOwnName: the bold OTU name of an OTU that also has a taxon name', () => {
+  assert.equal(otuOwnName('<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>'), 'Carex sp.')
+})
+
+test('otuOwnName: synonym OTU repeats the name after "now", first one is taken', () => {
+  const tag = '<span class="otu_tag"><i>Knautia sylvatica</i> (L.) Duby&nbsp;<b>Knautia silvatica</b> <em>now</em> <i>Knautia drymeja</i> Heuff.&nbsp;<b>Knautia silvatica</b></span>'
+  assert.equal(otuOwnName(tag), 'Knautia silvatica')
+})
+
+test('otuOwnName: taxon name only, or no tag -> null', () => {
+  assert.equal(otuOwnName('<span class="otu_tag"><i>Pseudostenapion simum</i> (Germar, 1817)</span>'), null)
+  assert.equal(otuOwnName(null), null)
 })

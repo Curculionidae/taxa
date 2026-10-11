@@ -20,6 +20,11 @@
   --pp-type-label: #e81c1c;        /* type-status chip, name-bearing type — red label (TypeStatusChip.vue) */
   --pp-type-label-other: #facc15;  /* type-status chip, other type material (paratype, ...) — yellow label */
   --pp-type-label-ink: #000;       /* their print: black, 4.6:1 on the red */
+  /* biological-association chip on a specimen row: the package VBadge's "green",
+     the colour biological-association citations carry in the bibliography */
+  --pp-bio-chip: #f0fdf4;
+  --pp-bio-chip-ink: #15803d;
+  --pp-bio-chip-ring: rgb(22 163 74 / 0.2);
 }
 
 .dark {
@@ -27,4 +32,7 @@
   --pp-type-label: #f03a3a;
   --pp-type-label-other: #facc15;
   --pp-type-label-ink: #000;
+  --pp-bio-chip: rgb(74 222 128 / 0.1);
+  --pp-bio-chip-ink: #4ade80;
+  --pp-bio-chip-ring: rgb(34 197 94 / 0.2);
 }

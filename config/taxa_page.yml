@@ -53,9 +53,9 @@ taxa_page:
           - panel:gbif-type-specimens
 
   references:
-    label: 'Other references'
+    label: 'Bibliography'
     panels:
       - - - id: panel:references-cited
             bind:
-              title: 'Other references'
+              title: 'Bibliography'
 

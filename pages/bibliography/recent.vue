@@ -78,9 +78,9 @@
 <script setup>
 import { ref, onBeforeMount } from 'vue'
 import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
-import { getPagination } from '@/modules/bibliography/utils'
-import DropdownMenu from '@/modules/bibliography/components/DropdownMenu.vue'
-import OtuModal from '@/modules/bibliography/components/OtuModal.vue'
+import { getPagination } from '../../modules/bibliography/utils'
+import DropdownMenu from '../../modules/bibliography/components/DropdownMenu.vue'
+import OtuModal from '../../modules/bibliography/components/OtuModal.vue'
 
 const PER = 25
 

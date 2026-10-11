@@ -54,7 +54,6 @@ const PART_MAPPING = Object.freeze({
 
   flower: { poId: 'PO:0009046', icon: 'flower' },
   inflorescence: { poId: 'PO:0009049', icon: 'flower' },
-  'plant ovary': { poId: 'PO:0009072', icon: 'flower' },
   'umbel inflorescence': { poId: 'PO:0030129', icon: 'flower' },
   'flower pedicel': { poId: 'PO:0030113', icon: 'flower' },
   'sepal': { poId: 'PO:0009031', icon: 'flower' },
@@ -65,25 +64,24 @@ const PART_MAPPING = Object.freeze({
   stem: { poId: 'PO:0009047', icon: 'stem' },
   'shoot axis': { poId: 'PO:0025029', icon: 'stem' },
   'stem base': { poId: 'PO:0008039', icon: 'stem', hint: 'base' },
-  'bark': { poId: 'PO:0004518', icon: 'stem'},
+  'bark': { poId: 'PO:0004518', icon: 'stem' },
 
   root: { poId: 'PO:0009005', icon: 'root' },
-  rhizome: {
-    poId: 'PO:0004542',
-    icon: 'root',
-    hint: 'rhizome',
-    note: 'Rhizome is botanically an underground shoot axis; this simplified field view displays it with root.'
-  },
+  rhizome: { poId: 'PO:0004542', icon: 'root', hint: 'rhizome', note: 'Rhizome is botanically an underground shoot axis; this simplified field view displays it with root.' },
+  bulb: { poId: 'PO:0025356', icon: 'root' },
 
   fruit: {
     poId: 'PO:0009001',
     icon: 'fruitSeed',
-    note: 'Fruit and seed are displayed together because the plant class needed for the project distinction is not recorded in TaxonWorks.'
+    note: 'Fruits, seeds, and cones are displayed together to represent both angiosperms and gymnosperms.'
   },
+  'propagule': { icon: 'fruitSeed', note: 'Fruits, seeds, and cones are displayed together to represent both angiosperms and gymnosperms.' },
+  'plant ovary': { poId: 'PO:0009072', icon: 'fruitSeed', note: 'Fruits, seeds, and cones are displayed together to represent both angiosperms and gymnosperms.' },
+
   seed: {
     poId: 'PO:0009010',
     icon: 'fruitSeed',
-    note: 'Fruit and seed are displayed together because the plant class needed for the project distinction is not recorded in TaxonWorks.'
+    note: 'Fruits, seeds, and cones are displayed together to represent both angiosperms and gymnosperms.'
   }
 })
 

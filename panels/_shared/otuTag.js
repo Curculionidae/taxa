@@ -113,3 +113,37 @@ export function repeatsTypeStatusName(identifiedAsHtml, typeStatus) {
   if (!identifiedAsHtml || idx === -1) return false
   return comparableName(identifiedAsHtml) === comparableName(status.slice(idx + 4))
 }
+
+/**
+ * The OTU's own name, when it has one besides its taxon name. TaxonWorks tags
+ * such an OTU "<i>Carex</i>&nbsp;<b>Carex sp.</b>": taxon name first, then the
+ * OTU name in bold (repeated after the "now" marker when the taxon name is a
+ * synonym). The OTU name is the one the curator chose to call it, so the
+ * biological-association displays show it alone instead of both names run
+ * together ("Carex L. Carex sp."). Plain text, entities resolved, not escaped.
+ * Null for an OTU with a taxon name only (no bold run).
+ *
+ * Depended on by:
+ *   - ./DwcTable.vue (biological associations section)
+ *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
+ *     (association chip on a list row)
+ *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
+ *
+ * @param {string} objectTag
+ * @returns {string|null}
+ */
+export function otuOwnName(objectTag) {
+  const m = String(objectTag || '').match(/<b>([\s\S]*?)<\/b>/)
+  if (!m) return null
+  const name = m[1]
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return name || null
+}

@@ -587,7 +587,7 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import { FIELD_OCCURRENCE, COLLECTION_OBJECT } from '@/constants/objectTypes'
 import { resolveSpecimenRef, specimenKey } from './specimenRef.js'
-import { identifiedAsNameHtml, repeatsTypeStatusName } from './otuTag.js'
+import { identifiedAsNameHtml, otuOwnName, repeatsTypeStatusName } from './otuTag.js'
 import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName } from './scientificName.js'
@@ -752,10 +752,14 @@ async function loadMediaImages(associatedMedia, id, type) {
 // Otu object_label reads like "Genus species Author, Year" — italicize with
 // splitScientificName. Anything else (a CO/FO/AnatomicalPart on the other
 // side of the relationship, which is rare in practice) falls back to plain
-// text rather than trying to parse its catalog-string label.
+// text rather than trying to parse its catalog-string label. An OTU with a
+// name of its own ("Carex sp.") shows that name alone, see otuOwnName.
 function bioPartyLabel(entity) {
   if (!entity) return { italic: '', plain: '' }
-  if (entity.base_class === 'Otu') return splitScientificName(entity.object_label || '')
+  if (entity.base_class === 'Otu') {
+    const ownName = otuOwnName(entity.object_tag)
+    return ownName ? { italic: '', plain: ownName } : splitScientificName(entity.object_label || '')
+  }
   return { italic: '', plain: (entity.object_label || '').split('\n')[0] }
 }
 

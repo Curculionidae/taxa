@@ -100,7 +100,7 @@ from the panel:
 - consume as `var(--pp-<name>)` via inline `:style` or a scoped class — never a `bg-*`/`text-*` utility
 - a host repo can still retint it by redefining `--pp-<name>` in its own `:root`
 
-Existing: `--pp-accent-identified` (phenology "Identified" series), `--pp-gbif` (GBIF green), `--pp-type-label` / `--pp-type-label-other` + `--pp-type-label-ink` (type-status chip: red for name-bearing types, yellow for paratypes and other type material, black print; picked by `typeLabelStyle()` in `panels/_shared/typeStatus.js`).
+Existing: `--pp-accent-identified` (phenology "Identified" series), `--pp-gbif` (GBIF green), `--pp-type-label` / `--pp-type-label-other` + `--pp-type-label-ink` (type-status chip: red for name-bearing types, yellow for paratypes and other type material, black print; picked by `typeLabelStyle()` in `panels/_shared/typeStatus.js`), `--pp-bio-chip` / `--pp-bio-chip-ink` / `--pp-bio-chip-ring` (green biological-association chip on specimen rows, same green as the package VBadge).
 
 ## Vue whitespace condensing — rendering spaces between elements
 

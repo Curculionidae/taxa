@@ -41,11 +41,13 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { makeAPIRequest } from '@/utils'
 import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
+import { otuOwnName } from '../../_shared/otuTag.js'
 import { escHtml, splitScientificName } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
@@ -135,6 +137,9 @@ const dwcRecords = ref([])
 // load, not once per row, since a list row like this one needs to check
 // dozens of records rather than the one DwcTable shows at a time.
 const bioAssociationsIndex = ref(new Map())
+const BIO_CHIP_STYLE =
+  'background: var(--pp-bio-chip); color: var(--pp-bio-chip-ink); box-shadow: inset 0 0 0 1px var(--pp-bio-chip-ring)'
+const router = useRouter()
 
 // Basic client-side filters — all data for this OTU is already fetched, so
 // filtering/re-grouping is instant with no extra API calls.
@@ -321,6 +326,8 @@ function loadDwc() {
       dwcRecords.value = scoped.map((d) => ({
         ...d,
         headline: getHeadline(d),
+        localityDetail: getLocalityDetail(d),
+        coordinates: getCoordinates(d),
         summary: makeSummary(d)
       }))
     })
@@ -364,26 +371,51 @@ function getHeadline(data) {
   return localityParts(data)[0] || 'No locality data'
 }
 
-// Everything localityParts() found beyond whatever became the headline.
+// Everything localityParts() found beyond whatever became the headline,
+// shown right after it on the same line ("Brazil, Pará: Itaituba").
 function getLocalityDetail(data) {
   return localityParts(data).slice(1).join(', ')
 }
 
-// The detail line under the identity line: everything about WHEN/WHERE it
-// was collected. Records in a collapsed group are equal in every field read
-// here (groupRecords.js keys on all DwC collecting-event fields), so
-// computing it once per record and reusing `first.summary` for a group row
-// (see toListItem) cannot misattribute a place or date. Any field added
+// The line under the locality: who collected it and when, "leg. N. Yunakov,
+// 2024-05-02", or "collected 1973-10" ("observed 1973-10" for a field
+// occurrence) when no collector is recorded. Records
+// in a collapsed group are equal in every field read here and in the
+// locality line (groupRecords.js keys on all DwC collecting-event fields), so
+// computing both once per record and reusing the first record's for a group
+// row (see toListItem) cannot misattribute a place or date. Any field added
 // here must be listed in EVENT_FIELDS there, never PER_RECORD_EVENT_FIELDS.
 function makeSummary(item) {
-  return [
-    getLocalityDetail(item),
-    getDate(item),
-    getCoordinates(item),
-    getCollector(item)
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const collector = getCollector(item)
+  const date = getDate(item)
+  let event = ''
+  if (collector) event = [collector, date].filter(Boolean).join(', ')
+  else if (date) event = `${item.dwc_occurrence_object_type === 'FieldOccurrence' ? 'observed' : 'collected'} ${date}`
+  return event
+}
+
+// ±250 m / ±2.5 km / ±10 km: meters below 1000, km to one decimal at or above.
+function formatUncertainty(meters) {
+  const m = Number(meters)
+  if (!m) return ''
+  return m < 1000 ? ` ±${Math.round(m)} m` : ` ±${Number((m / 1000).toFixed(1))} km`
+}
+
+// The georeferenced point (decimal degrees, not the verbatim label text) with
+// its stated uncertainty, "14.8358°S, 56.4278°W ±10 m", shown in brackets
+// after the locality. Decimals follow the
+// uncertainty so a point good to 10 km is not printed to the meter: one
+// decimal is about 11 km, each further one a tenth of that. Four decimals
+// (about 11 m) when no uncertainty is recorded.
+function getCoordinates({ decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters }) {
+  if (decimalLatitude == null || decimalLatitude === '' || decimalLongitude == null || decimalLongitude === '') return ''
+  const lat = Number(decimalLatitude)
+  const lon = Number(decimalLongitude)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return ''
+  const m = Number(coordinateUncertaintyInMeters)
+  const decimals = m > 0 ? Math.min(5, Math.max(1, Math.ceil(Math.log10(111000 / m)))) : 4
+  const part = (value, pos, neg) => `${Math.abs(value).toFixed(decimals)}°${value < 0 ? neg : pos}`
+  return `${part(lat, 'N', 'S')}, ${part(lon, 'E', 'W')}${formatUncertainty(coordinateUncertaintyInMeters)}`
 }
 
 function getCatalogNumberHtml({ catalogNumber }) {
@@ -427,22 +459,6 @@ function getCollector({ recordedBy }) {
 
 const getDate = formatEventDate
 
-// Matches the ±250m / ±2.5km convention already established for this exact
-// field elsewhere (CollectionDatabase's format_coordinates): meters below
-// 1000, one-decimal km at or above.
-function formatUncertainty(meters) {
-  const m = Number(meters)
-  if (!m) return ''
-  return m < 1000 ? ` ±${Math.round(m)}m` : ` ±${(m / 1000).toFixed(1)}km`
-}
-
-function getCoordinates({ verbatimCoordinates, coordinateUncertaintyInMeters }) {
-  const coordinates = verbatimCoordinates?.split(' ').join(', ')
-  if (!coordinates) return ''
-
-  return `(${coordinates}${formatUncertainty(coordinateUncertaintyInMeters)})`
-}
-
 function getDetHtml({ identifiedBy, dateIdentified }) {
   if (!identifiedBy) return ''
   const year = String(dateIdentified || '').match(/^\d{4}/)?.[0]
@@ -470,7 +486,10 @@ function badgeHtml(text) {
 // rows, not the one DwcTable shows at a time.
 function bioPartyLabel(entity) {
   if (!entity) return { italic: '', plain: '' }
-  if (entity.base_class === 'Otu') return splitScientificName(entity.object_label || '')
+  if (entity.base_class === 'Otu') {
+    const ownName = otuOwnName(entity.object_tag)
+    return ownName ? { italic: '', plain: ownName } : splitScientificName(entity.object_label || '')
+  }
   return { italic: '', plain: (entity.object_label || '').split('\n')[0] }
 }
 
@@ -502,11 +521,15 @@ async function fetchBioAssociationsForOtu(otuIdVal) {
 // out to belong to one of this OTU's own records; unused keys are harmless.
 function buildBioAssociationsIndex(rawBaList) {
   const index = new Map()
-  const add = (ref, relationshipLabel, otherName) => {
+  const add = (ref, relationshipLabel, other) => {
     if (!ref) return
     const key = `${ref.type}:${ref.id}`
     if (!index.has(key)) index.set(key, [])
-    index.get(key).push({ relationshipLabel, otherName })
+    index.get(key).push({
+      relationshipLabel,
+      otherName: bioPartyLabel(other),
+      otherOtuId: other?.base_class === 'Otu' ? other.id : null
+    })
   }
   rawBaList.forEach((ba) => {
     const rel = ba.biological_relationship || {}
@@ -514,32 +537,41 @@ function buildBioAssociationsIndex(rawBaList) {
     if (subjRef) {
       const prefix = anatomicalPartPrefix(ba.subject)
       const verb = rel.name || ''
-      add(subjRef, prefix ? `${prefix} ${verb}` : verb, bioPartyLabel(ba.object))
+      add(subjRef, prefix ? `${prefix} ${verb}` : verb, ba.object)
     }
     const objRef = resolveSpecimenRef(ba.object)
     if (objRef) {
       const prefix = anatomicalPartPrefix(ba.object)
       const verb = rel.inverted_name || rel.name || ''
-      add(objRef, prefix ? `${prefix} ${verb}` : verb, bioPartyLabel(ba.subject))
+      add(objRef, prefix ? `${prefix} ${verb}` : verb, ba.subject)
     }
   })
   return index
 }
 
 // The primary association a record participates in, inline on the identity
-// line ("collected from Corylus avellana") — a second+ association collapses
+// line as a chip ("collected from Corylus avellana") — a second+ association collapses
 // to a "+N" count rather than listing every one, same convention as
 // DwcTable's hosts_html.
 function bioAssociationHtml(record) {
   const key = `${record.dwc_occurrence_object_type}:${record.dwc_occurrence_object_id}`
   const matches = bioAssociationsIndex.value.get(key)
   if (!matches?.length) return ''
-  const { relationshipLabel, otherName } = matches[0]
-  const nameHtml = otherName.italic
+  const { relationshipLabel, otherName, otherOtuId } = matches[0]
+  const plainNameHtml = otherName.italic
     ? `<em>${escHtml(otherName.italic)}</em>${otherName.plain ? ' ' + escHtml(otherName.plain) : ''}`
     : escHtml(otherName.plain)
+  // A partner that is an OTU links to its page. ListRecords' row click
+  // ignores clicks on a link, so this does not also open the detail modal.
+  const nameHtml = otherOtuId
+    ? `<a href="${escAttr(router.resolve({ name: 'otus-id', params: { id: otherOtuId } }).href)}" class="hover:underline" style="color: inherit">${plainNameHtml}</a>`
+    : plainNameHtml
   const more = matches.length > 1 ? ` <span class="opacity-60">+${matches.length - 1}</span>` : ''
-  return `<span class="opacity-70">${escHtml(relationshipLabel)}</span> ${nameHtml}${more}`
+  // A chip in the green that biological associations carry elsewhere (the
+  // package VBadge's "green"). Inline style on --pp- tokens because this row
+  // is assembled as an HTML string; tokens in _shared/panel-tokens.css,
+  // imported by ListRecords.vue, which renders this.
+  return `<span class="inline-block rounded-full px-2 py-0.5" style="${BIO_CHIP_STYLE}">${escHtml(relationshipLabel)} ${nameHtml}${more}</span>`
 }
 
 // The identity line: WHICH physical object this is and how it was
@@ -666,6 +698,8 @@ function toListItem(group) {
       identity: makeIdentityHtml(group),
       identificationQualifierHtml: identificationQualifierHtml(first),
       headline: first.headline,
+      localityDetail: first.localityDetail,
+      coordinates: first.coordinates,
       summary: first.summary,
       associatedMedia: media,
       recordEntries: null,
@@ -683,6 +717,8 @@ function toListItem(group) {
     identity: makeIdentityHtml(group),
     identificationQualifierHtml: '',
     headline: first.headline,
+    localityDetail: first.localityDetail,
+    coordinates: first.coordinates,
     summary: first.summary,
     associatedMedia: media,
     recordEntries: group.records.map((record, index) => toRecordEntry(record, index, group.records)),

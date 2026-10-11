@@ -160,3 +160,14 @@ test('AnatomicalPart fallback (no DWC, no name span) keeps the part-name prefix 
   assert.equal(ba.subjectSpeciesHtml, 'FieldOccurrence 4996; 1234abcd-0000; Germany')
   assert.ok(!ba.subjectSpeciesHtml.startsWith('nidus:'))
 })
+
+test('an OTU with a name of its own besides its taxon name shows the OTU name alone', () => {
+  const object = {
+    base_class: 'Otu',
+    id: 735260,
+    object_tag: '<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>',
+    object_label: 'Carex L. Carex sp.'
+  }
+  const ba = makeBiologicalAssociation({ ...baseData, object }, [], [], [], basic, new Map())
+  assert.equal(ba.objectSpeciesHtml, 'Carex sp.')
+})

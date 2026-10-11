@@ -13,6 +13,24 @@ per-species aggregate view).
   `SingleSpeciesOccurrences` for that species.
 - `ListRecords.vue`, `MultiSelect.vue` — presentational.
 
+## Row text (list view)
+
+User decisions, 2026-10-11:
+
+- Locality line: country and province in bold, then a colon and the rest of the
+  locality, then the georeferenced point in brackets, e.g.
+  `Brazil, Mato Grosso: Rosário-Oeste (14.83583°S, 56.42778°W ±10 m)`. The point
+  is `decimalLatitude` / `decimalLongitude` (not the verbatim coordinates) with
+  `coordinateUncertaintyInMeters`; the number of decimals follows the uncertainty.
+- Line below: `leg. N. Yunakov, 2024-05-02`, or `collected 1973-10` when no
+  collector is recorded (`observed 1973-10` for a field occurrence).
+- The primary biological association is a green chip (`--pp-bio-chip*` in
+  `../_shared/panel-tokens.css`, the package VBadge green that association
+  citations use in the bibliography). A partner OTU links to its page, and an OTU
+  with a name of its own shows only that name (`otuOwnName()` in
+  `../_shared/otuTag.js`). A click on any link in a row does not open the detail
+  modal.
+
 ## Grouping (collapsed rows)
 
 **Rule (user decision, 2026-09-14):** records collapse into one row only when they

@@ -207,7 +207,7 @@
                 :key="item.key"
                 class="flex flex-col text-sm px-2 py-4 gap-2 border-b border-base-muted first:pt-0 last:pb-0 last:border-none"
                 :class="item.detail ? 'cursor-pointer hover:bg-base-muted' : ''"
-                @click="item.detail && emit('show-detail', item.detail)"
+                @click="item.detail && !$event.target.closest('a') && emit('show-detail', item.detail)"
               >
                 <div class="flex flex-col">
                   <TypeStatusChip
@@ -219,8 +219,8 @@
                     <span class="flex-1 min-w-0" v-html="item.identity" />
                     <span v-if="item.identificationQualifierHtml" class="shrink-0" v-html="item.identificationQualifierHtml" />
                   </div>
-                  <span class="font-medium">{{ item.headline }}</span>
-                  <span class="text-xs">{{ item.summary }}</span>
+                  <span><span class="font-medium">{{ item.headline }}</span><span v-if="item.localityDetail">: {{ item.localityDetail }}</span><span v-if="item.coordinates">{{ ' (' + item.coordinates + ')' }}</span></span>
+                  <span v-if="item.summary" class="text-xs">{{ item.summary }}</span>
                 </div>
                 <details v-if="item.recordEntries" class="text-xs group">
                   <summary class="cursor-pointer text-secondary opacity-60 hover:opacity-100 select-none list-none flex items-center gap-1.5">

@@ -1,20 +1,30 @@
 import TaxonWorks from '@/modules/otus/services/TaxonWorks'
 import { makeAPIRequest } from '@/utils'
 import { defineStore } from 'pinia'
+import { markRaw } from 'vue'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest'
 import { RESPONSE_ERROR } from '@/modules/otus/constants'
 import {
   isRankGroup,
   removeDuplicateShapes,
-  makeGeoJSONFeature
+  makeGeoJSONFeature,
+  specimensNotOnMap,
+  specimenGeometry,
+  buildTypeSpecimenFeatures
 } from '../utils'
 import { ASSERTED_ABSENT } from '@/constants/objectTypes'
 import { LEGEND } from '../constants'
 import {
   classifyTypeStatus,
+  classifyOneTypeStatus,
   typeStatusLabels
 } from '../composables/enrichedStyle.js'
 import { fetchAssertedDistributionTags } from '../../_shared/assertedDistributionTags.js'
+import {
+  fetchTypeSpecimens,
+  fetchTypeSpecimenRecord
+} from '../../_shared/typeMaterialSpecimen.js'
+import { mapPool } from '../../_shared/concurrencyPool.js'
 
 function normalizeAbsentFeatures(arr) {
   arr.forEach((feature) => {
@@ -109,6 +119,24 @@ async function fetchTypeStatusByCoId(otuId, signal) {
   }
 }
 
+// Where to draw each type specimen the geojson lacks: `{ collectionObjectId,
+// geometry }`, geometry null when its DwC record has no georeference (or could
+// not be fetched) - such a specimen is not drawn. Stops asking for further
+// records once the page's request was aborted (the user left the page).
+async function fetchTypeSpecimenPlacements(specimens, signal) {
+  const placements = []
+  await mapPool(specimens, 4, async ({ collectionObjectId }) => {
+    let geometry = null
+    try {
+      geometry = specimenGeometry(await fetchTypeSpecimenRecord(collectionObjectId))
+    } catch {
+      // not drawn
+    }
+    placements.push({ collectionObjectId, geometry })
+  }, () => Boolean(signal?.aborted))
+  return placements.sort((x, y) => x.collectionObjectId - y.collectionObjectId)
+}
+
 export const useDistributionStore = defineStore('distributionStoreMapV2', {
   state: () => {
     return {
@@ -122,6 +150,8 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       adventiveAdIds: new Set(),
       // Map<collectionObjectId, 'primary' | 'other'> for type-material styling
       typeStatusByCoId: new Map(),
+      // features for type specimens the geojson lacks (see addMissingTypeSpecimens)
+      typeSpecimenFeatures: [],
       controller: null
     }
   },
@@ -167,6 +197,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       this.tagsByAdId = new Map()
       this.adventiveAdIds = new Set()
       this.typeStatusByCoId = new Map()
+      this.typeSpecimenFeatures = []
       const isSpeciesGroup =
         rankString &&
         (isRankGroup('SpeciesGroup', rankString) ||
@@ -225,8 +256,6 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       ])
       if (signal?.aborted) return
 
-      const extraTypes = []
-
       if (tagsByAd.size) {
         this.tagsByAdId = tagsByAd
         const adventive = new Set()
@@ -234,21 +263,74 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
           if (kws.some((k) => k.toLowerCase() === 'adventive')) adventive.add(id)
         }
         this.adventiveAdIds = adventive
-        if (adventive.size) extraTypes.push('Adventive')
+        if (adventive.size) this.addShapeTypes(['Adventive'])
       }
 
-      if (typeByCo.size) {
-        this.typeStatusByCoId = typeByCo
-        const kinds = new Set([...typeByCo.values()].map((v) => v.kind))
-        if (kinds.has('primary')) extraTypes.push('TypeMaterial')
-        if (kinds.has('other')) extraTypes.push('OtherTypeMaterial')
-      }
+      this.setTypeStatus(typeByCo)
 
-      if (!extraTypes.length) return
+      // slower, and independent of the styling above - so it runs after it
+      await this.addMissingTypeSpecimens(features, otuId, typeByCo, signal)
+    },
 
+    setTypeStatus(typeByCo) {
+      if (!typeByCo.size) return
+      this.typeStatusByCoId = typeByCo
+      const kinds = new Set([...typeByCo.values()].map((v) => v.kind))
+      this.addShapeTypes([
+        ...(kinds.has('primary') ? ['TypeMaterial'] : []),
+        ...(kinds.has('other') ? ['OtherTypeMaterial'] : [])
+      ])
+    },
+
+    addShapeTypes(types) {
+      if (!types.length) return
       this.distribution.currentShapeTypes = [
-        ...new Set([...this.distribution.currentShapeTypes, ...extraTypes])
+        ...new Set([...this.distribution.currentShapeTypes, ...types])
       ]
+    },
+
+    // Type specimens the geojson lacks (a type usually has no taxon
+    // determination, so TaxonWorks does not list it under the OTU; a synonym's
+    // type is then missing from the map altogether - see typeMaterialSpecimen.js).
+    // They go into `typeSpecimenFeatures`, which PanelMapV2 adds to the layer
+    // group it already has. Deliberately NOT merged into `distribution.geojson`:
+    // VMap deep-watches that and would clear every layer and refit the view,
+    // seconds after the user started using the map.
+    async addMissingTypeSpecimens(features, otuId, typeByCo, signal) {
+      const missing = specimensNotOnMap(features, await fetchTypeSpecimens(otuId))
+      if (signal?.aborted || !missing.length) return
+
+      const placements = await fetchTypeSpecimenPlacements(missing, signal)
+      if (signal?.aborted) return
+
+      const added = buildTypeSpecimenFeatures(placements, {
+        id: Number(otuId),
+        type: 'Otu',
+        label: ''
+      })
+
+      const drawn = new Set(placements.filter((p) => p.geometry).map((p) => p.collectionObjectId))
+      if (import.meta.env.DEV && drawn.size < missing.length) {
+        console.debug(
+          '[PanelMapV2] type specimens without a georeference (not drawn):',
+          missing.map((s) => s.collectionObjectId).filter((id) => !drawn.has(id))
+        )
+      }
+      if (!added.length) return
+
+      const withAdded = new Map(typeByCo)
+      for (const s of missing) {
+        if (!drawn.has(s.collectionObjectId)) continue
+        const statuses = s.typeMaterials.map((tm) => tm.label)
+        withAdded.set(s.collectionObjectId, {
+          kind: statuses.some((l) => classifyOneTypeStatus(l) === 'primary') ? 'primary' : 'other',
+          statuses
+        })
+      }
+
+      // type status first, so the new layers come out coloured as types
+      this.setTypeStatus(withAdded)
+      this.typeSpecimenFeatures = markRaw(added)
     }
   }
 })

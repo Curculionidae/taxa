@@ -51,6 +51,18 @@ unit test can import the pure helpers without resolving the `@/` alias.
 
 **Depended on by:** `./ImageLightbox.vue` (lazy, per visible image + neighbours).
 
+## typeMaterialSpecimen.js
+
+`fetchTypeSpecimens(otuId)` returns the type specimens of the OTU's name and of every synonym: `[{ collectionObjectId, typeMaterials: [{ id, label }] }]`, cached per OTU (not when a request failed along the way). `fetchTypeSpecimenRecord(id)` is one specimen's DwC record (`/collection_objects/:id/dwc`), cached so the map and the records list ask once. `specimenByTypeMaterialId(list)` turns that into `Map<typeMaterialId, collectionObjectId>`.
+
+Needed because a type specimen without a taxon determination is not tied to the OTU: it is missing from `/otus/:id/inventory/dwc.json`, and `distribution.geojson` carries it only as a `TypeMaterial` entry (own valid name) or not at all (synonym). There is no public `/type_materials` route, so it goes `/otus/:id` (taxon name id), `/taxon_names?taxon_name_id[]=…&synonymify=true`, `/collection_objects?type_specimen_taxon_name_id=…` once per name (the `[]` form of that filter is ignored and returns every type in the project), then `/collection_objects/:id?extend[]=type_material` per specimen (that extend only works on the show route). Never throws. Tests: `typeMaterialSpecimen.test.js`.
+
+| Panel | File | Use |
+|---|---|---|
+| PanelMapV2 | `../PanelMapV2/store/useDistributionStore.js` | adds type specimens the geojson lacks to the map |
+| PanelMapV2 | `../PanelMapV2/components/MapPopup.vue` | makes a bare Type Material popup row open the DwC modal |
+| PanelSpecimenOccurrences | `../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue` | lists type specimens the DwC inventory lacks |
+
 ## inatObservation.js
 
 `fetchInatObservations(refs)` → batched, chunked, paginated

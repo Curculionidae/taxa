@@ -68,6 +68,11 @@ instead.
   opened from a record's media thumbnails. Specimen `associatedMedia` images carry
   CO/FO depiction types, so the lightbox also shows the type-status line and its
   own ⓘ back into `DwcTable`.
+- `../../_shared/typeMaterialSpecimen.js` — type specimens of the name and of every
+  synonym. A type usually has no taxon determination, so `dwc.json` does not list
+  it; `fetchMissingTypeSpecimens()` in `SingleSpeciesOccurrences.vue` adds each one
+  the inventory lacks from `/collection_objects/:id/dwc`. Those rows have no
+  `scientificName` and no `otu_id`.
 - `../../_shared/specimenRef.js` — resolves a biological-association participant to
   the physical CO/FO it refers to (used to show the primary association inline on
   each row).

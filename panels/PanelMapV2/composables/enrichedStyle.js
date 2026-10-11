@@ -10,7 +10,9 @@ import {
   classifyTypeStatus
 } from '../../_shared/typeStatus.js'
 
-const asArray = (base) => (Array.isArray(base) ? base : base == null ? [] : [base])
+// A feature's `base` / `target`: an array once removeDuplicateShapes has run,
+// a single object straight from the API.
+export const asArray = (base) => (Array.isArray(base) ? base : base == null ? [] : [base])
 
 // Type-status classification lives in panels/_shared/typeStatus.js (the
 // specimen list and the DwC modal colour their type chip with it too);

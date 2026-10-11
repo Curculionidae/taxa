@@ -15,6 +15,14 @@ The original popup showed bare item labels for all feature types. This version r
 - Species name on a second line: epithet in italics, author in plain text
 - Entire row is a clickable link (blue, hover underline) that opens the full DarwinCore record
 
+**Type Material**
+- A type specimen usually has no taxon determination (the type status is the identification), so TaxonWorks does not list it under the OTU. The geojson then carries a type of the page's own valid name only as a `TypeMaterial` entry (TypeMaterial id, not the specimen id), and a type of a synonym not at all
+- `../_shared/typeMaterialSpecimen.js` finds the type specimens of the name and all its synonyms (cached per OTU, shared by the store and the popup)
+- Popup: a `TypeMaterial` row resolves its specimen on open and then renders like a Collection Object row, without a determined name, clickable into the same DarwinCore record. If the specimen can't be resolved the row stays plain text; if the same popup already has a Collection Object row showing that type status, the Type Material row is dropped as a duplicate
+- Store (`addMissingTypeSpecimens`, after the tag / type-status styling has been applied): type specimens the geojson lacks become features in `store.typeSpecimenFeatures` (`utils/typeSpecimenFeatures.js`). `PanelMapV2.vue` adds them to the layer group VMap already built (`addTypeSpecimenLayers`, again after every `geojson:ready`). They are deliberately not merged into `distribution.geojson`: VMap deep-watches it and would clear all layers and refit the view under the user
+- They are `CollectionObject` entries flagged `undetermined` (no name line in the popup), coloured through `typeStatusByCoId` like any other type. Specimens at exactly the same place share one feature and one popup
+- Where such a specimen is drawn: its georeference, from the DwC record (`footprintWKT`, else `decimalLatitude`/`decimalLongitude`). A type located only by geographic area is not drawn (TaxonWorks has no public route for an area's shape, and repainting an asserted-distribution polygon as a type would be wrong); it still appears in the specimen records list. In dev the console lists those ids
+
 **Asserted Distribution / Asserted Absent**
 - Type label as a muted heading
 - Geographic area name in bold (extracted from the feature label)

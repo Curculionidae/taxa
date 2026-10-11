@@ -176,6 +176,8 @@ function onGeojsonReady(group) {
   isLoading.value = false
   geoLayerGroup.value = group
   addAdventivePattern()
+  // VMap has just (re)built the group from the geojson, without these
+  addTypeSpecimenLayers()
 
   if (import.meta.env.DEV) {
     geojsonBuilds += 1
@@ -208,6 +210,31 @@ watch(
   () => [store.adventiveAdIds, store.typeStatusByCoId, geoLayerGroup.value],
   applyEnrichedStyles
 )
+
+// Type specimens the geojson lacks arrive after the map is drawn. Add them to
+// the layer group VMap already built, with the same options, instead of putting
+// them into the geojson: that would make VMap clear every layer and refit the
+// view under a user who is already panning or reading a popup.
+let typeSpecimenLayer = null
+
+async function addTypeSpecimenLayers() {
+  const group = geoLayerGroup.value
+  const features = store.typeSpecimenFeatures
+  if (!group || !features.length) return
+
+  const { default: L } = await import('leaflet')
+  if (group !== geoLayerGroup.value || features !== store.typeSpecimenFeatures) return
+  // This runs both when the features arrive and after every VMap rebuild, and
+  // the two can overlap: take the previous layer out so a specimen is never
+  // on the map twice (two markers at one point would show as a cluster).
+  if (typeSpecimenLayer) group.removeLayer(typeSpecimenLayer)
+  typeSpecimenLayer = L.geoJSON(
+    { type: 'FeatureCollection', features },
+    geojsonOptions.value({ L })
+  ).addTo(group)
+}
+
+watch(() => store.typeSpecimenFeatures, addTypeSpecimenLayers)
 
 onMounted(() => {
   isLoading.value = true

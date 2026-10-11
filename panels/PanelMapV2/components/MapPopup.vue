@@ -5,13 +5,15 @@
         v-for="{ item, i } in rows"
         :key="i"
         class="py-2 last:border-0 border-b"
-        :class="CLICKABLE_TYPES.includes(item.type) ? 'cursor-pointer text-secondary hover:underline' : ''"
-        @click="CLICKABLE_TYPES.includes(item.type) ? emit('selected', item) : null"
+        :class="specimenFor(item) ? 'cursor-pointer text-secondary hover:underline' : ''"
+        @click="specimenFor(item) ? emit('selected', specimenFor(item)) : null"
       >
         <!-- CollectionObject / FieldOccurrence -->
         <template v-if="CLICKABLE_TYPES.includes(item.type)">
           <div class="text-sm font-medium text-base-content">{{ TYPE_LABELS[item.type] }}</div>
-          <div class="text-xs truncate">
+          <!-- no name line for a type specimen the store added itself: it has
+               no determination to show (item.undetermined) -->
+          <div v-if="!item.undetermined" class="text-xs truncate">
             <span class="italic">{{ splitName(targets?.[i]?.label ?? item.label).name }}</span>
             <span v-if="splitName(targets?.[i]?.label ?? item.label).author">
               {{ ' ' + splitName(targets?.[i]?.label ?? item.label).author }}
@@ -116,8 +118,20 @@
             >{{ reassessment.citation.display }}</button>:</b> {{ reassessment.value }}</div>
         </template>
 
-        <!-- TypeMaterial and other bare types. Redundant TypeMaterial rows are
-             already dropped from `rows` (see typeMaterialIsDuplicate). -->
+        <!-- TypeMaterial whose specimen has no determination, so it never
+             arrives as a CollectionObject row of its own: same shape as the
+             CollectionObject row above, minus the determined name. -->
+        <template v-else-if="specimenFor(item)">
+          <div class="text-sm font-medium text-base-content">{{ TYPE_LABELS[COLLECTION_OBJECT] }}</div>
+          <div
+            class="text-xs truncate [&_i]:italic"
+            v-html="formatTypeStatus(item.label)"
+          />
+        </template>
+
+        <!-- TypeMaterial (specimen not resolved) and other bare types. Redundant
+             TypeMaterial rows are already dropped from `rows` (see
+             typeMaterialIsDuplicate). -->
         <span
           v-else
           class="truncate [&_i]:italic"
@@ -140,6 +154,7 @@ import {
 } from '@/constants/objectTypes.js'
 import { stripHtml, shortCitation } from '../../_shared/citationText.js'
 import { escHtml as escapeHtml, splitScientificName, typeStatusHtml as buildTypeStatusHtml } from '../../_shared/scientificName.js'
+import { fetchTypeSpecimens, specimenByTypeMaterialId as indexByTypeMaterialId } from '../../_shared/typeMaterialSpecimen.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
 const AD_TYPES = [ASSERTED_DISTRIBUTION, ASSERTED_ABSENT]
@@ -217,12 +232,41 @@ const citationsLoading = ref(false)
 const baDetailsMap = ref(new Map())   // item.id → { otherId, otherLabel }
 const baLoading = ref(false)
 const reassessmentsByItemId = ref(new Map())  // AD item.id → { value, citation }[]
+const specimenByTypeMaterialId = ref(new Map()) // TypeMaterial item.id → collectionObjectId
 
 // Module-level caches: persist across popup open/close cycles
 const citationCache = new Map()    // itemId → citation[]
 const baByTargetId = new Map()     // targetId → BaRecord[] from /biological_associations/basic
 const baDetailsCache = new Map()   // item.label → { otherId, otherLabel } | null
 const reassessmentCache = new Map() // AD id → { value, citation }[]
+
+// A type specimen usually has no taxon determination (its type status is the
+// identification), so TaxonWorks does not list it under the OTU: the geojson
+// carries only a TypeMaterial entry, whose id is not the specimen's. Look the
+// specimen up so the row can open the DwC modal like any CollectionObject row.
+async function resolveTypeSpecimens(items) {
+  const pending = items
+    .map((item, i) => ({ item, otuId: props.targets?.[i]?.id }))
+    .filter(({ item, otuId }) => item.type === TYPE_MATERIAL && otuId != null)
+
+  await Promise.all(
+    pending.map(async ({ item, otuId }) => {
+      // cached per OTU in typeMaterialSpecimen.js (the store asks for it too)
+      const coId = indexByTypeMaterialId(await fetchTypeSpecimens(otuId)).get(item.id)
+      if (coId != null && specimenByTypeMaterialId.value.get(item.id) !== coId) {
+        specimenByTypeMaterialId.value = new Map(specimenByTypeMaterialId.value).set(item.id, coId)
+      }
+    })
+  )
+}
+
+// What a click on this row opens in the DwC modal, or null for a dead row.
+function specimenFor(item) {
+  if (CLICKABLE_TYPES.includes(item.type)) return item
+  if (item.type !== TYPE_MATERIAL) return null
+  const id = specimenByTypeMaterialId.value.get(item.id)
+  return id == null ? null : { id, type: COLLECTION_OBJECT }
+}
 
 // A "Reassessment" DataAttribute on an AssertedDistribution: a later source
 // reassessed the record (e.g. a reported presence turned out to be a
@@ -301,6 +345,8 @@ function isBaLinked(item, target) {
 watch(
   () => props.items,
   async (items) => {
+    resolveTypeSpecimens(items) // independent fetch; own cache
+
     // ── Citations for AD items ────────────────────────────────────────────────
     const adIds = items
       .filter((item) => AD_TYPES.includes(item.type) && !citationCache.has(item.id))

@@ -7,10 +7,9 @@ import {
   featureIsAbsent,
   enrichedPolygonStyleDelta,
   enrichedMarkerIconOptions,
-  ADVENTIVE_HATCH_CLASS
+  ADVENTIVE_HATCH_CLASS,
+  asArray
 } from './enrichedStyle.js'
-
-const asArray = (base) => (Array.isArray(base) ? base : [base])
 
 export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, typeStatusByCoId }) {
   return function (args) {

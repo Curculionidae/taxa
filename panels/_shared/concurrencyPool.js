@@ -15,8 +15,11 @@
  *   - ./fetchAllPages.js
  *   - ../PanelSpecimenOccurrences/components/SpeciesBars.vue
  *   - ../../modules/keys/composables/useKeyGeography.js
+ *   - ./typeMaterialSpecimen.js
+ *   - ../PanelMapV2/store/useDistributionStore.js
+ *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
  *
- * If you change this file, sanity-check all three call sites.
+ * If you change this file, sanity-check all six call sites.
  */
 
 /**

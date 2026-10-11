@@ -42,7 +42,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { makeAPIRequest } from '@/utils'
-import TaxonWorks from '@/modules/otus/services/TaxonWorks'
 import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
@@ -50,52 +49,42 @@ import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js
 import { escHtml, splitScientificName, typeStatusHtml } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
+import { fetchTypeSpecimens, fetchTypeSpecimenRecord } from '../../_shared/typeMaterialSpecimen.js'
+import { mapPool } from '../../_shared/concurrencyPool.js'
 import { groupRecords, groupCountLabel, PER_RECORD_EVENT_FIELDS } from '../lib/groupRecords'
 
-const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-
-// Type material labels look like "Holotype; adult; <identifier>; deposited at: <institution>; <verbatim>"
-// <identifier> is the catalogNumber, or (when none was entered) the specimen's occurrenceID UUID.
-// The "deposited at:" segment is sometimes absent (no repository recorded), so look for a bare
-// UUID first — it's unambiguous regardless of label shape — before falling back to position.
-function extractTypeIdentifier(label) {
-  const uuidMatch = label.match(UUID_RE)
-  if (uuidMatch) return uuidMatch[0]
-
-  const parts = label.split('; ')
-  const depositedIndex = parts.findIndex((p) => p.startsWith('deposited at:'))
-  return depositedIndex > 0 ? parts[depositedIndex - 1].trim() : null
-}
-
-// Type specimens are only found by the OTU dwc.json endpoint when they carry a current
-// determination to this OTU. Specimens whose determination was never updated (e.g. after
-// a name change) are known to TaxonWorks only via type_material.json, so fetch those
-// individually and merge them in.
-async function fetchMissingTypeSpecimens(typeLabels, existingRecords) {
-  const known = new Set(existingRecords.map((r) => r.occurrenceID).filter(Boolean))
-  const queued = new Set()
+// A type specimen normally has no taxon determination (its type status is the
+// identification), so /otus/:id/inventory/dwc.json, which goes through
+// determinations, does not list it. Look up the type specimens of the name and
+// of every synonym (see _shared/typeMaterialSpecimen.js) and fetch the DwC
+// record of each one the inventory lacks. The row is shaped like an inventory
+// row: the per-specimen DwC route omits the dwc_occurrence_object_* fields.
+async function fetchMissingTypeSpecimens(typeSpecimens, existingRecords) {
+  const known = new Set(
+    existingRecords
+      .filter((r) => r.dwc_occurrence_object_type === 'CollectionObject')
+      .map((r) => r.dwc_occurrence_object_id)
+  )
+  const missing = (await typeSpecimens).filter(
+    (s) => !known.has(s.collectionObjectId)
+  )
   const found = []
 
-  await Promise.all(
-    typeLabels.map(async ({ label }) => {
-      const identifier = extractTypeIdentifier(label)
-      if (!identifier || queued.has(identifier)) return
-      queued.add(identifier)
+  await mapPool(missing, 4, async ({ collectionObjectId }) => {
+    try {
+      // shared with the map, which draws the same specimens
+      const data = await fetchTypeSpecimenRecord(collectionObjectId)
+      if (!data?.typeStatus) return
+      found.push({
+        ...data,
+        id: `CollectionObject:${collectionObjectId}`,
+        dwc_occurrence_object_id: collectionObjectId,
+        dwc_occurrence_object_type: 'CollectionObject'
+      })
+    } catch {}
+  })
 
-      const isUuid = UUID_RE.test(identifier)
-      if (isUuid && known.has(identifier)) return
-      if (!isUuid && existingRecords.some((r) => r.catalogNumber === identifier)) return
-
-      try {
-        const { data } = await makeAPIRequest.get('/dwc_occurrences.json', {
-          params: isUuid ? { occurrenceID: identifier } : { catalogNumber: identifier }
-        })
-        if (data?.length === 1) found.push(data[0])
-      } catch {}
-    })
-  )
-
-  return found
+  return found.sort((x, y) => x.dwc_occurrence_object_id - y.dwc_occurrence_object_id)
 }
 
 const MAX = 10
@@ -125,8 +114,9 @@ const props = defineProps({
   // — SpeciesBars.vue already fetches the same genus-wide data to build the
   // "…: all" and "…(not identified to species)" rows, so expanding either
   // of those shouldn't repeat the fetch the user just watched happen.
-  // type_material.json and biological_associations are still fetched fresh
-  // (they're per-OTU-cheap regardless, and aren't already sitting in hand).
+  // The type-specimen lookup and biological_associations are still fetched
+  // fresh (they aren't already sitting in hand). The type lookup is several
+  // requests per synonym and per type, see _shared/typeMaterialSpecimen.js.
   preloadedData: {
     type: Array,
     default: null
@@ -266,16 +256,15 @@ const notShownIdentifiedCount = computed(
 
 function loadDwc() {
   isLoading.value = true
+  // started now so it overlaps the inventory fetch (never rejects)
+  const typeSpecimens = fetchTypeSpecimens(props.otuId)
   Promise.all([
     props.preloadedData
       ? Promise.resolve({ data: props.preloadedData })
       : makeAPIRequest.get(`/otus/${props.otuId}/inventory/dwc.json`),
-    TaxonWorks
-      .getOtuTypeMaterial(props.otuId)
-      .catch(() => ({ data: { type_materials_catalog_labels: [] } })),
     fetchBioAssociationsForOtu(props.otuId)
   ])
-    .then(async ([{ data: rawData }, { data: typeMaterialData }, bioAssociations]) => {
+    .then(async ([{ data: rawData }, bioAssociations]) => {
       bioAssociationsIndex.value = buildBioAssociationsIndex(bioAssociations)
 
       // dwc_occurrence is polymorphic — the endpoint also returns
@@ -300,10 +289,7 @@ function loadDwc() {
         )
         .map((d) => ({ ...d }))
 
-      const missingTypeSpecimens = await fetchMissingTypeSpecimens(
-        typeMaterialData.type_materials_catalog_labels || [],
-        data
-      )
+      const missingTypeSpecimens = await fetchMissingTypeSpecimens(typeSpecimens, data)
       data.push(...missingTypeSpecimens)
 
       // See the directOnly prop doc — dwc.json for a genus/subgenus OTU

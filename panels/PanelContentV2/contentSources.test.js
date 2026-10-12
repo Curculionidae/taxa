@@ -2,31 +2,47 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { otuNameHtml, groupByTopic, loadContents } from './contentSources.js'
 
-const SYNONYM_TAG =
-  '<span class="otu_tag"><i>Lixus</i> <i>punctiventris</i> Boheman, 1835 <em>now</em> <i>Lixus</i> <i>abdominalis</i> Boheman, 1835</span>'
+const SYNONYM = {
+  id: 1,
+  name: null,
+  taxon_name_id: 10,
+  taxon_name: {
+    cached: 'Lixus punctiventris',
+    cached_html: '<i>Lixus</i> <i>punctiventris</i>',
+    cached_author_year: 'Boheman, 1835',
+    rank: 'species'
+  }
+}
 
-test('the name of a synonym OTU leaves out the valid name', () => {
+const CAREX = {
+  cached: 'Carex',
+  cached_html: '<i>Carex</i>',
+  cached_author_year: 'L.',
+  rank: 'genus'
+}
+
+test('an OTU goes by its taxon name with author', () => {
   assert.equal(
-    otuNameHtml({ object_tag: SYNONYM_TAG }),
+    otuNameHtml(SYNONYM),
     '<i>Lixus</i> <i>punctiventris</i> Boheman, 1835'
   )
 })
 
-test('the "now" marker is found whatever the whitespace around it', () => {
-  assert.equal(otuNameHtml({ object_tag: '<i>Aus</i> <em>now</em>&nbsp;<i>Bus</i>' }), '<i>Aus</i>')
-})
-
-test('an OTU with a name of its own goes by that name, escaped', () => {
+test('an OTU with a differing name of its own goes by that name, escaped', () => {
   assert.equal(
-    otuNameHtml({
-      name: 'Carex sp. <A>',
-      object_tag: '<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>'
-    }),
+    otuNameHtml({ name: 'Carex sp. <A>', taxon_name_id: 20, taxon_name: CAREX }),
     'Carex sp. &lt;A&gt;'
   )
 })
 
-test('an OTU without a tag has an empty name', () => {
+test('an own name that only repeats the taxon name shows the taxon name', () => {
+  assert.equal(
+    otuNameHtml({ name: 'Carex', taxon_name_id: 20, taxon_name: CAREX }),
+    '<i>Carex</i> L.'
+  )
+})
+
+test('nothing to name an OTU by gives an empty name', () => {
   assert.equal(otuNameHtml({}), '')
   assert.equal(otuNameHtml(null), '')
 })
@@ -74,15 +90,10 @@ function fakeApi(answers) {
 test('a valid taxon also gets the content of its other OTUs that have any: synonyms and OTUs on its own name', async () => {
   const api = fakeApi({
     '/otus': [
-      { id: 2, taxon_name_id: 20, object_tag: 'valid' },
-      { id: 1, taxon_name_id: 10, object_tag: SYNONYM_TAG },
-      { id: 3, taxon_name_id: 30, object_tag: 'empty synonym' },
-      {
-        id: 4,
-        taxon_name_id: 20,
-        name: 'Carex sp.',
-        object_tag: '<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>'
-      }
+      { id: 2, name: null, taxon_name_id: 20, taxon_name: CAREX },
+      SYNONYM,
+      { id: 3, name: null, taxon_name_id: 30, taxon_name: CAREX },
+      { id: 4, name: 'Carex sp.', taxon_name_id: 20, taxon_name: CAREX }
     ],
     '/contents': [{ otu_id: 1 }, { otu_id: 4 }],
     '/otus/1/inventory/content': [{ name: 'Synonymy', text: 's' }],
@@ -207,4 +218,23 @@ test('a failed citation lookup still shows the texts', async () => {
   assert.deepEqual(contents, [
     { content_id: 10, name: 'Biology', text: 'o', citations: [] }
   ])
+})
+
+test('a failed request for the own content still shows the other OTUs', async () => {
+  const api = fakeApi({
+    '/otus': [{ id: 2, name: null, taxon_name_id: 20, taxon_name: CAREX }, SYNONYM],
+    '/contents': [{ otu_id: 1 }],
+    '/otus/1/inventory/content': [{ name: 'Synonymy', text: 's' }]
+  })
+
+  const contents = await loadContents(api, {
+    otuId: 2,
+    isValid: true,
+    ownRequest: Promise.reject(new Error('down'))
+  })
+
+  assert.deepEqual(
+    contents.map((item) => item.text),
+    ['s']
+  )
 })

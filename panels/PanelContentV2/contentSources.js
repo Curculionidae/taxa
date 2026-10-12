@@ -3,23 +3,12 @@
  * OTUs of the taxon's synonyms. See readme.md.
  */
 
-import { escHtml } from '../_shared/scientificName.js'
+import { otuNaming } from '../_shared/otuLink.js'
 
-const OTU_TAG_WRAPPER = /^<span class="otu_tag">([\s\S]*)<\/span>$/
-
-// TaxonWorks adds "<em>now</em> <valid name>" to the tag of a synonym's OTU.
-const NOW_SEPARATOR = /\s*<em>\s*now\s*<\/em>/
-
-// The name of an OTU as HTML. An OTU with a name of its own ("Carex sp.",
-// filed on Carex L.) goes by that name: its tag holds both names run together.
-// Otherwise the taxon name from its `object_tag`, without the valid name.
+// The name of an OTU as HTML, by the naming rule every display shares
+// (../_shared/readme.md, "otuTag.js and otuLink.js").
 export function otuNameHtml(otu) {
-  if (otu?.name) return escHtml(otu.name)
-
-  const tag = String(otu?.object_tag || '').trim()
-  const inner = tag.match(OTU_TAG_WRAPPER)?.[1] ?? tag
-
-  return inner.split(NOW_SEPARATOR)[0].trim()
+  return otuNaming(otu).html || ''
 }
 
 // [{ name, text, otuNameHtml?, citations? }] to
@@ -47,7 +36,13 @@ function inventoryContent(api, otuId, signal) {
 // synonyms and other OTUs on its own taxon name ("Carex sp." on Carex L.).
 async function otherOtusWithContent(api, otuId, signal) {
   const { data: coordinate } = await api.get('/otus', {
-    params: { otu_id: [otuId], coordinatify: true, per: 500 },
+    params: {
+      otu_id: [otuId],
+      coordinatify: true,
+      // otuNaming() names an OTU from its record with the taxon name extended.
+      extend: ['taxon_name'],
+      per: 500
+    },
     signal
   })
   const others = coordinate.filter((otu) => otu.id !== otuId)
@@ -98,7 +93,8 @@ async function withCitations(api, contents, signal) {
  */
 export async function loadContents(api, { otuId, isValid, ownRequest, signal }) {
   const [own, others] = await Promise.all([
-    ownRequest.then(({ data }) => data),
+    // If it fails, the texts of the other OTUs are still shown.
+    ownRequest.then(({ data }) => data).catch(() => []),
     // A synonym's page shows only what was written on the synonym.
     isValid ? otherOtusWithContent(api, otuId, signal).catch(() => []) : []
   ])

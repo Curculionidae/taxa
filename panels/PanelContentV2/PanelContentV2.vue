@@ -72,8 +72,7 @@ const controller = new AbortController()
 const topics = computed(() => groupByTopic(contents.value))
 
 // One HTML string, so the space after the label survives Vue's whitespace
-// condensing. The name is TaxonWorks' own `object_tag` markup or an escaped
-// OTU name, see otuNameHtml().
+// condensing. The name is v-html-safe, see otuNameHtml().
 function enteredUnderHtml(nameHtml) {
   return `<span class="font-normal text-base-soft">Entered under</span> ${nameHtml}`
 }

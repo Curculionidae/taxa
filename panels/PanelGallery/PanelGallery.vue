@@ -461,7 +461,9 @@ function imageLoads(url, ms = GBIF_IMG_PROBE_MS) {
 
 // The taxon's accepted name + every TaxonWorks synonym → the union of CoL usage
 // keys (each synonym may carry its own GBIF records) and the name set for the
-// result filter. speciesGroupOnly drops HIGHERRANK matches (species absent from
+// result filter. A synonym is a name TaxonWorks resolves to this valid name, so
+// a reinstated or misapplied name brings no type material here.
+// speciesGroupOnly drops HIGHERRANK matches (species absent from
 // CoL → resolves to its genus → genus rollup).
 async function resolveGbifKeys() {
   if (cache.gbifKeys) return cache.gbifKeys

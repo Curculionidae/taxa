@@ -22,7 +22,7 @@ The alignment between **the TaxonWorks concept** of the current taxon and **the 
 
 Two layers, kept separate (Franz and Thau 2010):
 
-- **Name graph (fact).** `N` = the TaxonWorks valid name + that OTU's TW synonyms; `G` = the CoL accepted usage `N` maps to + its CoL synonyms. Both sides are reduced to genus-independent `matchKey`s and each `G` name is graded against `N` at three tiers: `homotypic` (original combination lines up both sides → shared type), `probable` (epithet + author + year, ±1 yr), `weak` (epithet only).
+- **Name graph (fact).** `N` = the TaxonWorks valid name + that OTU's TW synonyms (the names TaxonWorks itself resolves to it, via the shared `fetchTwSynonymRows`: a misapplied name or one reinstated as valid is not in `N`, see `panels/_gbifShared/readme.md`); `G` = the CoL accepted usage `N` maps to + its CoL synonyms. Both sides are reduced to genus-independent `matchKey`s and each `G` name is graded against `N` at three tiers: `homotypic` (original combination lines up both sides → shared type), `probable` (epithet + author + year, ±1 yr), `weak` (epithet only).
 - **Relation (inference).** `deriveRelation` reads the two key sets → the RCC-5 verdict + a confidence (`clear` / `provisional` when some `N` name was uncheckable / `uncertain` when only `weak` keys carry it).
 
 Engine lives in `panels/_gbifShared/` (`gbifNameMatch`, `conceptRelation`, `gbifChecklistConcept`, `assembleAlignment`, `gbifConceptAlignment`). Full design: `docs/superpowers/specs/2026-08-31-gbif-concept-alignment-design.md`.

@@ -12,7 +12,7 @@ Consumers: `PanelGbifTaxon`, `PanelGbifImages`, `PanelGbifMap`,
 |---|---|---|
 | `useGbifMatch.js` | `useGbifMatch(nameRef)` composable · `matchGbifKey(name, {speciesGroupOnly})` · `isSpeciesGroupMatch(match)` · `deriveScientificName` · `recordRequest` · `CHECKLIST_KEY` · `GBIF_TAXON_BASE` / `GBIF_OCCURRENCE_BASE` / `GBIF_OCCURRENCE_DETAIL` · `gbifMenuOptions` | Matches a name against the **CoL** checklist (`v2/species/match`, alphanumeric usage keys). `matchGbifKey` is the one-shot form for looping over a name list (the composable wraps a single ref). |
 | `typeStatuses.js` | `TYPE_STATUSES` | 47 GBIF `typeStatus` values, **CamelCase** — the occurrence-search API wants `Holotype`, not the all-caps `HOLOTYPE` from `/enumeration/basic/TypeStatus` (that returns 0 hits). |
-| `twSynonymNames.js` | `fetchTwSynonymNames(taxonId)` | TaxonWorks synonym name strings for a taxon-name id (invalidating relationships → subject names). The AssertedDistributions two-step. |
+| `twSynonymNames.js` | `fetchTwSynonymRows(taxonId)` · `fetchTwSynonymNames(taxonId)` · `synonymNameStrings(rows)` | TaxonWorks synonyms of a taxon-name id, from TaxonWorks' own `/taxon_names?taxon_name_id[]=X&synonymify=true` (every name whose valid name is X, misspellings included). Not a relationship walk: a misapplication, or a synonym relationship overridden by a Valid status (*Himatium conicum* under *H. errans*), is not a synonym. `Rows` gives the full records and rejects on failure, `Names` gives strings and returns `[]`. A failure is never memoised. Used by `gbifTaxonScope.js` and `gbifConceptAlignment.js`. |
 | `gbifTaxonScope.js` | `resolveGbifTaxonScope(primaryName, taxonId, {speciesGroupOnly})` → `{ names, keys }` | The taxon's accepted name **+ every TW synonym** → the name set for filtering and the **union of CoL usage keys** to OR as `taxonKey` params (each synonym may carry its own GBIF records). Every occurrence-based GBIF panel uses this. |
 | `gbifBackboneConcept.js` | `fetchGbifBackboneConcept(name)` → `{ acceptedName, synonymNames }` | GBIF **taxonomy-backbone** view: `/v1/species/{intKey}/synonyms` for the accepted taxon — a taxonomy fact, no occurrence sampling. Backbone (integer keys) on purpose: that synonyms route only exists on the backbone. **No longer used by `PanelGbifTaxon`** (as of 2026-08-31 — the backbone and Catalogue of Life agree on lumping for this project's taxa; the old use matched homonyms by bare canonical name, which is what produced the retracted "backbone keeps *Lixus cardui* separate" belief). `PanelGbifMap` still calls it for its density gate. |
 | `gbifNameFilter.js` | `canonicalName` · `epithetKey` (genus-independent match key — weevils get recombined a lot) · `shortName` (drop authorship) · `occurrenceName(rec, checklistKey)` · `makeGbifNameFilter(names)` · `partitionByName` / `tallyOccurrenceNames` · `scopeCaption({shown, total, lumpedNames, noun, taxonName, includesSynonyms})` | See **The GBIF synonymy problem**. `tallyOccurrenceNames(rows, names, ck)` → `{ included:{name,count}[], excluded:{name,count}[], keptRows }` — per-name counts split by whether the identified name is in the TW concept (accepted + TW synonyms); `partitionByName` is the thin wrapper (`{kept, lumpedNames}`). `scopeCaption({shown, total, lumpedNames, noun, taxonName, includesSynonyms})` renders the shared caption for the Map / Images panels: pass `match.usage.canonicalName` as `taxonName` (falls back to "this taxon") and `includesSynonyms: names.length > 1` → "identified as *Larinus latus* or a TaxonWorks synonym out of N under GBIF's broader concept, which also includes …". |
@@ -75,6 +75,33 @@ Every occurrence-based panel resolves the scope with `resolveGbifTaxonScope`
 `taxonKey` params, then keeps only rows whose `occurrenceName` is in the
 matching name set.
 
+### What counts as a TaxonWorks synonym
+
+One definition for every GBIF panel, in `twSynonymNames.js`: the names
+TaxonWorks itself resolves to this valid name, asked for with
+`/taxon_names?taxon_name_id[]=X&synonymify=true` (one request, returns X plus
+every name whose valid name is X). `resolveGbifTaxonScope` and the concept
+alignment's `fetchTwNodes` both read it from there, so the occurrence panels
+and `PanelGbifTaxon` always agree on the set.
+
+Do not rebuild this from `/taxon_name_relationships`. A relationship alone does
+not decide validity, and the earlier relationship walk leaked a neighbour's
+type material twice:
+
+- **Misapplication** is an Invalidating relationship but not synonymy
+  (2026-09-12: *Rhinoncus pericarpius* syntypes on the *R. leucostigma* page).
+- **A reinstated name** keeps its old Synonym relationship and gets an
+  `Iczn::Available::Valid` status on top, which TaxonWorks lets win
+  (2026-10-12: the *Himatium conicum* holotype on the *H. errans* page).
+- **A name moved on** to a third taxon still carries its old relationship.
+
+Included, and wanted: misspellings (`[sic]` names) and names invalidated by a
+bare "Invalidating" relationship. They are the same taxon, so GBIF records
+filed under them belong on the page.
+
+A failed lookup is never memoised. The scope then falls back to the accepted
+name alone for that call, and the next caller retries.
+
 Two guards on the match, don't confuse them:
 - `speciesGroupOnly` — keep only species/subspecies/variety/form. Only the
   **Gallery GBIF tab** uses it (type material is species-group only; the panel
@@ -120,7 +147,7 @@ Catalogue of Life concept of the same name?** Two layers, kept separate on
 purpose (Franz and Thau 2010):
 
 1. **The name graph (fact).** `N` = the TaxonWorks valid name + that OTU's TW
-   synonyms. `G` = the Catalogue of Life accepted usage `N`'s valid name maps to
+   synonyms (see **What counts as a TaxonWorks synonym**). `G` = the Catalogue of Life accepted usage `N`'s valid name maps to
    + that usage's CoL synonyms (minus `MISAPPLIED`). Every name on both sides is
    reduced to a `matchKey` (`epithet|surname|year`, genus-independent), and
    `keysMatch`-equal keys are collapsed so author-date drift does not split a

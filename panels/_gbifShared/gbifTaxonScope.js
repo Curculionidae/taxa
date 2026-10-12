@@ -1,11 +1,15 @@
 import { matchGbifKey } from './useGbifMatch'
-import { fetchTwSynonymNames } from './twSynonymNames'
+import { fetchTwSynonymRows, synonymNameStrings } from './twSynonymNames'
 
 /**
  * The full GBIF scope for a TaxonWorks taxon: its accepted name **and every one
  * of its TaxonWorks synonyms**. A weevil species often carries several synonyms,
  * each of which may resolve to its own GBIF/CoL usage with its own occurrence
  * and type records that the accepted name's `taxonKey` rollup doesn't reach.
+ *
+ * "Synonym" means what TaxonWorks itself resolves to this valid name
+ * (`fetchTwSynonymRows`, i.e. `synonymify`): misspellings count, a misapplied
+ * name or a synonym since reinstated as valid does not.
  *
  * @returns {Promise<{ names: string[], keys: string[] }>}
  *   `names` — accepted + synonym name strings, for the result name-filter
@@ -25,13 +29,20 @@ export function resolveGbifTaxonScope(primaryName, taxonId, opts = {}) {
   const { speciesGroupOnly = false, rejectHigherRank = false } = opts
   const key = `${taxonId}|${primaryName}|${speciesGroupOnly ? 1 : 0}${rejectHigherRank ? 1 : 0}`
   if (!cache.has(key)) {
-    cache.set(key, resolveUncached(primaryName, taxonId, { speciesGroupOnly, rejectHigherRank }))
+    cache.set(key, resolveUncached(key, primaryName, taxonId, { speciesGroupOnly, rejectHigherRank }))
   }
   return cache.get(key)
 }
 
-async function resolveUncached(primaryName, taxonId, { speciesGroupOnly, rejectHigherRank }) {
-  const synonymNames = await fetchTwSynonymNames(taxonId)
+async function resolveUncached(key, primaryName, taxonId, { speciesGroupOnly, rejectHigherRank }) {
+  // A failed synonym lookup still yields a usable scope (the accepted name
+  // alone), but it must not stay memoised: the next caller retries.
+  const synonymNames = await fetchTwSynonymRows(taxonId)
+    .then(synonymNameStrings)
+    .catch(() => {
+      cache.delete(key)
+      return []
+    })
   const names = [...new Set([primaryName, ...synonymNames].filter(Boolean))]
   const keys = [...new Set(
     (await Promise.all(

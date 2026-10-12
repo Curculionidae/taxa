@@ -222,6 +222,18 @@ test('a genus OTU keeps its author, only a specimen determined to genus reads "s
   }
   const asSpecimen = makeBiologicalAssociation({ ...baseData, object: specimen }, [], [], [], basic, new Map())
   assert.equal(asSpecimen.objectSpeciesHtml, '<i>Carex</i> sp.')
+
+  // An AnatomicalPart wrapping a specimen is a specimen determination too,
+  // one of a taxon ("leaf: Carex L.") is about the genus.
+  const part = { base_class: 'AnatomicalPart', id: 9, object_tag: `<span>nidus: ${genusTag}</span>` }
+  const ofSpecimen = makeBiologicalAssociation(
+    { ...baseData, object: { ...part, object_label: 'nidus: CollectionObject 7; abc' } },
+    [], [], [], basic, new Map())
+  assert.equal(ofSpecimen.objectSpeciesHtml, '<i>Carex</i> sp.')
+  const ofTaxon = makeBiologicalAssociation(
+    { ...baseData, object: { ...part, object_label: 'leaf: Carex L.' } },
+    [], [], [], basic, new Map())
+  assert.equal(ofTaxon.objectSpeciesHtml, '<i>Carex</i> L.')
 })
 
 test('an OTU participant takes name and link from its resolved OTU link', () => {

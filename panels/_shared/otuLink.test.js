@@ -193,3 +193,40 @@ test('a failed record lookup names the OTU from its tag, is logged, and is retri
   fail = false
   assert.equal((await resolveOtuLinks([e], { request })).get('900001').otuId, 900000)
 })
+
+test('an OTU the answer does not hold is asked again on the next call', async () => {
+  const tn = genus(93, 'Dus')
+  const row = { id: 930001, name: null, taxon_name_id: 93, taxon_name: tn, object_tag: tag('<i>Dus</i> L.') }
+  const e = entity(row, 'Dus L.')
+  const calls = []
+  const rows = []
+  const request = stub(calls, rows)
+  await resolveOtuLinks([e], { request })
+  rows.push(row)
+  const link = (await resolveOtuLinks([e], { request })).get('930001')
+  assert.equal(calls.length, 2)
+  assert.equal(link.html, '<i>Dus</i> L.')
+})
+
+test('a record whose taxon_name lacks the name fields is not taken as the record', async () => {
+  const tn = genus(94, 'Eus')
+  const row = { id: 940001, name: null, taxon_name_id: 94, taxon_name: tn }
+  const thin = { id: 940001, name: null, taxon_name_id: 94, taxon_name: { id: 94 }, object_tag: tag('<i>Eus</i> L.') }
+  const calls = []
+  const link = (await resolveOtuLinks([thin], { request: stub(calls, [row]) })).get('940001')
+  assert.equal(calls.length, 1)
+  assert.equal(link.html, '<i>Eus</i> L.')
+})
+
+test('without the record, the taxon page is still found by the taxon_name_id passed in', async (t) => {
+  t.mock.method(console, 'warn', () => {})
+  const page = { id: 950000, name: null, taxon_name_id: 95 }
+  const e = { id: 950001, taxon_name_id: 95, object_tag: tag('<i>Fus</i>&nbsp;<b>Fus sp.</b>'), object_label: 'Fus L. Fus sp.' }
+  const request = async (url, { params }) => {
+    if (params['otu_id[]']) return { data: { error: 'nope' } }
+    return stub([], [page])(url, { params })
+  }
+  const link = (await resolveOtuLinks([e], { request })).get('950001')
+  assert.equal(link.html, 'Fus sp.')
+  assert.equal(link.otuId, 950000)
+})

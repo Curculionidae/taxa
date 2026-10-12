@@ -425,12 +425,14 @@ function otuDescription(dep) {
 // nor `caption`, only the composed label
 // "CollectionObject 123; <identifiers>, <uuid>: <figure_label>. <caption>. (CollectionObject)."
 // so the text is cut after the uuid (identifiers and captions may hold their own ': ').
+// A label without a uuid gives no text: there is no telling where the identifiers end,
+// and a catalog identifier must never show as a caption.
 const SPECIMEN_LABEL_PREFIX = /^.*?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}:\s+/i
 
 function specimenDescription(dep) {
   if (dep.figure_label || dep.caption) return dep.caption || ''
   const label = dep.label || ''
-  if (!SPECIMEN_LABEL_PREFIX.test(label)) return otuDescription(dep)
+  if (!SPECIMEN_LABEL_PREFIX.test(label)) return ''
   const raw = label.replace(SPECIMEN_LABEL_PREFIX, '').replace(/\s*\.?\s*\(\w+\)\s*\.\s*$/, '').trim()
   return raw
 }

@@ -26,10 +26,9 @@ import { escHtml } from './scientificName.js'
  *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js (further
  *     reduces the result, "sp." for a bare-genus determination, a deliberately
  *     different name policy)
- *   - ../../modules/keys/KeysIndex.vue (author-year kept, no "sp.", a
- *     deliberately different name policy)
+ *   - taxonNamePart below, and through it every tag reader in this file
  *
- * If you change this file, sanity-check both call sites.
+ * If you change this function, sanity-check these.
  *
  * @param {string} objectTag
  * @returns {string|null}
@@ -105,9 +104,7 @@ function taxonNamePart(html) {
  *
  * Depended on by:
  *   - otuDisplayNameHtml and otuLinksToTaxonPage below
- *   - ./DwcTable.vue (biological associations section)
- *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
- *     (association chip on a list row)
+ *   - ./otuLink.js (the fallback of otuNaming)
  *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
  *
  * @param {string} html
@@ -140,9 +137,8 @@ export function otuLinksToTaxonPage(html) {
  * repeating own name taken out.
  *
  * Depended on by:
- *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
- *   - ../../modules/keys/KeysIndex.vue (key scope name)
- *   - ../PanelMapV2/components/Search/ListResults.vue and OtuSearch.vue
+ *   - ./otuLink.js (the fallback of otuNaming)
+ *   - ../PanelMapV2/components/Search/OtuSearch.vue (the list's title)
  *
  * @param {string} html
  * @returns {string|null}
@@ -161,8 +157,7 @@ export function otuDisplayNameHtml(html) {
  * came back null; any label without a trailing own name is returned unchanged.
  *
  * Depended on by:
- *   - ./DwcTable.vue (biological associations section)
- *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
+ *   - ./otuLink.js (the fallback of otuNaming)
  *
  * @param {string} objectLabel
  * @param {string} objectTag

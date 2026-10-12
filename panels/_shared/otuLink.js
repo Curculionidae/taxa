@@ -31,6 +31,8 @@
  *     (raw data table)
  *   - ../PanelMapV2/components/Search/ListResults.vue and OtuSearch.vue
  *   - ../../modules/keys/KeysIndex.vue (key scope)
+ *   - ../PanelContentV2/contentSources.js (otuNaming only, the "Entered
+ *     under" heading)
  */
 import { escHtml, splitScientificName } from './scientificName.js'
 import {
@@ -56,9 +58,14 @@ const rowCache = new Map() // → the OTU record, taxon_name extended
 const pageCache = new Map() // → page OTU id
 
 // An OTU record that carries everything naming needs: fetched with
-// extend[]=taxon_name, or with no TaxonName to extend.
+// extend[]=taxon_name, or with no TaxonName to extend. A `taxon_name` without
+// `cached` (some thinner object a caller attached) does not count: it would
+// name the OTU wrongly, and from rowCache for every panel.
 function isOtuRecord(o) {
-  return !!o && 'name' in o && 'taxon_name_id' in o && (o.taxon_name_id == null || !!o.taxon_name)
+  return (
+    !!o && 'name' in o && 'taxon_name_id' in o &&
+    (o.taxon_name_id == null || typeof o.taxon_name?.cached === 'string')
+  )
 }
 
 /**
@@ -136,12 +143,16 @@ async function fetchOtus(request, param, ids, extend) {
 
 // Runs `load(keys)` once for the keys not in `cache` yet and stores one promise
 // per key; resolves to Map<key, value> for all `keys`, a failed key left out.
+// A key the answer does not hold counts as failed, so it is asked again.
 async function throughCache(cache, keys, load, what) {
   const fresh = keys.filter((key) => !cache.has(key))
   if (fresh.length) {
     const batch = load(fresh)
     for (const key of fresh) {
-      const pending = batch.then((byKey) => byKey.get(key))
+      const pending = batch.then((byKey) => {
+        if (!byKey.has(key)) throw new Error(`otuLink: no ${what} for ${key}`)
+        return byKey.get(key)
+      })
       cache.set(key, pending)
       pending.catch(() => cache.delete(key))
     }
@@ -189,7 +200,10 @@ export async function resolveOtuLinks(otus, { request = apiGet } = {}) {
   for (const [key, otu] of byKey) {
     const record = records.get(key)
     const { redirects, ...naming } = otuNaming(record || otu)
-    links.set(key, { ...naming, otuId: otu.id, redirects, taxonNameId: record?.taxon_name_id })
+    // Without the record the tag still says whether the link is redirected,
+    // and the object passed in may carry the TaxonName to look its page up by.
+    const taxonNameId = record?.taxon_name_id ?? otu.taxon_name_id
+    links.set(key, { ...naming, otuId: otu.id, redirects, taxonNameId })
   }
 
   const redirected = [...links].filter(([, l]) => l.redirects && l.taxonNameId != null).map(([key]) => key)
@@ -198,13 +212,16 @@ export async function resolveOtuLinks(otus, { request = apiGet } = {}) {
     redirected,
     async (keys) => {
       const taxonNameIds = [...new Set(keys.map((k) => links.get(k).taxonNameId))]
-      const siblings = await fetchOtus(request, 'taxon_name_id[]', taxonNameIds)
+      const siblings = new Map()
+      for (const s of await fetchOtus(request, 'taxon_name_id[]', taxonNameIds)) {
+        const id = String(s.taxon_name_id)
+        if (!siblings.has(id)) siblings.set(id, [])
+        siblings.get(id).push(s)
+      }
       return new Map(
         keys.map((k) => [
           k,
-          pickTaxonPageOtu(
-            siblings.filter((s) => String(s.taxon_name_id) === String(links.get(k).taxonNameId))
-          )?.id ?? byKey.get(k).id
+          pickTaxonPageOtu(siblings.get(String(links.get(k).taxonNameId)))?.id ?? byKey.get(k).id
         ])
       )
     },

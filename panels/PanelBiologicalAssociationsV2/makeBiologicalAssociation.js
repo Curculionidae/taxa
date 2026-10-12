@@ -66,7 +66,8 @@ export function hasTaxonName(otu) {
  * renders as a single italicized word, e.g. "<i>Promecops</i> Sahlberg, 1823" —
  * TaxonWorks' own tag omits any "sp." qualifier, so add one back, and drop the
  * authorship there, which belongs to the genus and would read as the species
- * author. Only for a specimen (`bareGenusSp`): an association recorded against
+ * author. Only for a specimen, or an AnatomicalPart that wraps one
+ * (`bareGenusSp`): an association recorded against
  * the genus OTU itself is about the genus and reads "<i>Carex</i> L.", which
  * also keeps it apart from the OTU "Carex sp.". Detected by stripping tags/parens from the
  * matched run and counting words, not by naively checking for whitespace in a
@@ -164,7 +165,9 @@ function nameHtmlFromScientificName(scientificName) {
  * whose tag has no such span -- from the determination OTU (`recordedHtml`).
  */
 function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recordedHtml = null, otuLink = null) {
-  const speciesHtml = extractNameHtml(entity.object_tag, dropAcceptedTail, isSpecimenType(entity.base_class), otuLink)
+  // "sp." for a genus-only determination of a specimen, also when an
+  // AnatomicalPart (a nidus, an egg) wraps that specimen.
+  const speciesHtml = extractNameHtml(entity.object_tag, dropAcceptedTail, !!resolveSpecimenRef(entity), otuLink)
   const isPart = entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)
 
   // AnatomicalPart: object_label leads with the part name, e.g.
@@ -248,10 +251,14 @@ export function makeBiologicalAssociation(
     subjectSpeciesHtml:  subjLabel.html,
     subjectOtuId:        otuLink(subj)?.otuId || basic?.subject_otu_id || null,
     subjectHasTaxonName: hasTaxonName(subjOtu),
+    // subjectOtuId / objectOtuId are link targets, not the participant's
+    // identity: an OTU like "Carex sp." links to the page of its taxon (see
+    // otuLink.js). The participant's own id stays in `basic`.
+    //
     // The name in current use, shown after the recorded one. Raw data keeps the
-    // record as it was entered — including its link — and points at the OTU
-    // that carries the records alongside it, rather than silently replacing it
-    // the way the Field Assistant does.
+    // name as it was entered and points at the OTU that carries the records
+    // alongside it, rather than silently replacing it the way the Field
+    // Assistant does.
     subjectAcceptedNameHtml: subjAccepted?.html  || null,
     subjectAcceptedOtuId:    subjAccepted?.otuId || null,
     subjectSpecimenType: subjSpecimen?.type || null,

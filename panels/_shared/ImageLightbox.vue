@@ -421,6 +421,20 @@ function otuDescription(dep) {
   return /^\s*\(\w+\)\s*\.?\s*$/.test(raw) ? '' : raw
 }
 
+// Same for a CO/FO depiction. The inventory endpoint serialises neither `figure_label`
+// nor `caption`, only the composed label
+// "CollectionObject 123; <identifiers>, <uuid>: <figure_label>. <caption>. (CollectionObject)."
+// so the text is cut after the uuid (identifiers and captions may hold their own ': ').
+const SPECIMEN_LABEL_PREFIX = /^.*?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}:\s+/i
+
+function specimenDescription(dep) {
+  if (dep.figure_label || dep.caption) return dep.caption || ''
+  const label = dep.label || ''
+  if (!SPECIMEN_LABEL_PREFIX.test(label)) return otuDescription(dep)
+  const raw = label.replace(SPECIMEN_LABEL_PREFIX, '').replace(/\s*\.?\s*\(\w+\)\s*\.\s*$/, '').trim()
+  return raw
+}
+
 // Unified display object for the current image.
 // Name is always shown first (OTU label or DWC scientificName for CO-only).
 // OTU description appears directly below the name.
@@ -483,7 +497,7 @@ const imageDisplay = computed(() => {
       objectType:  inferDepictionType(dep),
       typeStatus:  cached?.typeStatus  || '',
       figureLabel: dep.figure_label    || '',
-      caption:     dep.caption         || '',
+      caption:     specimenDescription(dep),
       dwcOk,
       dwcLoading
     }

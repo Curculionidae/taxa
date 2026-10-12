@@ -15,7 +15,7 @@
 
 import { isSpecimenType, resolveSpecimenRef, specimenKey } from '../_shared/specimenRef.js'
 import { escHtml, splitScientificName } from '../_shared/scientificName.js'
-import { extractOtuTagSpan } from '../_shared/otuTag.js'
+import { extractOtuTagSpan, otuDistinctOwnName, withoutOtuOwnName } from '../_shared/otuTag.js'
 export { isSpecimenType, resolveSpecimenRef, specimenKey }
 
 /** Plain text for taxonomic name columns, filters and spreadsheet copying. */
@@ -62,11 +62,13 @@ export function hasTaxonName(otu) {
  * must be greedy (first <i> to *last* </i>) to keep the whole construct, not
  * just the first run.
  *
- * A taxon-name-linked determination reaching only genus rank (no species
- * epithet) renders as a single italicized word, e.g. "<i>Promecops</i>
- * Sahlberg, 1823" — TaxonWorks' own tag omits any "sp." qualifier, so add one
- * back, and drop the authorship there, which belongs to the genus and would
- * read as the species author. Detected by stripping tags/parens from the
+ * A specimen determination reaching only genus rank (no species epithet)
+ * renders as a single italicized word, e.g. "<i>Promecops</i> Sahlberg, 1823" —
+ * TaxonWorks' own tag omits any "sp." qualifier, so add one back, and drop the
+ * authorship there, which belongs to the genus and would read as the species
+ * author. Only for a specimen (`bareGenusSp`): an association recorded against
+ * the genus OTU itself is about the genus and reads "<i>Carex</i> L.", which
+ * also keeps it apart from the OTU "Carex sp.". Detected by stripping tags/parens from the
  * matched run and counting words, not by naively checking for whitespace in a
  * single capture (which the subgenus case would misread as "has a species").
  *
@@ -74,21 +76,24 @@ export function hasTaxonName(otu) {
  * verbatim (authorship kept, no "[c]" handling, no "sp." for a bare genus) — a
  * deliberately different name policy, so this reduction step is not shared.
  */
-function extractNameHtml(objectTag, dropAcceptedTail = false) {
+function extractNameHtml(objectTag, dropAcceptedTail = false, bareGenusSp = true, otuLink = null) {
   const span = extractOtuTagSpan(objectTag)
   if (!span) return null
-  let name = span.replace(/\s*\[c\]\s*$/, '').trim()
+  // The naming rule every display shares (otuTag.js): an OTU whose own name
+  // differs from its taxon name, or that has no taxon name, shows the own name
+  // alone ("Carex sp.", not "Carex L. Carex sp."). One that only repeats the
+  // taxon name loses it here and goes on as a plain taxon name. `otuLink`
+  // (resolveOtuLinks, from the OTU record) decides when the caller has it, so
+  // this table agrees with every other display; the tag decides otherwise.
+  const ownName = otuLink ? otuLink.ownName : otuDistinctOwnName(span)
+  if (ownName) return escHtml(ownName)
+  let name = withoutOtuOwnName(span).replace(/\s*\[c\]\s*$/, '').trim()
   const tail = name.match(/^([\s\S]*?)\s*<em>\s*now\s*<\/em>\s*([\s\S]*)$/)
   if (tail && (dropAcceptedTail || plainText(tail[1]) === plainText(tail[2]))) name = tail[1].trim()
   const italics = name.match(/<i>[\s\S]*<\/i>/)
   if (!italics) return name || null
-  // An OTU that carries both a TaxonName and its own label renders as
-  // "<i>taxon name</i> author&nbsp;<b>otu label</b>" — the bold tail only
-  // repeats what the italic name already says. An OTU with a label and no
-  // TaxonName has no italic run at all and keeps its bold name.
-  name = name.replace(/(?:&nbsp;|\s)*<b>[\s\S]*<\/b>\s*$/, '').trim()
   const words = italics[0].replace(/<[^>]+>/g, '').replace(/[()]/g, '').trim().split(/\s+/).filter(Boolean)
-  return words.length > 1 ? name : `${italics[0]} sp.`
+  return words.length > 1 || !bareGenusSp ? name : `${italics[0]} sp.`
 }
 
 /**
@@ -158,8 +163,8 @@ function nameHtmlFromScientificName(scientificName) {
  * "det. <otu_tag>" span, or -- for an AnatomicalPart wrapping the specimen,
  * whose tag has no such span -- from the determination OTU (`recordedHtml`).
  */
-function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recordedHtml = null) {
-  const speciesHtml = extractNameHtml(entity.object_tag, dropAcceptedTail)
+function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recordedHtml = null, otuLink = null) {
+  const speciesHtml = extractNameHtml(entity.object_tag, dropAcceptedTail, isSpecimenType(entity.base_class), otuLink)
   const isPart = entity.base_class !== 'Otu' && !isSpecimenType(entity.base_class)
 
   // AnatomicalPart: object_label leads with the part name, e.g.
@@ -203,8 +208,16 @@ export function makeBiologicalAssociation(
   citationList   = [],
   basic          = null,
   localityByCoId = new Map(),
-  otuById        = new Map()
+  otuById        = new Map(),
+  // String(otuId) → { ownName, otuId, … } (resolveOtuLinks in
+  // ../_shared/otuLink.js): the OTU "Carex sp." is shown under that name
+  // and links to the page of Carex L. Only for a participant that is an OTU; a
+  // specimen's link stays on the OTU it is filed under.
+  otuLinkByOtuId = new Map()
 ) {
+  const otuLink = (entity) =>
+    (entity?.base_class === 'Otu' && otuLinkByOtuId.get(String(entity.id))) || null
+
   const subj = data.subject || {}
   const obj  = data.object  || {}
   const rel  = data.biological_relationship || {}
@@ -223,9 +236,9 @@ export function makeBiologicalAssociation(
   const objAccepted  = acceptedName(objOtu)
 
   const subjLabel = buildLabelParts(subj, subjDwc?.scientificName || null, !!subjAccepted,
-    subjAccepted ? recordedName(subjOtu) : null)
+    subjAccepted ? recordedName(subjOtu) : null, otuLink(subj))
   const objLabel  = buildLabelParts(obj, objDwc?.scientificName || null, !!objAccepted,
-    objAccepted ? recordedName(objOtu) : null)
+    objAccepted ? recordedName(objOtu) : null, otuLink(obj))
 
   return {
     id: data.id,
@@ -233,7 +246,7 @@ export function makeBiologicalAssociation(
     subjectFamily:       displayFamily(basic?.subject?.family) || displayFamily(subjDwc?.family) || null,
     subjectLabelPrefix:  subjLabel.prefix,
     subjectSpeciesHtml:  subjLabel.html,
-    subjectOtuId:        basic?.subject_otu_id || null,
+    subjectOtuId:        otuLink(subj)?.otuId || basic?.subject_otu_id || null,
     subjectHasTaxonName: hasTaxonName(subjOtu),
     // The name in current use, shown after the recorded one. Raw data keeps the
     // record as it was entered — including its link — and points at the OTU
@@ -251,7 +264,7 @@ export function makeBiologicalAssociation(
     objectFamily:       displayFamily(basic?.object?.family) || displayFamily(objDwc?.family) || null,
     objectLabelPrefix:  objLabel.prefix,
     objectSpeciesHtml:  objLabel.html,
-    objectOtuId:        basic?.object_otu_id || null,
+    objectOtuId:        otuLink(obj)?.otuId || basic?.object_otu_id || null,
     objectHasTaxonName:  hasTaxonName(objOtu),
     objectAcceptedNameHtml: objAccepted?.html  || null,
     objectAcceptedOtuId:    objAccepted?.otuId || null,

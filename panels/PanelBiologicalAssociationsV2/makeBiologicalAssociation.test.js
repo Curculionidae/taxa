@@ -81,10 +81,10 @@ test('an AnatomicalPart wrapping a CO/FO keeps its part-name prefix and links th
 test('OTU entities are unchanged (no specimen name in play)', () => {
   const ba = makeBiologicalAssociation(baseData, [], [], [], basic, new Map())
 
-  // object is the Dianthus OTU — extractNameHtml has no otu_tag_taxon_name
-  // span to match here, so it falls back to object_label exactly as before
+  // object is the Dianthus OTU: the name comes from its otu_tag span, with
+  // TaxonWorks' own italics
   assert.equal(ba.objectLabelPrefix, null)
-  assert.equal(ba.objectSpeciesHtml, 'Dianthus carthusianorum L.')
+  assert.equal(ba.objectSpeciesHtml, '<i>Dianthus carthusianorum</i> L.')
   assert.equal(ba.objectOtuId, 1383723)
   assert.equal(ba.objectSpecimenType, null)
 })
@@ -111,15 +111,17 @@ test('AnatomicalPart of a taxon (no wrapped specimen) splits into a part prefix 
   assert.equal(ba.subjectLabelPrefix, 'Larvae of ')
   assert.equal(
     ba.subjectSpeciesHtml,
-    'Hypera (Kippenbergia) arator (Linnaeus, 1758)'
+    '<i>Hypera</i> (<i>Kippenbergia</i>) <i>arator</i> (Linnaeus, 1758)'
   )
 })
 
-test('CO/FO with no DWC record falls back to the raw label (documents the gap)', () => {
+test('CO/FO with no DWC record shows the determination from its tag', () => {
   const ba = makeBiologicalAssociation(baseData, [], [], [], basic, new Map())
 
+  // The determination OTU has a name of its own ("Hypera arator" in bold) that
+  // only repeats its taxon name, so the taxon name is shown.
   assert.equal(ba.subjectLabelPrefix, null)
-  assert.equal(ba.subjectSpeciesHtml, FO_SUBJECT.object_label)
+  assert.equal(ba.subjectSpeciesHtml, '<i>Hypera</i> (<i>Kippenbergia</i>) <i>arator</i>')
 })
 
 test('a CollectionObject and a FieldOccurrence sharing a numeric id do not collide', () => {
@@ -149,7 +151,7 @@ test('AnatomicalPart fallback (no DWC, no name span) keeps the part-name prefix 
     subject: {
       base_class: 'AnatomicalPart',
       id: 99,
-      object_tag: '<span>nidus: <span class="otu_tag">FieldOccurrence 4996</span></span>',
+      object_tag: '<span>nidus: FieldOccurrence 4996</span>',
       object_label: 'nidus: FieldOccurrence 4996; 1234abcd-0000; Germany'
     }
   }
@@ -161,13 +163,89 @@ test('AnatomicalPart fallback (no DWC, no name span) keeps the part-name prefix 
   assert.ok(!ba.subjectSpeciesHtml.startsWith('nidus:'))
 })
 
-test('an OTU with a name of its own besides its taxon name shows the OTU name alone', () => {
+const CAREX_SP = {
+  base_class: 'Otu',
+  id: 735260,
+  object_tag: '<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>',
+  object_label: 'Carex L. Carex sp.'
+}
+
+test('an OTU with a taxon name and a name of its own shows its own name alone', () => {
+  const ba = makeBiologicalAssociation({ ...baseData, object: CAREX_SP }, [], [], [], basic, new Map())
+  assert.equal(ba.objectSpeciesHtml, 'Carex sp.')
+})
+
+test('an OTU with a name of its own and no taxon name shows that name', () => {
   const object = {
     base_class: 'Otu',
-    id: 735260,
-    object_tag: '<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>',
-    object_label: 'Carex L. Carex sp.'
+    id: 735204,
+    object_tag: '<span class="otu_tag"><b>Cycas sp.</b></span>',
+    object_label: 'Cycas sp.'
   }
   const ba = makeBiologicalAssociation({ ...baseData, object }, [], [], [], basic, new Map())
-  assert.equal(ba.objectSpeciesHtml, 'Carex sp.')
+  assert.equal(ba.objectSpeciesHtml, 'Cycas sp.')
+})
+
+test('a synonym OTU with a name of its own shows that name, once', () => {
+  const object = {
+    base_class: 'Otu',
+    id: 1,
+    object_tag: '<span class="otu_tag"><i>Knautia sylvatica</i> (L.) Duby&nbsp;<b>Knautia silvatica</b> <em>now</em> <i>Knautia drymeja</i> Heuff.&nbsp;<b>Knautia silvatica</b></span>',
+    object_label: 'Knautia sylvatica (L.) Duby Knautia silvatica'
+  }
+  const ba = makeBiologicalAssociation({ ...baseData, object }, [], [], [], basic, new Map())
+  assert.equal(ba.objectSpeciesHtml, 'Knautia silvatica')
+})
+
+test('an OTU whose own name repeats its taxon name shows the taxon name', () => {
+  const object = {
+    base_class: 'Otu',
+    id: 2,
+    object_tag: '<span class="otu_tag"><i>Isatis tinctoria</i>&nbsp;<b>Isatis tinctoria</b></span>',
+    object_label: 'Isatis tinctoria L. Isatis tinctoria'
+  }
+  const ba = makeBiologicalAssociation({ ...baseData, object }, [], [], [], basic, new Map())
+  assert.equal(ba.objectSpeciesHtml, '<i>Isatis tinctoria</i>')
+})
+
+test('a genus OTU keeps its author, only a specimen determined to genus reads "sp."', () => {
+  const genusTag = '<span class="otu_tag"><i>Carex</i> L.</span>'
+  const object = { base_class: 'Otu', id: 1408614, object_tag: genusTag, object_label: 'Carex L.' }
+  const asOtu = makeBiologicalAssociation({ ...baseData, object }, [], [], [], basic, new Map())
+  assert.equal(asOtu.objectSpeciesHtml, '<i>Carex</i> L.')
+
+  const specimen = {
+    base_class: 'CollectionObject',
+    id: 7,
+    object_tag: `det. ${genusTag} on 2011`,
+    object_label: 'CollectionObject 7; abc'
+  }
+  const asSpecimen = makeBiologicalAssociation({ ...baseData, object: specimen }, [], [], [], basic, new Map())
+  assert.equal(asSpecimen.objectSpeciesHtml, '<i>Carex</i> sp.')
+})
+
+test('an OTU participant takes name and link from its resolved OTU link', () => {
+  const row = { ...basic, object_otu_id: 735260 }
+  const data = { ...baseData, object: CAREX_SP }
+  const links = new Map([['735260', { ownName: 'Carex sp.', otuId: 1408614 }]])
+  const linked = makeBiologicalAssociation(data, [], [], [], row, new Map(), new Map(), links)
+  assert.equal(linked.objectOtuId, 1408614)
+  assert.equal(linked.objectSpeciesHtml, 'Carex sp.')
+  assert.equal(makeBiologicalAssociation(data, [], [], [], row, new Map()).objectOtuId, 735260)
+})
+
+test('the OTU record overrules the tag on whether the own name is shown', () => {
+  // The record says the own name only repeats the taxon name: taxon name it is.
+  const data = { ...baseData, object: CAREX_SP }
+  const links = new Map([['735260', { ownName: null, otuId: 735260 }]])
+  const ba = makeBiologicalAssociation(data, [], [], [], basic, new Map(), new Map(), links)
+  assert.equal(ba.objectSpeciesHtml, '<i>Carex</i>')
+})
+
+test('a specimen keeps the link to the OTU it is filed under', () => {
+  // Even if the link map knew an OTU with the specimen's id, or its
+  // determination OTU, a specimen row is not redirected.
+  const links = new Map([['1411454', { ownName: null, otuId: 999 }], ['5000', { ownName: null, otuId: 999 }]])
+  const ba = makeBiologicalAssociation(baseData, [], [], [], basic, new Map(), new Map(), links)
+  assert.equal(ba.subjectOtuId, 1411454)
 })

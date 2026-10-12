@@ -47,8 +47,8 @@ import ListRecords from './ListRecords.vue'
 import DwcTable from '../../_shared/DwcTable.vue'
 import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
-import { otuOwnName } from '../../_shared/otuTag.js'
-import { escHtml, splitScientificName } from '../../_shared/scientificName.js'
+import { otuLinkFallback, resolveOtuLinks } from '../../_shared/otuLink.js'
+import { escHtml } from '../../_shared/scientificName.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
 import { fetchTypeSpecimens, fetchTypeSpecimenRecord } from '../../_shared/typeMaterialSpecimen.js'
@@ -267,10 +267,20 @@ function loadDwc() {
     props.preloadedData
       ? Promise.resolve({ data: props.preloadedData })
       : makeAPIRequest.get(`/otus/${props.otuId}/inventory/dwc.json`),
-    fetchBioAssociationsForOtu(props.otuId)
+    // Associations, then name and link of each partner OTU from its record
+    // (one batched request, see otuLink.js): "Carex sp." is shown under
+    // that name and links to the page of Carex L. Chained here so it overlaps
+    // the inventory fetch instead of holding up the list after it.
+    fetchBioAssociationsForOtu(props.otuId).then(async (bioAssociations) => ({
+      bioAssociations,
+      otuLinks: await resolveOtuLinks(
+        bioAssociations.flatMap((ba) => [ba.subject, ba.object])
+          .filter((e) => e?.base_class === 'Otu')
+      )
+    }))
   ])
-    .then(async ([{ data: rawData }, bioAssociations]) => {
-      bioAssociationsIndex.value = buildBioAssociationsIndex(bioAssociations)
+    .then(async ([{ data: rawData }, { bioAssociations, otuLinks }]) => {
+      bioAssociationsIndex.value = buildBioAssociationsIndex(bioAssociations, otuLinks)
 
       // dwc_occurrence is polymorphic — the endpoint also returns
       // AssertedDistribution (citation-based distribution, not a physical
@@ -487,8 +497,7 @@ function badgeHtml(text) {
 function bioPartyLabel(entity) {
   if (!entity) return { italic: '', plain: '' }
   if (entity.base_class === 'Otu') {
-    const ownName = otuOwnName(entity.object_tag)
-    return ownName ? { italic: '', plain: ownName } : splitScientificName(entity.object_label || '')
+    return otuLinkFallback(entity).label
   }
   return { italic: '', plain: (entity.object_label || '').split('\n')[0] }
 }
@@ -519,16 +528,17 @@ async function fetchBioAssociationsForOtu(otuIdVal) {
 // — every subject/object side that resolves to a physical specimen (direct,
 // or via a wrapping AnatomicalPart) becomes a key, whether or not it turns
 // out to belong to one of this OTU's own records; unused keys are harmless.
-function buildBioAssociationsIndex(rawBaList) {
+function buildBioAssociationsIndex(rawBaList, otuLinks = new Map()) {
   const index = new Map()
   const add = (ref, relationshipLabel, other) => {
     if (!ref) return
     const key = `${ref.type}:${ref.id}`
     if (!index.has(key)) index.set(key, [])
+    const link = other?.base_class === 'Otu' ? otuLinks.get(String(other.id)) : null
     index.get(key).push({
       relationshipLabel,
-      otherName: bioPartyLabel(other),
-      otherOtuId: other?.base_class === 'Otu' ? other.id : null
+      otherName: link?.label ?? bioPartyLabel(other),
+      otherOtuId: other?.base_class === 'Otu' ? link?.otuId ?? other.id : null
     })
   }
   rawBaList.forEach((ba) => {

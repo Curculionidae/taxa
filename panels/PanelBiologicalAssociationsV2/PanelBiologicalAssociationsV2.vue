@@ -496,6 +496,7 @@ import DwcTable from '../_shared/DwcTable.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
 import { areaLabel } from './areaLabel.js'
+import { resolveOtuLinks } from '../_shared/otuLink.js'
 import { stripHtml, shortCitation } from '../_shared/citationText.js'
 import {
   makeBiologicalAssociation,
@@ -1701,6 +1702,14 @@ async function loadBiologicalAssociations(page = 1) {
       })
     )
 
+    // Name + link target of every participant that is an OTU, from the OTU
+    // records already loaded for this page where there is one.
+    const otuLinkByOtuId = await resolveOtuLinks(
+      data.flatMap((item) => [item.subject, item.object])
+        .filter((e) => e?.base_class === 'Otu')
+        .map((e) => expertOtuById.get(String(e.id)) || e)
+    )
+
     const associations = data.map((item) =>
       makeBiologicalAssociation(
         item,
@@ -1709,7 +1718,8 @@ async function loadBiologicalAssociations(page = 1) {
         citationsMap.get(item.id)     || [],
         basicMap.get(item.id)         || null,
         localityByCoId,
-        expertOtuById
+        expertOtuById,
+        otuLinkByOtuId
       )
     )
 

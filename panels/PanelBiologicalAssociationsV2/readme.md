@@ -118,6 +118,16 @@ pages.
   renders and background enrichment from slowing Firefox. OTU names and the
   required specimen details are resolved in bounded batches before the single
   final table update.
+- Raw data view takes each name from the participant's `otu_tag` span, with
+  TaxonWorks' own italics, and follows the OTU naming rule every display shares
+  (`../_shared/readme.md`, "otuTag.js and otuLink.js"): an OTU whose own
+  name differs from its taxon name (`Carex L. Carex sp.`) reads "Carex sp." and
+  links to the page of its taxon, Carex L.; one whose own name only repeats the
+  taxon name shows the taxon name. A specimen row is not redirected, it links
+  to the OTU it is filed under. An association recorded against a genus OTU
+  reads "*Carex* L."; only a specimen determined to genus reads "*Carex* sp.".
+  The Field Assistant view is unaffected: it groups by TaxonName and already
+  shows and links the taxon.
 - Associations stored under nomenclatural synonyms and combinations are included
   through TaxonWorks' `coordinatify` OTU expansion. The Field Assistant groups them under
   `cached_valid_taxon_name_id`, displays the accepted name and links its accepted

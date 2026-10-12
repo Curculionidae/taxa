@@ -137,6 +137,60 @@ for that was tried and removed (it italicised "Photo taken near").
 It stays a guess from text. Where TaxonWorks delivers markup (`object_tag`, `cached_html`),
 use that instead, see `otuTag.js`.
 
+## otuTag.js and otuLink.js
+
+How an OTU is named and linked wherever one is shown as itself (a partner in an
+association, a key's scope, a search hit). It depends on what TaxonWorks holds for it:
+
+| The OTU has | Shown as | Links to |
+|---|---|---|
+| a taxon name only (the healthy case) | the taxon name, TaxonWorks' markup | its own page |
+| an own name only (a gap in the database, no taxon name linked) | the own name, all there is | its own page |
+| both, saying the same ("Isatis tinctoria" on *Isatis tinctoria* L.) | the taxon name | its own page |
+| both, and they differ (deliberate: "Carex sp.", or "Salix spp." for several species, filed on the genus) | the own name alone | the page of the taxon (Carex L.) |
+
+Without this, the last two read doubled: TaxonWorks tags such an OTU
+`<i>Carex</i>&nbsp;<b>Carex sp.</b>` and labels it `Carex L. Carex sp.`.
+
+"The page of the taxon" is the OTU on the same TaxonName that has no name of its own
+(lowest id). When there is none ("Arisaema sp." is the only OTU on Arisaema) the OTU keeps
+its own page. "Saying the same" ignores authorship and a subgenus in brackets. A specimen
+is not redirected: its link stays on the OTU it is filed under.
+
+**Read from the OTU record, not from markup.** `/otus?otu_id[]=…&extend[]=taxon_name`
+returns `name` (the own name) and `taxon_name` (`cached`, `cached_html`,
+`cached_author_year`, `rank`) as plain fields, batchable. That is the source
+`otuLink.js` uses. An association only carries its partner's `object_tag` /
+`object_label`, so the helper fetches those records itself (one batched request, shared
+between panels). Where a panel already loads OTUs, add `extend[]=taxon_name` to that call
+and pass the rows, and naming costs no request.
+
+| Export | Use |
+|---|---|
+| `resolveOtuLinks(otus)` | `otuLink.js`. The call a display needs. Takes OTU records or association entities, returns `Map<String(otuId), { html, label, ownName, otuId }>`: the name (as HTML and as an italic + plain pair) and the page to link to, together, so a display cannot apply one half and forget the other. In-flight lookups are shared, a failure is logged and not cached, never rejects. |
+| `otuLinkFallback(otu)` | `otuLink.js`. The same shape from what the object itself carries, linking to itself: for a list that renders while its links resolve. |
+| `otuNaming(otu)` | `otuLink.js`. The pure naming decision behind both. |
+| `extractOtuTagSpan`, `otuDisplayNameHtml`, `otuDistinctOwnName`, `otuTaxonLabel`, `otuLinksToTaxonPage`, `withoutOtuOwnName` | `otuTag.js`. The same cases read off the tag markup. The fallback when no record is at hand, and what the associations raw table renders with (it works on tags throughout, for the "now" tail of a synonym and a specimen's "det." span). Checked against all 119 doubly-named OTUs in the project on 2026-10-12: tag and record agree on every one. |
+| `identifiedAsNameHtml`, `repeatsTypeStatusName` | `otuTag.js`. See DwcTable.vue below. |
+
+Never show a raw `object_tag` / `object_label` for an OTU. Applied in: the biological
+associations panel (raw data table), DwcTable's associations section, the association chip
+in PanelSpecimenOccurrences, the keys index scope, and the map's OTU search result list
+(its title shows the page's own OTU, named from the tag). The page header, breadcrumb and
+autocomplete are rendered by the package and do not go through here.
+
+DwcTable's "identified as <old name>" is about the name a specimen was determined as, so
+`identifiedAsNameHtml` always gives the taxon name there.
+
+A wrong pairing in the database shows as it is entered: "Melissa sp." filed on *Melissa
+officinalis* reads "Melissa sp." and links to the species page. That is one to fix in
+TaxonWorks, not here.
+
+The tag reader had gone blind without anyone noticing: until 2026-10-12 it knew only an
+older nested span, so on every live tag it returned null and callers fell back to the raw
+label. One more reason the record is the source to prefer. If names in the associations
+raw table turn plain or doubled again, check the tag shape first.
+
 ## TypeStatusChip.vue
 
 The type-status chip: "holotype of *Aus bus* Author, 1900" on a red label for a name-bearing type, a yellow one for other type material (paratype, ...), black print on both. One prop, `status`: one status or a whole DwC `typeStatus` cell (" | "-joined). Every status gets a chip of its own, coloured on its own; nothing is rendered for an empty one. Colour comes from `typeLabelStyle()` in `typeStatus.js`, the italics from `typeStatusHtml()` in `scientificName.js`, the tokens from `panel-tokens.css`, which the component imports itself. Spacing is the caller's: pass a margin class.

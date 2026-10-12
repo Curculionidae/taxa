@@ -26,9 +26,10 @@ User decisions, 2026-10-11:
   collector is recorded (`observed 1973-10` for a field occurrence).
 - The primary biological association is a green chip (`--pp-bio-chip*` in
   `../_shared/panel-tokens.css`, the package VBadge green that association
-  citations use in the bibliography). A partner OTU links to its page, and an OTU
-  with a name of its own shows only that name (`otuOwnName()` in
-  `../_shared/otuTag.js`). A click on any link in a row does not open the detail
+  citations use in the bibliography). A partner OTU links to its page. One whose
+  own name differs from its taxon name ("Carex sp.") shows only that name and
+  links to the page of its taxon, Carex L.; the cases are in
+  `../_shared/readme.md` ("otuTag.js and otuLink.js"). A click on any link in a row does not open the detail
   modal.
 
 ## Grouping (collapsed rows)

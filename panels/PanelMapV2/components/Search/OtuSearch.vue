@@ -2,7 +2,7 @@
   <div class="w-screen h-screen fixed top-0 left-0 z-[5000] flex flex-col">
     <VSpinner v-if="isLoading" />
     <SearchBar
-      :label="otu.object_tag"
+      :label="otuDisplayNameHtml(otu.object_tag)"
       @close="() => emit('close')"
     />
     <div
@@ -76,6 +76,7 @@ import SearchBar from './SearchBar.vue'
 import ListResults from './ListResults.vue'
 import MapPopup from '../MapPopup.vue'
 import DwcTable from '../../../_shared/DwcTable.vue'
+import { otuDisplayNameHtml } from '../../../_shared/otuTag.js'
 
 const props = defineProps({
   shapes: {
@@ -127,6 +128,8 @@ function loadOTUs(geojson) {
     geo_json: geojson,
     taxon_name_id: [props.otu.taxon_name_id],
     descendants: true,
+    // name fields for the result list, see otuLink.js
+    extend: ['taxon_name'],
     per: 5000
   }
 

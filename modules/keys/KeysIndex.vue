@@ -74,7 +74,7 @@ import { ref, onMounted } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import { rankIndex } from './lib/completeness.js'
-import { extractOtuTagSpan as scopeNameFromObjectTag } from '../../panels/_shared/otuTag.js'
+import { resolveOtuLinks } from '../../panels/_shared/otuLink.js'
 
 const loading = ref(true)
 const keys = ref([])
@@ -98,18 +98,23 @@ onMounted(async () => {
     // row carries otu_id; /otus gives object_tag (the name) + taxon_name_id, and
     // a second batched call resolves those to ranks (for sorting).
     const otuIds = [...new Set(rows.map((r) => r.otu_id).filter(Boolean))]
-    const nameByOtuId = new Map()
+    // Name + link target per scope OTU: an OTU such as "Carex sp." is shown
+    // under that name and links to the page of its taxon (otuLink.js).
+    const linkByOtuId = new Map()
     const rankIdxByOtuId = new Map()
     if (otuIds.length) {
       try {
         const oq = new URLSearchParams()
         otuIds.forEach((id) => oq.append('otu_id[]', id))
         oq.set('per', '1000') // one scope OTU per key — don't let /otus' default 50 truncate
+        oq.append('extend[]', 'taxon_name') // name fields for resolveOtuLinks
         const { data: otus } = await makeAPIRequest.get(`/otus?${oq.toString()}`)
+
+        const links = await resolveOtuLinks(Array.isArray(otus) ? otus : [])
 
         const tnIdByOtuId = new Map()
         for (const o of Array.isArray(otus) ? otus : []) {
-          nameByOtuId.set(o.id, scopeNameFromObjectTag(o.object_tag))
+          linkByOtuId.set(o.id, links.get(String(o.id)))
           if (o.taxon_name_id != null) tnIdByOtuId.set(o.id, o.taxon_name_id)
         }
 
@@ -137,8 +142,8 @@ onMounted(async () => {
         title: metas[i].title || r.text || `Key ${r.id}`,
         scope: metas[i].taxonomic_scope || null,
         // scope OTU (route target) + its italic name, matching the key page header
-        otuId: r.otu_id || null,
-        scopeHtml: nameByOtuId.get(r.otu_id) || null,
+        otuId: linkByOtuId.get(r.otu_id)?.otuId || r.otu_id || null,
+        scopeHtml: linkByOtuId.get(r.otu_id)?.html || null,
         // Coarse->fine index of the scope taxon's rank; -1 (unknown) sorts last.
         scopeRankIdx: rankIdxByOtuId.get(r.otu_id) ?? -1,
         // Primary source = origin_citation only (the citation flagged is_original

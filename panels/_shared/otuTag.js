@@ -1,21 +1,33 @@
+import { escHtml } from './scientificName.js'
+
 /**
  * otuTag.js
  *
- * Extracts the inner HTML of an otu_tag_taxon_name / otu_tag_otu_name span
- * from a TaxonWorks object_tag string, already italicized by TaxonWorks
- * (e.g. "<i>Hypera</i> (<i>Kippenbergia</i>) <i>miles</i> (Paykull, 1792)"),
- * no separate taxonomy lookup needed. `[^>]*>` after the class name
- * tolerates the span's other attributes (title=…) and any extra classes;
- * the otu_name alternative covers name-only OTUs with no linked taxon name.
- * Matching to the first `</span>` excludes any trailing valid-name marker
- * (a ✓/❌ tag) that TaxonWorks appends outside this inner span.
+ * Extracts the inner HTML of an OTU's name span from a TaxonWorks object_tag
+ * string, already italicized by TaxonWorks (e.g. "<i>Hypera</i>
+ * (<i>Kippenbergia</i>) <i>miles</i> (Paykull, 1792)"), no separate taxonomy
+ * lookup needed.
+ *
+ * TaxonWorks has shipped two shapes of this tag:
+ *   - current (sfg, checked 2026-10-12): one plain span,
+ *     `<span class="otu_tag"><i>Carex</i>&nbsp;<b>Carex sp.</b></span>`, taxon
+ *     name first, the OTU's own name (if any) in bold after it;
+ *   - older: an inner `otu_tag_taxon_name` / `otu_tag_otu_name` span, with
+ *     other attributes (title=…) and a trailing valid-name marker (✓/❌)
+ *     outside it.
+ * The inner span wins when present, so the older shape still reads as before;
+ * otherwise the plain `otu_tag` span is taken. Matching to the first `</span>`
+ * is safe for both, neither nests a span inside the name.
+ *
+ * The result is verbatim: it still carries the OTU's own name in bold next to
+ * the taxon name. Run it through otuDisplayNameHtml() before display.
  *
  * Depended on by:
  *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js (further
- *     reduces the result to the innermost <i>...</i> construct + "sp." for a
- *     bare-genus determination, a deliberately different name policy)
- *   - ../../modules/keys/KeysIndex.vue (uses the raw result verbatim,
- *     author-year kept, no "sp.", a deliberately different name policy)
+ *     reduces the result, "sp." for a bare-genus determination, a deliberately
+ *     different name policy)
+ *   - ../../modules/keys/KeysIndex.vue (author-year kept, no "sp.", a
+ *     deliberately different name policy)
  *
  * If you change this file, sanity-check both call sites.
  *
@@ -24,8 +36,143 @@
  */
 export function extractOtuTagSpan(objectTag) {
   if (!objectTag) return null
-  const m = String(objectTag).match(/otu_tag_(?:taxon_name|otu_name)[^>]*>([\s\S]*?)<\/span>/)
+  const tag = String(objectTag)
+  const m =
+    tag.match(/otu_tag_(?:taxon_name|otu_name)[^>]*>([\s\S]*?)<\/span>/) ||
+    tag.match(/class="otu_tag"[^>]*>([\s\S]*?)<\/span>/)
   return m ? m[1].trim() || null : null
+}
+
+/**
+ * How an OTU is named, by what TaxonWorks holds for it:
+ *
+ *   taxon name only          the healthy case. Taxon name, TaxonWorks' markup.
+ *   own name only            a gap in the database (no taxon name linked), but
+ *                            the own name is all there is to show.
+ *   both, saying the same    ("Isatis tinctoria" on Isatis tinctoria L.) the
+ *                            taxon name; the own name adds nothing.
+ *   both, and they differ    deliberate: "Carex sp.", or "Salix spp." for
+ *                            several species of Salix, filed on the genus. The
+ *                            own name alone, linked to the page of the taxon
+ *                            (Carex L., Salix L.), see ./otuLink.js.
+ *
+ * TaxonWorks tags an OTU with both names
+ * "<i>Carex</i>&nbsp;<b>Carex sp.</b>" (own name in bold, repeated after the
+ * "now" marker when the taxon name is a synonym) and labels it
+ * "Carex L. Carex sp."; displayed as is, both names run together.
+ *
+ * ./otuLink.js applies these cases from the OTU record itself (`name` and
+ * the extended `taxon_name`), which is the source to prefer: resolveOtuLinks()
+ * there is the call a display needs. The functions below read the same answer
+ * off the tag markup instead. They are the fallback for when no record is at
+ * hand (the lookup failed, or a list is still resolving), and they serve the
+ * one renderer that works on tags throughout, the associations raw table.
+ *
+ * They all take any HTML that holds one OTU tag: the whole object_tag, or the
+ * inner span from extractOtuTagSpan.
+ */
+
+// The tag without its bold own-name runs, i.e. the taxon name part only.
+export function withoutOtuOwnName(html) {
+  return String(html || '').replace(/(?:&nbsp;|\s)*<b>[\s\S]*?<\/b>/g, '')
+}
+
+// A name reduced for comparing an own name with a taxon name: a subgenus in
+// brackets does not make "Hypera (Kippenbergia) arator" another name than
+// "Hypera arator". One bracketed word only, "Brentidae (except Nanophyinae)"
+// keeps its remark.
+export function nameKey(s) {
+  return comparableName(s).replace(/\(\s*[^\s()]+\s*\)/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// Plain text of the taxon name in a tag, authorship included when the tag has
+// it, and whether TaxonWorks italicised it. Empty for an OTU with no taxon name.
+function taxonNamePart(html) {
+  const inner = extractOtuTagSpan(html) ?? String(html || '')
+  const recorded = withoutOtuOwnName(inner).split(/<em>\s*now\s*<\/em>/)[0]
+  const italics = recorded.match(/<i>[\s\S]*<\/i>/)
+  return { text: nameKey(italics ? italics[0] : recorded), italic: !!italics }
+}
+
+/**
+ * The OTU's own name when that is the name to show it under: it has no taxon
+ * name, or one that says something else. Null for an OTU with no own name, or
+ * one that only repeats its taxon name. Plain text, not escaped.
+ *
+ * "Repeats" compares the name without authorship: an italicised taxon name
+ * (genus and below) must match the own name outright, any other one ("Brentidae
+ * Billberg, 1820", author inside the same run of text) must start with it.
+ *
+ * Depended on by:
+ *   - otuDisplayNameHtml and otuLinksToTaxonPage below
+ *   - ./DwcTable.vue (biological associations section)
+ *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
+ *     (association chip on a list row)
+ *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
+ *
+ * @param {string} html
+ * @returns {string|null}
+ */
+export function otuDistinctOwnName(html) {
+  const own = otuOwnName(html)
+  if (!own) return null
+  const taxon = taxonNamePart(html)
+  const key = nameKey(own)
+  const same = taxon.italic ? taxon.text === key : taxon.text === key || taxon.text.startsWith(key + ' ')
+  return taxon.text && same ? null : own
+}
+
+/**
+ * Whether the OTU's link goes to the page of its taxon instead of its own:
+ * true for the "both, and they differ" case only. ./otuLink.js resolves
+ * which page that is.
+ *
+ * @param {string} html
+ * @returns {boolean}
+ */
+export function otuLinksToTaxonPage(html) {
+  return !!otuDistinctOwnName(html) && !!taxonNamePart(html).text
+}
+
+/**
+ * The name to display, as v-html-safe HTML: the own name as escaped text when
+ * otuDistinctOwnName() says so, otherwise TaxonWorks' markup with any
+ * repeating own name taken out.
+ *
+ * Depended on by:
+ *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
+ *   - ../../modules/keys/KeysIndex.vue (key scope name)
+ *   - ../PanelMapV2/components/Search/ListResults.vue and OtuSearch.vue
+ *
+ * @param {string} html
+ * @returns {string|null}
+ */
+export function otuDisplayNameHtml(html) {
+  if (!html) return null
+  const own = otuDistinctOwnName(html)
+  return own ? escHtml(own) : withoutOtuOwnName(html).trim()
+}
+
+/**
+ * The plain-text counterpart, for displays that build a name from
+ * `object_label`: the label of an OTU with both names is "<taxon name with
+ * author> <own name>" ("Isatis tinctoria L. Isatis tinctoria"). Cuts the own
+ * name off the end, leaving the taxon name. Use it once otuDistinctOwnName()
+ * came back null; any label without a trailing own name is returned unchanged.
+ *
+ * Depended on by:
+ *   - ./DwcTable.vue (biological associations section)
+ *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
+ *
+ * @param {string} objectLabel
+ * @param {string} objectTag
+ * @returns {string}
+ */
+export function otuTaxonLabel(objectLabel, objectTag) {
+  const label = String(objectLabel || '')
+  const own = otuOwnName(objectTag)
+  if (!own || !label.endsWith(' ' + own)) return label
+  return label.slice(0, -own.length - 1).trim()
 }
 
 /**
@@ -59,8 +206,9 @@ export function identifiedAsNameHtml(objectTag) {
   // An OTU with a name of its own is tagged "<otu name>: <taxon name span>";
   // only the taxon name is what the specimen was identified as.
   const span = tag.slice(0, idx).match(/otu_tag_taxon_name[^>]*>/)
-  const html = tag
-    .slice(span ? span.index + span[0].length : 0, idx)
+  // A name of its own on the old OTU is not what the specimen was identified
+  // as either, only the taxon name is.
+  const html = withoutOtuOwnName(tag.slice(span ? span.index + span[0].length : 0, idx))
     .split(/(<\/?i>)/)
     .map((part) =>
       /^<\/?i>$/.test(part)
@@ -115,19 +263,10 @@ export function repeatsTypeStatusName(identifiedAsHtml, typeStatus) {
 }
 
 /**
- * The OTU's own name, when it has one besides its taxon name. TaxonWorks tags
- * such an OTU "<i>Carex</i>&nbsp;<b>Carex sp.</b>": taxon name first, then the
- * OTU name in bold (repeated after the "now" marker when the taxon name is a
- * synonym). The OTU name is the one the curator chose to call it, so the
- * biological-association displays show it alone instead of both names run
- * together ("Carex L. Carex sp."). Plain text, entities resolved, not escaped.
- * Null for an OTU with a taxon name only (no bold run).
- *
- * Depended on by:
- *   - ./DwcTable.vue (biological associations section)
- *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
- *     (association chip on a list row)
- *   - ../PanelBiologicalAssociationsV2/makeBiologicalAssociation.js
+ * The OTU's own name as plain text, read from the bold run of its tag
+ * ("<i>Carex</i>&nbsp;<b>Carex sp.</b>" → "Carex sp."), entities resolved, not
+ * escaped. Null when the tag has no bold run (an OTU with a taxon name only).
+ * Raw: whether this is the name to show is otuDistinctOwnName()'s call.
  *
  * @param {string} objectTag
  * @returns {string|null}

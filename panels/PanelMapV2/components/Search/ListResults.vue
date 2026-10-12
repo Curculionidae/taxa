@@ -23,8 +23,8 @@
       >
         <VTableBodyCell>
           <RouterLink
-            v-html="otu.object_tag"
-            :to="{ name: 'otus-id', params: { id: otu.id } }"
+            v-html="linkFor(otu).html"
+            :to="{ name: 'otus-id', params: { id: linkFor(otu).otuId } }"
             @click="() => emit('close')"
           />
         </VTableBodyCell>
@@ -40,6 +40,9 @@
 </template>
 
 <script setup>
+import { ref, watch } from 'vue'
+import { otuLinkFallback, resolveOtuLinks } from '../../../_shared/otuLink.js'
+
 const props = defineProps({
   list: {
     type: Array,
@@ -48,4 +51,17 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'close:table'])
+
+// An OTU such as "Carex sp." is shown under that name and links to the page
+// of its taxon (otuLink.js).
+const links = ref(new Map())
+const linkFor = (otu) => links.value.get(String(otu.id)) ?? otuLinkFallback(otu)
+watch(
+  () => props.list,
+  async (list) => {
+    const resolved = await resolveOtuLinks(list)
+    if (list === props.list) links.value = resolved
+  },
+  { immediate: true }
+)
 </script>

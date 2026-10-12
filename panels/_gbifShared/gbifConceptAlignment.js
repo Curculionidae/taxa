@@ -17,6 +17,7 @@ import { fetchChecklistConcept } from './gbifChecklistConcept'
 import { buildAlignmentModel } from './assembleAlignment'
 import { matchKey } from './gbifNameMatch'
 import { shortName } from './gbifNameFilter'
+import { fetchTwSynonymRows } from './twSynonymNames'
 
 const OCC = 'https://api.gbif.org/v1/occurrence/search'
 const V1_MATCH = 'https://api.gbif.org/v1/species/match'
@@ -137,43 +138,21 @@ async function resolve(primaryName, taxonId, opts) {
 
 // The valid name node plus one node per TaxonWorks synonym. Node 0 is fetched
 // by id from GET /taxon_names/{taxonId} so a subgenus in the stored name string
-// cannot make a name lookup miss. The synonym rows come from the same two-step
-// twSynonymNames.js uses (invalidating relationships whose object is this name);
-// the full rows are kept for cached_original_combination and cached_author_year,
-// both present on the list response (verified against the live API on
-// 2026-08-31).
+// cannot make a name lookup miss. The synonym rows come from the shared
+// fetchTwSynonymRows (TaxonWorks' own synonymify, so a misapplied name or a
+// reinstated one is not a synonym here either); the full rows are kept for
+// cached_original_combination and cached_author_year, both present on the list
+// response (verified against the live API on 2026-08-31).
 async function fetchTwNodes(primaryName, taxonId) {
   // Seed with the subgenus-stripped short name so a stored subgenus in
   // primaryName cannot leak into the bare node if the by-id refine below fails.
   const nodes = [nodeFromTw({ cached: shortName(primaryName) }, 'accepted')]
 
-  let synIds = []
   try {
-    const { data: rels } = await makeAPIRequest.get('/taxon_name_relationships', {
-      params: { 'object_taxon_name_id[]': taxonId, per: 500 }
-    })
-    synIds = [
-      ...new Set(
-        (rels || [])
-          .filter((r) => r.type?.includes('Invalidating'))
-          .map((r) => r.subject_taxon_name_id)
-          .filter((id) => id && id !== Number(taxonId))
-      )
-    ]
+    const rows = await fetchTwSynonymRows(taxonId)
+    for (const n of rows) nodes.push(nodeFromTw(n, 'twSynonym'))
   } catch {
-    synIds = []
-  }
-
-  if (synIds.length) {
-    try {
-      const p = new URLSearchParams()
-      synIds.forEach((id) => p.append('taxon_name_id[]', id))
-      p.append('per', '500')
-      const { data: names } = await makeAPIRequest.get(`/taxon_names?${p}`)
-      for (const n of names || []) nodes.push(nodeFromTw(n, 'twSynonym'))
-    } catch {
-      // No synonym rows. The accepted node still stands.
-    }
+    // No synonym rows. The accepted node still stands.
   }
 
   // Refine the accepted node from its own TaxonWorks record. Fetched by id, not

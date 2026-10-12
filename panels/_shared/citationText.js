@@ -9,13 +9,14 @@
  *   - ./DwcTable.vue
  *   - ./ImageLightbox.vue
  *   - ../PanelAssertedDistributions/PanelAssertedDistributions.vue
+ *   - ../PanelContentV2/PanelContentV2.vue
  *   - ../PanelBiologicalAssociationsV2/PanelBiologicalAssociationsV2.vue
  *   - ../PanelBiologicalAssociationsV2/advancedAssociations.js
  *   - ../PanelBiologicalAssociationsV2/loadAdvancedAssociations.js
  *   - ../PanelMapV2/components/MapPopup.vue
  *   - ../../modules/keys/KeyView.vue
  *
- * If you change this file, sanity-check all eight call sites.
+ * If you change this file, sanity-check all nine call sites.
  */
 
 /**

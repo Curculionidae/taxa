@@ -12,8 +12,9 @@
   Depended on by (relative import paths from panels/_shared/):
     - ./ImageLightbox.vue   — clicking an image citation
     - ./DwcTable.vue        — clicking a type material citation
+    - ../PanelContentV2/PanelContentV2.vue — clicking a content citation
 
-  If you change this file, sanity-check both call sites.
+  If you change this file, sanity-check all three call sites.
 -->
 <template>
   <VModal

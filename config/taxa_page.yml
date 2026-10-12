@@ -12,7 +12,7 @@ taxa_page:
 
         - - panel:map-v2
 #         - panel:map
-          - panel:content
+          - panel:content-v2
           - panel:keys
           - panel:statistics
           - panel:sounds

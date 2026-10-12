@@ -3,16 +3,15 @@
 Everything custom lives in `pages/bibliography/`. There is no local `modules/bibliography/`: a local module of that name would shadow the package's whole bibliography module. The package's own search page at `/resources/tw/filter/bibliography` is untouched and follows its updates. The header menu links to our two pages instead:
 
 - `search.vue` (`/bibliography/search`): the package's search view (taken from `@sfgrp/taxonpages` 0.7.2) with the ⊕ pills modal, a "Download .bib" button, "Published between" ending at the current year (the package hardcodes 2025) and the placeholder example "Meregalli 2009 Pachycerus". The form parts (`YearPicker`, `VSlider`, `DropdownMenu`, `getPagination`) are imported from the package (`@/modules/bibliography/...`), only the view itself is a copy. When the package is upgraded, compare it with the package's `views/index.vue`. From 0.8 that view uses `$t()` translation keys.
-- `recent.vue` (`/bibliography/recent`): Recent additions, see below.
+- `recent.vue` (`/bibliography/recent`): Recently published, see below.
 
 Layout: `components/` holds the shared components (the page router skips `**/components/*.vue`) and `utils/` the plain `.js` helpers. Do not put a `.md` file in `pages/bibliography/`, it would become a route. That is why these notes are here.
 
-## Recently added, recently published
+## Recently published
 
-A switch above the table, kept in the URL as `?sort=published`.
+The page listed "Recently added" as well until 2026-10-12, with a switch between the two. It was dropped after feedback that nobody needs it. The route is still `/bibliography/recent`, so old links work.
 
-- Recently added: `/sources?recent=true&recent_target=created_at`, sorted and paged by the API.
-- Recently published: `/sources` cannot sort by publication date (`recent_target` only honours `created_at` and `updated_at`, anything else is ignored without an error, and so is `order_by`). The page loads the in-project sources of the current and the previous year with `year_start` and `year_end` (118 sources on 2026-10-11) through `utils/publishedList.js` and sorts them in the browser (`utils/publicationDate.js`). The switch itself is `components/SortSwitch.vue`.
+- `/sources` cannot sort by publication date (`recent_target` only honours `created_at` and `updated_at`, anything else is ignored without an error, and so is `order_by`). The page loads the in-project sources of the current and the previous year with `year_start` and `year_end` (118 sources on 2026-10-11) through `utils/publishedList.js` and sorts them in the browser (`utils/publicationDate.js`).
 - Sort order, newest first: a full date sorts as that date. A source with only a year is placed by the date it was added, if it was added in that year, so it falls between the exactly dated ones. Added in another year, it goes to the end of its year. Month only works the same way inside the month. Ties go by date added.
 - The Published column shows only what TaxonWorks has: "March 20, 2026", "February 2026" or "2026".
 - A three-way switch on the search page ("By author | Recently added | Recently published", for any search) was tried on 2026-10-11 and dropped: the user did not like it there. `utils/publishedList.js` was written for it and can sort any search by publication date, see its docblock.
@@ -21,6 +20,8 @@ A switch above the table, kept in the URL as `?sort=published`.
 ## Search page behaviour
 
 The table, the .bib download and the URL all follow the search that was answered, not what has been typed in the form since. A slow answer cannot replace a later one. A search from the form adds a history entry, one read from the URL (first load, Back, Forward) does not.
+
+A hint under the form says that accents matter and how to search a single year. Checked on 2026-10-12: the Author(s) field finds 22 sources for "Schönherr" and none for "Schonherr" or "Schoenherr" (upper and lower case do not matter). "In citation" finds different sources for each spelling, because it matches the text as written (titles often spell him "Schoenherr").
 
 ## The ⊕ modal
 

@@ -66,6 +66,11 @@
             </VButton>
           </div>
         </div>
+        <p class="mt-3 text-sm text-base-soft">
+          Accents and umlauts matter: search for "Schönherr" does not return
+          the same results as "Schoenherr". For a single year, set both ends
+          of the range to that year.
+        </p>
       </VCardContent>
     </VCard>
 

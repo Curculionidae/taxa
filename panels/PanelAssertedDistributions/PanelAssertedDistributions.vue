@@ -39,7 +39,7 @@
         <VTableHeader class="normal-case">
           <VTableHeaderRow>
             <VTableHeaderCell>Area</VTableHeaderCell>
-            <VTableHeaderCell v-if="isMergedView">Taxa</VTableHeaderCell>
+            <VTableHeaderCell v-if="showTaxaColumn">Taxa</VTableHeaderCell>
             <VTableHeaderCell>Annotations</VTableHeaderCell>
             <VTableHeaderCell>Citation</VTableHeaderCell>
           </VTableHeaderRow>
@@ -51,7 +51,7 @@
           >
             <tr>
               <td
-                :colspan="isMergedView ? 4 : 3"
+                :colspan="showTaxaColumn ? 4 : 3"
                 class="px-4 pt-5 pb-1 text-sm font-bold border-b text-base-content"
               >
                 {{ group.label }}
@@ -76,7 +76,7 @@
 
               <!-- Taxa column: merged All-tab view only -->
               <VTableBodyCell
-                v-if="isMergedView"
+                v-if="showTaxaColumn"
                 class="text-sm"
               >
                 <template
@@ -249,14 +249,15 @@
  *
  * SYNONYM DETECTION (display only: badges/❌, not which records to include)
  * ---------------------------------------------------------------------------
- * asserted_distribution_object.object_tag contains &#10060; for synonyms,
- * &#10003; for valid taxa, no extra API call needed.
+ * From the step 1 OTU record: taxon_name.cached_valid_taxon_name_id differs
+ * from taxon_name.id. object_tag's &#10060; marker is only a fallback.
  *
  * TABS & MERGED VIEW
  * ------------------
  * Tabs appear when records span more than one OTU. The "All" tab merges
  * rows with the same geographic area into a single row and adds a Taxa
- * column listing all taxa recorded there. Per-OTU tabs show individual rows.
+ * column listing all taxa recorded there. Per-OTU tabs merge by area too, one
+ * row per area with each citation once, but without the Taxa column.
  *
  * ERROR HANDLING
  * --------------
@@ -272,7 +273,7 @@ import { makeAPIRequest } from '@/utils'
 import TaxonWorks from '@/modules/otus/services/TaxonWorks'
 import { fetchAllPages } from '../_shared/fetchAllPages.js'
 import { fetchAssertedDistributionTags } from '../_shared/assertedDistributionTags.js'
-import { stripHtml, shortCitation } from '../_shared/citationText.js'
+import { stripHtml, shortCitation, citationWithoutPages } from '../_shared/citationText.js'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
 
 const props = defineProps({
@@ -308,8 +309,8 @@ const geoPromiseCache = {}
 
 const showTabs = computed(() => new Set(distributions.value.map((d) => d.otuId)).size > 1)
 
-// True when the All tab is active across multiple OTUs, collapses rows by area
-const isMergedView = computed(() => selectedOtuId.value === 'all' && showTabs.value)
+// True when the All tab is active across multiple OTUs: adds the Taxa column
+const showTaxaColumn = computed(() => selectedOtuId.value === 'all' && showTabs.value)
 
 const tabs = computed(() => {
   const byOtu = new Map()
@@ -329,8 +330,10 @@ const filteredDistributions = computed(() => {
 })
 
 /**
- * In the merged All tab: collapses distributions sharing the same geographic
- * area into one row, combining otuEntries and citations across all taxa.
+ * Collapses distributions sharing the same geographic area into one row,
+ * combining otuEntries and citations (deduplicated) across all records. Used
+ * in every tab: a single taxon can hold several records for one area too
+ * (e.g. one per biological association asserted there).
  */
 function mergeByArea(dists) {
   const byArea = new Map()
@@ -362,15 +365,25 @@ function mergeByArea(dists) {
     if (!m.otuEntries.some((e) => e.otuId === dist.otuId)) {
       m.otuEntries.push({ otuId: dist.otuId, otuName: dist.otuName, isSynonym: dist.isSynonym })
     }
-    m.citationList.push(...dist.citationList)
+    // One citation per source in an area, its pages listed together
+    // ("Skuhrovec et al., 2010:102, 105"): several records there (e.g. one
+    // per biological association) often cite the same source.
+    for (const c of dist.citationList) {
+      const same = m.citationList.find((x) => x.sourceId === c.sourceId)
+      if (!same) {
+        m.citationList.push({ ...c, pagesList: c.pages ? [c.pages] : [] })
+      } else if (c.pages && !same.pagesList.includes(c.pages)) {
+        same.pagesList.push(c.pages)
+        same.pagesList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        same.display = `${same.short}:${same.pagesList.join(', ')}`
+      }
+    }
   }
   return [...byArea.values()]
 }
 
 const groupedDistributions = computed(() => {
-  const source = isMergedView.value
-    ? mergeByArea(filteredDistributions.value)
-    : filteredDistributions.value
+  const source = mergeByArea(filteredDistributions.value)
 
   const groups = new Map()
   for (const dist of source) {
@@ -393,15 +406,35 @@ const groupedDistributions = computed(() => {
     }))
 })
 
-function makeDistribution(item, citationList, tags = [], dataAttributes = []) {
+// otuInfo: Map otuId -> { name, isSynonym } from step 1's OTU records.
+// associationById: Map BA id -> /biological_associations/basic record.
+function makeDistribution(item, citationList, tags, dataAttributes, otuInfo, associationById) {
   const shape = item.asserted_distribution_shape || {}
   const obj = item.asserted_distribution_object || {}
+
+  // An AD's object is either an OTU or a biological association involving
+  // one of our OTUs. In the latter case asserted_distribution_object_id is the
+  // association's id, not an OTU's: attribute the record to whichever side
+  // is one of ours (subject_otu_id/object_otu_id also resolve an
+  // AnatomicalPart side to the OTU it is a part of).
+  let otuId = item.asserted_distribution_object_id
+  if (item.asserted_distribution_object_type === 'BiologicalAssociation') {
+    const ba = associationById.get(otuId)
+    otuId = !ba ? Number(props.otuId)
+      : !otuInfo.has(ba.subject_otu_id) && otuInfo.has(ba.object_otu_id) ? ba.object_otu_id
+        : ba.subject_otu_id
+  }
+  const info = otuInfo.get(otuId)
+  const isOtuObject = item.asserted_distribution_object_type === 'Otu'
+
   return {
     id: item.id,
-    otuId: item.asserted_distribution_object_id,
+    otuId,
     shapeId: shape.id,
-    otuName: obj.taxon_name || '',
-    isSynonym: (obj.object_tag || '').includes('&#10060;'),
+    otuName: (isOtuObject && obj.taxon_name) || info?.name || '',
+    // The OTU record's own taxon name decides, the AD's object_tag no longer
+    // carries TaxonWorks' ❌ marker; the marker is kept as a fallback.
+    isSynonym: info ? info.isSynonym : (obj.object_tag || '').includes('&#10060;'),
     areaName: shape.name || '',
     areaType: shape.geographic_area_type?.name || '',
     parentName: shape.parent?.name || 'Earth',
@@ -410,6 +443,15 @@ function makeDistribution(item, citationList, tags = [], dataAttributes = []) {
     dataAttributes,
     citationList
   }
+}
+
+// The association records behind BA-object ADs, with each side's OTU id.
+async function fetchAssociations(associationIds) {
+  if (!associationIds.length) return new Map()
+  const list = await fetchAllPages('/biological_associations/basic', {
+    'biological_association_id[]': associationIds
+  }, { per: props.per })
+  return new Map(list.map((ba) => [ba.id, ba]))
 }
 
 /**
@@ -474,9 +516,13 @@ async function fetchCitations(distributionIds) {
 
   const result = new Map()
   for (const cit of citations) {
+    const display = shortCitation(stripHtml(cit.citation_source_body || ''))
     const entry = {
       id: cit.id,
-      display: shortCitation(stripHtml(cit.citation_source_body || '')),
+      sourceId: cit.source_id,
+      pages: cit.pages || '',
+      short: citationWithoutPages(display), // for joining pages per area, see mergeByArea
+      display,
       citation_source_body: cit.source?.cached || cit.citation_source_body || ''
     }
     if (!result.has(cit.citation_object_id)) result.set(cit.citation_object_id, [])
@@ -542,9 +588,17 @@ async function loadDistributions() {
     const otus = await fetchAllPages('/otus', {
       'taxon_name_id[]': props.taxon.id,
       descendants: true,
-      coordinatify: true
+      coordinatify: true,
+      'extend[]': 'taxon_name'
     }, { per: props.per })
     const otuIds = [...new Set(otus.map((o) => o.id))]
+    const otuInfo = new Map(otus.map((o) => {
+      const tn = o.taxon_name
+      return [o.id, {
+        name: tn?.cached || o.name || '',
+        isSynonym: !!tn && !!tn.cached_valid_taxon_name_id && tn.cached_valid_taxon_name_id !== tn.id
+      }]
+    }))
     if (!otuIds.length) {
       distributions.value = []
       totalCount.value = 0
@@ -558,11 +612,17 @@ async function loadDistributions() {
       { per: props.per, cacheKey: 'panel:asserted-distributions' }
     )
 
-    // Step 3: citations + tags + data attributes for all records, one batch each, in parallel
-    const [citationsMap, tagsMap, dataAttributesMap] = await Promise.all([
+    // Step 3: citations + tags + data attributes for all records, plus the
+    // association behind each BA-object record (to find its OTU), one batch
+    // each, in parallel
+    const associationIds = [...new Set(allData
+      .filter((d) => d.asserted_distribution_object_type === 'BiologicalAssociation')
+      .map((d) => d.asserted_distribution_object_id))]
+    const [citationsMap, tagsMap, dataAttributesMap, associationById] = await Promise.all([
       fetchCitations(allData.map((d) => d.id)),
       fetchAssertedDistributionTags(allData.map((d) => d.id)),
-      fetchDataAttributes(allData.map((d) => d.id))
+      fetchDataAttributes(allData.map((d) => d.id)),
+      fetchAssociations(associationIds)
     ])
 
     distributions.value = allData.map((item) =>
@@ -570,7 +630,9 @@ async function loadDistributions() {
         item,
         citationsMap.get(item.id) || [],
         tagsMap.get(item.id) || [],
-        dataAttributesMap.get(item.id) || []
+        dataAttributesMap.get(item.id) || [],
+        otuInfo,
+        associationById
       )
     )
     totalCount.value = distributions.value.length

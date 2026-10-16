@@ -80,6 +80,13 @@
             class="mt-1.5"
             :status="dwc.typeStatus"
           />
+          <!-- Tagged "Adventive" (introduced) in TaxonWorks: the same purple the
+               map draws the specimen in (./adventive.js) -->
+          <div
+            v-if="isAdventive"
+            class="mt-1.5"
+            v-html="ADVENTIVE_CHIP_HTML"
+          />
           <!-- Citations: the specimen's own (not part of the DwC record itself — TaxonWorks'
                DwcOccurrence cache has no bibliographicCitation builder for CollectionObjects),
                plus, for type material, the TypeMaterial's own citation(s) first. Short form,
@@ -593,6 +600,7 @@ import { fetchInatObservations, inatSourceLabel } from './inatObservation.js'
 import { stripHtml, shortCitation } from './citationText.js'
 import { escHtml, splitScientificName } from './scientificName.js'
 import TypeStatusChip from './TypeStatusChip.vue'
+import { ADVENTIVE_CHIP_HTML, fetchAdventiveSpecimenKeys } from './adventive.js'
 import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
 import { formatEventDate } from './eventDate.js'
 import ReferenceModal from './ReferenceModal.vue'
@@ -625,6 +633,7 @@ const isLoadingBioAssociations = ref(false)
 const citations = ref([])
 const activeCitation = ref(null)
 const inatObservation = ref(null)  // { uuid, url } when imported from iNaturalist, else null
+const isAdventive = ref(false)  // specimen tagged "Adventive"
 const identifiedAs = ref(null)  // HTML of the name the specimen was identified as when that name is now a synonym, else null
 
 const ENDPOINTS = {
@@ -901,6 +910,15 @@ function show({ id, type }) {
   activeCitation.value = null
   inatObservation.value = null
   identifiedAs.value = null
+  isAdventive.value = false
+
+  // Its tags are not in the DwC payload either; one /tags request.
+  fetchAdventiveSpecimenKeys([{ type, id }])
+    .then((keys) => {
+      if (!isShowing(id, type)) return
+      isAdventive.value = keys.has(specimenKey({ type, id }))
+    })
+    .catch(() => {})
 
   // Independent of the DwC request: the iNaturalist origin lives in
   // /identifiers, not in the DwC payload. For a CollectionObject this makes no

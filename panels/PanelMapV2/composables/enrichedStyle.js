@@ -42,6 +42,19 @@ export function featureIsAdventive(feature, adventiveAdIds) {
   )
 }
 
+// True when the feature (a point) carries a CollectionObject / FieldOccurrence
+// tagged "Adventive". `adventiveSpecimenKeys` holds "<type>:<id>" keys (see
+// _shared/specimenRef.js specimenKey); CO and FO ids are separate sequences.
+// A point shared by several specimens is adventive when any of them is.
+export function featureHasAdventiveSpecimen(feature, adventiveSpecimenKeys) {
+  if (!adventiveSpecimenKeys || !adventiveSpecimenKeys.size) return false
+  return asArray(feature?.properties?.base).some(
+    (b) =>
+      (b?.type === 'CollectionObject' || b?.type === 'FieldOccurrence') &&
+      adventiveSpecimenKeys.has(`${b.type}:${b.id}`)
+  )
+}
+
 // True when any base entry of the feature is an asserted-absent record. A
 // shape can carry both a presence and an absent record for the same area
 // (e.g. an old report later corrected as a misidentification) - once merged
@@ -85,9 +98,10 @@ export function enrichedPolygonStyleDelta(kind, adventive) {
   return null
 }
 
-// L.divIcon options for a type-material point marker, or null to keep the
-// package default marker.
-export function enrichedMarkerIconOptions(kind) {
+// L.divIcon options for a type-material or adventive point marker, or null to
+// keep the package default marker. Type material wins over adventive, as on
+// polygons: the type colour is the rarer, more important fact.
+export function enrichedMarkerIconOptions(kind, adventive = false) {
   if (kind === 'primary') {
     return {
       className: 'bg-map-type-material map-point-marker rounded-full',
@@ -102,7 +116,21 @@ export function enrichedMarkerIconOptions(kind) {
       iconAnchor: [4, 4]
     }
   }
+  if (adventive) {
+    return {
+      className: 'pp-map-adventive-marker map-point-marker rounded-full',
+      iconSize: [8, 8],
+      iconAnchor: [4, 4]
+    }
+  }
   return null
+}
+
+// Marker z-order: primary types on top, then other types, then adventive.
+export function enrichedMarkerZIndex(kind, adventive = false) {
+  if (kind === 'primary') return 6000
+  if (kind === 'other') return 3000
+  return adventive ? 2000 : 0
 }
 
 function walkLeaves(layer, visit) {
@@ -116,10 +144,11 @@ function walkLeaves(layer, visit) {
 // Bring an already-rendered geojson layer group up to date with enrichment that
 // arrived after the first render, without VMap tearing the group down and
 // rebuilding it. Returns the number of layers whose style/icon changed.
-export function restyleEnriched(group, { L, adventiveAdIds, typeStatusByCoId }) {
+export function restyleEnriched(group, { L, adventiveAdIds, adventiveSpecimenKeys, typeStatusByCoId }) {
   const hasTags = adventiveAdIds && adventiveAdIds.size
+  const hasSpecimenTags = adventiveSpecimenKeys && adventiveSpecimenKeys.size
   const hasTypes = typeStatusByCoId && typeStatusByCoId.size
-  if (!group || (!hasTags && !hasTypes)) return 0
+  if (!group || (!hasTags && !hasSpecimenTags && !hasTypes)) return 0
 
   let changed = 0
 
@@ -132,9 +161,13 @@ export function restyleEnriched(group, { L, adventiveAdIds, typeStatusByCoId }) 
     feature.properties.typeMaterialKind = kind || undefined
 
     if (typeof layer.setIcon === 'function') {
-      const opts = enrichedMarkerIconOptions(kind)
+      const adventiveSpecimen = !kind && featureHasAdventiveSpecimen(feature, adventiveSpecimenKeys)
+      // read by the cluster pie (clusters/Mixed.js)
+      feature.properties.adventive = adventiveSpecimen || undefined
+      const opts = enrichedMarkerIconOptions(kind, adventiveSpecimen)
       if (opts) {
         layer.setIcon(L.divIcon(opts))
+        layer.setZIndexOffset?.(enrichedMarkerZIndex(kind, adventiveSpecimen))
         changed += 1
       }
       return

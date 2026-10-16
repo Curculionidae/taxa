@@ -18,6 +18,11 @@ export const LEGEND = {
     style:
       'background: repeating-linear-gradient(-45deg, var(--pp-map-adventive) 0 2px, color-mix(in srgb, var(--pp-map-adventive) 20%, transparent) 2px 5px);'
   },
+  AdventiveSpecimen: {
+    label: 'Adventive specimen',
+    background: '',
+    style: 'background: var(--pp-map-adventive);'
+  },
   Georeference: {
     label: 'Georeference',
     background: 'bg-map-georeference'

@@ -51,6 +51,7 @@ import ImageLightbox from '../../_shared/ImageLightbox.vue'
 import { isSpecimenType, resolveSpecimenRef } from '../../_shared/specimenRef.js'
 import { otuLinkFallback, resolveOtuLinks } from '../../_shared/otuLink.js'
 import { escHtml } from '../../_shared/scientificName.js'
+import { ADVENTIVE_CHIP_HTML, fetchAdventiveSpecimenKeys } from '../../_shared/adventive.js'
 import { resolveInstitutionName, getCachedInstitutionName } from '../../_shared/grscicoll.js'
 import { formatEventDate } from '../../_shared/eventDate.js'
 import { fetchTypeSpecimens, fetchTypeSpecimenRecord } from '../../_shared/typeMaterialSpecimen.js'
@@ -157,6 +158,8 @@ const visibleRecords = computed(() =>
 // load, not once per row, since a list row like this one needs to check
 // dozens of records rather than the one DwcTable shows at a time.
 const bioAssociationsIndex = ref(new Map())
+// "<type>:<id>" of the records tagged "Adventive" (_shared/adventive.js)
+const adventiveKeys = ref(new Set())
 const BIO_CHIP_STYLE =
   'background: var(--pp-bio-chip); color: var(--pp-bio-chip-ink); box-shadow: inset 0 0 0 1px var(--pp-bio-chip-ring)'
 const router = useRouter()
@@ -371,13 +374,18 @@ function loadDwc() {
 
       // Makes requests only when some record has been redetermined away
       // from this OTU, and then overlaps the media/institution lookups.
-      const [previousIdOnly] = await Promise.all([
+      // Tags are not in the DwC rows: one /tags lookup per record type.
+      const [previousIdOnly, adventive] = await Promise.all([
         findPreviousIdentificationOnly(props.otuId, scoped, props.taxonNameId),
+        fetchAdventiveSpecimenKeys(
+          scoped.map((d) => ({ type: d.dwc_occurrence_object_type, id: d.dwc_occurrence_object_id }))
+        ),
         mediaPromise,
         institutionPromise
       ])
       if (load !== latestLoad) return
       previousIdentificationOnlyIds.value = previousIdOnly
+      adventiveKeys.value = adventive
 
       dwcRecords.value = scoped.map((d) => ({
         ...d,
@@ -630,6 +638,12 @@ function bioAssociationHtml(record) {
   return `<span class="inline-block rounded-full px-2 py-0.5" style="${BIO_CHIP_STYLE}">${escHtml(relationshipLabel)} ${nameHtml}${more}</span>`
 }
 
+// The purple "Adventive" chip when the record is tagged so in TaxonWorks.
+function adventiveHtml(record) {
+  const key = `${record.dwc_occurrence_object_type}:${record.dwc_occurrence_object_id}`
+  return adventiveKeys.value.has(key) ? ADVENTIVE_CHIP_HTML : ''
+}
+
 // The identity line: WHICH physical object this is and how it was
 // determined — catalog number, depository, count/sex, a minority
 // scientificName, the determiner, and the primary biological association it
@@ -656,6 +670,10 @@ function makeIdentityHtml(group) {
   const badgeText = group.isGroup ? groupCountLabel(group) : getCountAndSex(first)
   const badge = badgeHtml(badgeText)
   if (badge) parts.push(badge)
+
+  // A group row gets the chip only when every record in it is tagged;
+  // otherwise the tagged ones say so in "Individual records".
+  if (group.records.every((r) => adventiveHtml(r))) parts.push(ADVENTIVE_CHIP_HTML)
 
   if (!group.isGroup) {
     const det = getDetHtml(first)
@@ -687,6 +705,9 @@ function recordDifferencesHtml(record, records) {
     const value = record[field] ? escHtml(record[field]) : '<span class="opacity-60">not recorded</span>'
     parts.push(`<span class="opacity-60">${PER_RECORD_FIELD_LABELS[field]}</span> ${value}`)
   })
+  if (new Set(records.map(adventiveHtml)).size > 1 && adventiveHtml(record)) {
+    parts.push(ADVENTIVE_CHIP_HTML)
+  }
   if (new Set(records.map(bioAssociationHtml)).size > 1) {
     parts.push(bioAssociationHtml(record) || '<span class="opacity-60">no association</span>')
   }

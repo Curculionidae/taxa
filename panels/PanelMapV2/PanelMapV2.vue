@@ -27,6 +27,7 @@
             :targets="popupItem.target"
             :tags-by-ad-id="store.tagsByAdId"
             :type-status-by-co-id="store.typeStatusByCoId"
+            :adventive-specimen-keys="store.adventiveSpecimenKeys"
             @selected="dwcTableRef.show"
             @citation-selected="activeCitation = $event"
           />
@@ -80,6 +81,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import '../_shared/panel-tokens.css'
 import './map-tokens.css'
 import { useDistributionStore } from './store/useDistributionStore.js'
 import { makeClusterIconFor } from './clusters'
@@ -128,6 +130,7 @@ const geoLayerGroup = ref(null)
 const { popupItem, geojsonOptions } = useGeojsonOptions({
   popupElement,
   adventiveAdIds: computed(() => store.adventiveAdIds),
+  adventiveSpecimenKeys: computed(() => store.adventiveSpecimenKeys),
   typeStatusByCoId: computed(() => store.typeStatusByCoId)
 })
 
@@ -190,13 +193,18 @@ function onGeojsonReady(group) {
 async function applyEnrichedStyles() {
   const group = geoLayerGroup.value
   if (!group) return
-  if (!store.adventiveAdIds.size && !store.typeStatusByCoId.size) return
+  if (
+    !store.adventiveAdIds.size &&
+    !store.adventiveSpecimenKeys.size &&
+    !store.typeStatusByCoId.size
+  ) return
 
   const { default: L } = await import('leaflet')
   const t0 = import.meta.env.DEV ? performance.now() : 0
   const changed = restyleEnriched(group, {
     L,
     adventiveAdIds: store.adventiveAdIds,
+    adventiveSpecimenKeys: store.adventiveSpecimenKeys,
     typeStatusByCoId: store.typeStatusByCoId
   })
   if (import.meta.env.DEV) {
@@ -207,7 +215,12 @@ async function applyEnrichedStyles() {
 }
 
 watch(
-  () => [store.adventiveAdIds, store.typeStatusByCoId, geoLayerGroup.value],
+  () => [
+    store.adventiveAdIds,
+    store.adventiveSpecimenKeys,
+    store.typeStatusByCoId,
+    geoLayerGroup.value
+  ],
   applyEnrichedStyles
 )
 
@@ -261,5 +274,11 @@ onBeforeUnmount(() => {
 }
 .pp-fill-map-other-type {
   fill: var(--pp-map-other-type);
+}
+.pp-map-adventive-marker {
+  background: var(--pp-map-adventive);
+}
+.pp-fill-map-adventive {
+  fill: var(--pp-map-adventive);
 }
 </style>

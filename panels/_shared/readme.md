@@ -299,3 +299,7 @@ If `depictions` has an Otu / CO / FO entry the block shows the parsed taxon name
 | keys module | `../../modules/keys/components/LeadFigures.vue` | lead figures / "+N more images" — taxon-image fallback carries full `depictions` / `attribution` / `source` / `citations`; a key's own figure uses `captionHtml` |
 
 If you change this file, check all six call sites — the contract is `images` + `index` + the four events; keep it stable.
+
+## adventive.js / objectTags.js
+
+`objectTags.js` → `fetchObjectTags(type, ids)`: `/tags` of any record type as `Map<id, keyword[]>`, chunked by 100 ids, errors resolve to an empty Map (`assertedDistributionTags.js` is a thin wrapper). `adventive.js`: `hasAdventiveKeyword`, `adventiveIds(tagsById)`, `fetchAdventiveSpecimenKeys(refs)` (Set of `"<type>:<id>"` for CO/FO tagged "Adventive") and `ADVENTIVE_CHIP_HTML` (purple chip, `--pp-adventive` tokens from `panel-tokens.css`). Used by PanelMapV2 (store: purple specimen markers + cluster slice + "Adventive specimen" legend; MapPopup chip), `DwcTable.vue` (identity block) and `PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue` (list row; a group row only when all its records are tagged, otherwise per record under "Individual records"). On the map a type status wins over the adventive colour, same as for polygons.

@@ -23,6 +23,11 @@
             class="mt-1"
             :status="typeStatusList(item).join(' | ')"
           />
+          <div
+            v-if="isAdventiveSpecimen(item)"
+            class="mt-1"
+            v-html="ADVENTIVE_CHIP_HTML"
+          />
         </template>
 
         <!-- AssertedDistribution / AssertedAbsent — BA-linked variant -->
@@ -156,6 +161,7 @@ import {
 import { stripHtml, shortCitation } from '../../_shared/citationText.js'
 import { escHtml as escapeHtml, splitScientificName } from '../../_shared/scientificName.js'
 import TypeStatusChip from '../../_shared/TypeStatusChip.vue'
+import { ADVENTIVE_CHIP_HTML } from '../../_shared/adventive.js'
 import { fetchTypeSpecimens, specimenByTypeMaterialId as indexByTypeMaterialId } from '../../_shared/typeMaterialSpecimen.js'
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
@@ -184,8 +190,17 @@ const props = defineProps({
   typeStatusByCoId: {
     type: Object,
     default: () => new Map()
+  },
+  // Set<"<type>:<id>"> of specimens tagged "Adventive" (_shared/adventive.js)
+  adventiveSpecimenKeys: {
+    type: Object,
+    default: () => new Set()
   }
 })
+
+function isAdventiveSpecimen(item) {
+  return Boolean(props.adventiveSpecimenKeys?.has?.(`${item.type}:${item.id}`))
+}
 
 // keyword names tagged on this AssertedDistribution, rendered as yellow pills
 function tagList(adId) {

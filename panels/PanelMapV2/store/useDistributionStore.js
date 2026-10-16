@@ -20,6 +20,7 @@ import {
   typeStatusLabels
 } from '../composables/enrichedStyle.js'
 import { fetchAssertedDistributionTags } from '../../_shared/assertedDistributionTags.js'
+import { adventiveIds, fetchAdventiveSpecimenKeys } from '../../_shared/adventive.js'
 import {
   fetchTypeSpecimens,
   fetchTypeSpecimenRecord
@@ -76,6 +77,20 @@ function assertedDistributionIds(features) {
     const base = f?.properties?.base
     for (const b of Array.isArray(base) ? base : [base]) {
       if (b?.type === 'AssertedDistribution' && b.id != null) out.push(b.id)
+    }
+  }
+  return out
+}
+
+// { type, id } of every CollectionObject / FieldOccurrence point on the map
+function specimenRefs(features) {
+  const out = []
+  for (const f of features || []) {
+    const base = f?.properties?.base
+    for (const b of Array.isArray(base) ? base : [base]) {
+      if ((b?.type === 'CollectionObject' || b?.type === 'FieldOccurrence') && b.id != null) {
+        out.push({ type: b.type, id: b.id })
+      }
     }
   }
   return out
@@ -148,6 +163,8 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       },
       tagsByAdId: new Map(),
       adventiveAdIds: new Set(),
+      // "<type>:<id>" of specimens (CO / FO) tagged "Adventive": purple markers
+      adventiveSpecimenKeys: new Set(),
       // Map<collectionObjectId, 'primary' | 'other'> for type-material styling
       typeStatusByCoId: new Map(),
       // features for type specimens the geojson lacks (see addMissingTypeSpecimens)
@@ -196,6 +213,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     async loadDistribution({ otuId, rankString }) {
       this.tagsByAdId = new Map()
       this.adventiveAdIds = new Set()
+      this.adventiveSpecimenKeys = new Set()
       this.typeStatusByCoId = new Map()
       this.typeSpecimenFeatures = []
       const isSpeciesGroup =
@@ -244,26 +262,29 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     },
 
     // Second-pass metadata that the geojson does not carry: AssertedDistribution
-    // tags (Adventive -> hatched) and CollectionObject type status (primary vs
-    // other type material -> colour). This only updates store state and the
+    // tags (Adventive -> hatched), specimen tags (Adventive -> purple marker)
+    // and CollectionObject type status (primary vs other type material -> colour). This only updates store state and the
     // legend; PanelMapV2 restyles the already-drawn layers in place from
     // `adventiveAdIds` / `typeStatusByCoId` (no geojson re-emit, so VMap does not
     // tear the layer group down and rebuild it).
     async enrichFeatures(features, otuId, signal) {
-      const [tagsByAd, typeByCo] = await Promise.all([
+      const [tagsByAd, adventiveSpecimens, typeByCo] = await Promise.all([
         fetchAssertedDistributionTags(assertedDistributionIds(features), { signal }),
+        fetchAdventiveSpecimenKeys(specimenRefs(features), { signal }),
         fetchTypeStatusByCoId(otuId, signal)
       ])
       if (signal?.aborted) return
 
       if (tagsByAd.size) {
         this.tagsByAdId = tagsByAd
-        const adventive = new Set()
-        for (const [id, kws] of tagsByAd) {
-          if (kws.some((k) => k.toLowerCase() === 'adventive')) adventive.add(id)
-        }
+        const adventive = adventiveIds(tagsByAd)
         this.adventiveAdIds = adventive
         if (adventive.size) this.addShapeTypes(['Adventive'])
+      }
+
+      if (adventiveSpecimens.size) {
+        this.adventiveSpecimenKeys = adventiveSpecimens
+        this.addShapeTypes(['AdventiveSpecimen'])
       }
 
       this.setTypeStatus(typeByCo)

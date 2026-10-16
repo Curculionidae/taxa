@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import {
   featureTypeMaterialKind,
   featureIsAdventive,
+  featureHasAdventiveSpecimen,
   featureIsAbsent,
   enrichedPolygonStyleDelta,
   enrichedMarkerIconOptions,
+  enrichedMarkerZIndex,
   restyleEnriched,
   classifyOneTypeStatus,
   classifyTypeStatus,
@@ -331,4 +333,46 @@ test('restyleEnriched: refreshes cluster pies once when the group supports it', 
     }
   )
   assert.equal(refreshed, 1)
+})
+
+// --- specimens tagged "Adventive" ---
+
+const fo = (id) => ({ type: 'FieldOccurrence', id })
+
+test('featureHasAdventiveSpecimen: matches CO and FO by type-qualified key', () => {
+  const keys = new Set(['CollectionObject:1', 'FieldOccurrence:2'])
+  assert.equal(featureHasAdventiveSpecimen(feature([co(1)]), keys), true)
+  assert.equal(featureHasAdventiveSpecimen(feature(fo(2)), keys), true)
+  // same number, other type: a different record
+  assert.equal(featureHasAdventiveSpecimen(feature([fo(1)]), keys), false)
+  assert.equal(featureHasAdventiveSpecimen(feature([ad(1)]), keys), false)
+  assert.equal(featureHasAdventiveSpecimen(feature([co(1)]), new Set()), false)
+})
+
+test('enrichedMarkerIconOptions: adventive marker only without a type status', () => {
+  assert.match(enrichedMarkerIconOptions(null, true).className, /pp-map-adventive-marker/)
+  assert.match(enrichedMarkerIconOptions('other', true).className, /pp-map-other-type-marker/)
+  assert.match(enrichedMarkerIconOptions('primary', true).className, /bg-map-type-material/)
+  assert.equal(enrichedMarkerIconOptions(null, false), null)
+  assert.equal(enrichedMarkerZIndex(null, true), 2000)
+  assert.equal(enrichedMarkerZIndex('primary', true), 6000)
+})
+
+test('restyleEnriched: paints an adventive specimen marker purple and stamps it', () => {
+  const adv = markerLayer([co(1)])
+  const plain = markerLayer([co(2)])
+  const typed = markerLayer([co(3)])
+  restyleEnriched(groupOf([adv, plain, typed]), {
+    L: fakeL(),
+    adventiveAdIds: new Set(),
+    adventiveSpecimenKeys: new Set(['CollectionObject:1', 'CollectionObject:3']),
+    typeStatusByCoId: typeMap([[3, { kind: 'primary', statuses: ['Holotype'] }]])
+  })
+  assert.equal(adv.feature.properties.adventive, true)
+  assert.match(adv.calls.setIcon[0].opts.className, /pp-map-adventive-marker/)
+  assert.equal(plain.calls.setIcon.length, 0)
+  assert.equal(plain.feature.properties.adventive, undefined)
+  // type status wins over the adventive tag
+  assert.equal(typed.feature.properties.adventive, undefined)
+  assert.match(typed.calls.setIcon[0].opts.className, /bg-map-type-material/)
 })

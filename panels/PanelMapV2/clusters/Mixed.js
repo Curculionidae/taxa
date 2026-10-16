@@ -6,14 +6,17 @@ import {
 } from '@/constants/objectTypes'
 
 const OTHER_TYPE_MATERIAL = 'OtherTypeMaterial'
+const ADVENTIVE_SPECIMEN = 'AdventiveSpecimen'
 
 // The type-material kind stamped on a feature by useGeojsonOptions.pointToLayer
 // overrides its raw base types: a paratype etc. shows yellow, a DwC-confirmed
 // primary type shows as TypeMaterial even if the geojson called it a plain CO.
+// A specimen tagged "Adventive" (no type status) shows as an adventive slice.
 function markerTypes(l) {
   const kind = l.feature?.properties?.typeMaterialKind
   if (kind === 'other') return [OTHER_TYPE_MATERIAL]
   if (kind === 'primary') return [TYPE_MATERIAL]
+  if (l.feature?.properties?.adventive) return [ADVENTIVE_SPECIMEN]
   return (l.feature?.properties?.base || []).map((item) => item.type)
 }
 
@@ -22,7 +25,8 @@ export function Mixed(cluster) {
     [FIELD_OCCURRENCE]: 'fill-map-field-occurrence',
     [COLLECTION_OBJECT]: 'fill-map-collection-object',
     [TYPE_MATERIAL]: 'fill-map-type-material',
-    [OTHER_TYPE_MATERIAL]: 'pp-fill-map-other-type'
+    [OTHER_TYPE_MATERIAL]: 'pp-fill-map-other-type',
+    [ADVENTIVE_SPECIMEN]: 'pp-fill-map-adventive'
   }
 
   const markers = cluster.getAllChildMarkers()

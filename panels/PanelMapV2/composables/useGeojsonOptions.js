@@ -4,14 +4,22 @@ import { computed, ref, unref } from 'vue'
 import {
   featureTypeMaterialKind,
   featureIsAdventive,
+  featureHasAdventiveSpecimen,
   featureIsAbsent,
   enrichedPolygonStyleDelta,
   enrichedMarkerIconOptions,
+  enrichedMarkerZIndex,
   ADVENTIVE_HATCH_CLASS,
   asArray
 } from './enrichedStyle.js'
 
-export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, typeStatusByCoId }) {
+export function makeGeojsonOptions({
+  popupElement,
+  popupItem,
+  adventiveAdIds,
+  adventiveSpecimenKeys,
+  typeStatusByCoId
+}) {
   return function (args) {
     const { L } = args
     const defaults = geojsonDefaultOptions(args)
@@ -37,15 +45,20 @@ export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, ty
 
       pointToLayer: (feature, latLng) => {
         const kind = kindOf(feature)
+        const adventive =
+          !kind && featureHasAdventiveSpecimen(feature, unref(adventiveSpecimenKeys))
         // stamp the resolved kind so the cluster pie (Mixed.js) can colour it
-        if (feature.properties) feature.properties.typeMaterialKind = kind || undefined
+        if (feature.properties) {
+          feature.properties.typeMaterialKind = kind || undefined
+          feature.properties.adventive = adventive || undefined
+        }
 
-        const iconOptions = enrichedMarkerIconOptions(kind)
+        const iconOptions = enrichedMarkerIconOptions(kind, adventive)
         if (!iconOptions) return defaults.pointToLayer(feature, latLng)
 
         const marker = L.marker(latLng, {
           icon: L.divIcon(iconOptions),
-          zIndexOffset: kind === 'primary' ? 6000 : 3000
+          zIndexOffset: enrichedMarkerZIndex(kind, adventive)
         })
         marker.pm?.setOptions?.(DISABLE_LAYER_OPTIONS)
         return marker
@@ -69,11 +82,22 @@ export function makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, ty
   }
 }
 
-export function useGeojsonOptions({ popupElement, adventiveAdIds, typeStatusByCoId }) {
+export function useGeojsonOptions({
+  popupElement,
+  adventiveAdIds,
+  adventiveSpecimenKeys,
+  typeStatusByCoId
+}) {
   const popupItem = ref(null)
 
   const geojsonOptions = computed(() =>
-    makeGeojsonOptions({ popupElement, popupItem, adventiveAdIds, typeStatusByCoId })
+    makeGeojsonOptions({
+      popupElement,
+      popupItem,
+      adventiveAdIds,
+      adventiveSpecimenKeys,
+      typeStatusByCoId
+    })
   )
 
   return {

@@ -12,6 +12,8 @@
       :identified-year-counts="identifiedYearCounts"
       :not-shown-collected-count="notShownCollectedCount"
       :not-shown-identified-count="notShownIdentifiedCount"
+      :previous-identification-count="previousIdentificationOnlyIds.size"
+      v-model:show-previous-identifications="showPreviousIdentifications"
       v-model:filter-countries="filterCountries"
       v-model:filter-collectors="filterCollectors"
       v-model:filter-type-only="filterTypeOnly"
@@ -54,6 +56,7 @@ import { formatEventDate } from '../../_shared/eventDate.js'
 import { fetchTypeSpecimens, fetchTypeSpecimenRecord } from '../../_shared/typeMaterialSpecimen.js'
 import { mapPool } from '../../_shared/concurrencyPool.js'
 import { groupRecords, groupCountLabel, PER_RECORD_EVENT_FIELDS } from '../lib/groupRecords'
+import { findPreviousIdentificationOnly } from '../lib/previousIdentifications.js'
 
 // A type specimen normally has no taxon determination (its type status is the
 // identification), so /otus/:id/inventory/dwc.json, which goes through
@@ -122,6 +125,13 @@ const props = defineProps({
   preloadedData: {
     type: Array,
     default: null
+  },
+
+  // The OTU's taxon name, when the parent already has it; spares the
+  // previous-identification check one request (see loadDwc).
+  taxonNameId: {
+    type: Number,
+    default: null
   }
 })
 
@@ -132,6 +142,16 @@ const isLoading = ref(false)
 const dwcTableRef = ref(null)
 
 const dwcRecords = ref([])
+// Records listed only through an earlier determination of this taxon (see
+// lib/previousIdentifications.js), hidden unless the switch is on. Never
+// contains type material.
+const previousIdentificationOnlyIds = ref(new Set())
+const showPreviousIdentifications = ref(false)
+const visibleRecords = computed(() =>
+  showPreviousIdentifications.value || !previousIdentificationOnlyIds.value.size
+    ? dwcRecords.value
+    : dwcRecords.value.filter((r) => !previousIdentificationOnlyIds.value.has(r.id))
+)
 // Every biological association for this OTU, indexed by the specimen it
 // touches — see buildBioAssociationsIndex() below. Fetched once per OTU
 // load, not once per row, since a list row like this one needs to check
@@ -161,12 +181,24 @@ const filterYear = ref(null)
 const filterIdentifiedYear = ref(null)
 
 const availableCountries = computed(() =>
-  [...new Set(dwcRecords.value.map((r) => r.country).filter(Boolean))].sort()
+  [...new Set(visibleRecords.value.map((r) => r.country).filter(Boolean))].sort()
 )
 
 const availableCollectors = computed(() =>
-  [...new Set(dwcRecords.value.map((r) => r.recordedBy).filter(Boolean))].sort()
+  [...new Set(visibleRecords.value.map((r) => r.recordedBy).filter(Boolean))].sort()
 )
+
+// Switching previous identifications off can remove the only records with a
+// selected country or collector; drop such a selection rather than keep a
+// filter that is no longer listed in its dropdown and empties the list.
+watch(availableCountries, (available) => {
+  const kept = filterCountries.value.filter((c) => available.includes(c))
+  if (kept.length !== filterCountries.value.length) filterCountries.value = kept
+})
+watch(availableCollectors, (available) => {
+  const kept = filterCollectors.value.filter((c) => available.includes(c))
+  if (kept.length !== filterCollectors.value.length) filterCollectors.value = kept
+})
 
 function matchesBaseFilters(r) {
   if (filterCountries.value.length && !filterCountries.value.includes(r.country)) return false
@@ -176,7 +208,7 @@ function matchesBaseFilters(r) {
   return true
 }
 
-const baseFilteredRecords = computed(() => dwcRecords.value.filter(matchesBaseFilters))
+const baseFilteredRecords = computed(() => visibleRecords.value.filter(matchesBaseFilters))
 
 const recordsBeforeMonthFilter = computed(() =>
   baseFilteredRecords.value.filter(
@@ -259,7 +291,12 @@ const notShownIdentifiedCount = computed(
   () => baseFilteredRecords.value.filter((r) => !getIdentifiedYear(r)).length
 )
 
+// A SpeciesBars drill-down can switch otuId while a slower earlier load is
+// still running; only the latest load may write its results.
+let latestLoad = 0
+
 function loadDwc() {
+  const load = ++latestLoad
   isLoading.value = true
   // started now so it overlaps the inventory fetch (never rejects)
   const typeSpecimens = fetchTypeSpecimens(props.otuId)
@@ -280,6 +317,7 @@ function loadDwc() {
     }))
   ])
     .then(async ([{ data: rawData }, { bioAssociations, otuLinks }]) => {
+      if (load !== latestLoad) return
       bioAssociationsIndex.value = buildBioAssociationsIndex(bioAssociations, otuLinks)
 
       // dwc_occurrence is polymorphic — the endpoint also returns
@@ -331,7 +369,15 @@ function loadDwc() {
           .map((d) => resolveInstitutionName(d.institutionCode, d.institutionID))
       )
 
-      await Promise.all([mediaPromise, institutionPromise])
+      // Makes requests only when some record has been redetermined away
+      // from this OTU, and then overlaps the media/institution lookups.
+      const [previousIdOnly] = await Promise.all([
+        findPreviousIdentificationOnly(props.otuId, scoped, props.taxonNameId),
+        mediaPromise,
+        institutionPromise
+      ])
+      if (load !== latestLoad) return
+      previousIdentificationOnlyIds.value = previousIdOnly
 
       dwcRecords.value = scoped.map((d) => ({
         ...d,
@@ -342,7 +388,7 @@ function loadDwc() {
       }))
     })
     .finally(() => {
-      isLoading.value = false
+      if (load === latestLoad) isLoading.value = false
     })
 }
 
@@ -675,7 +721,7 @@ function toRecordEntry(record, index, records) {
 // positive on nearly every row).
 const majorityScientificName = computed(() => {
   const counts = new Map()
-  dwcRecords.value.forEach((r) => {
+  visibleRecords.value.forEach((r) => {
     if (!r.scientificName) return
     counts.set(r.scientificName, (counts.get(r.scientificName) || 0) + 1)
   })
@@ -761,7 +807,13 @@ onMounted(loadDwc)
 // A SpeciesBars.vue drill-down reuses this same component for whichever
 // species is expanded — otuId changes without a remount, so the fetch has
 // to re-run reactively rather than once in onMounted alone.
-watch(() => props.otuId, loadDwc)
+watch(
+  () => props.otuId,
+  () => {
+    showPreviousIdentifications.value = false
+    loadDwc()
+  }
+)
 
 async function getMediaImages(item) {
   const links = item.associatedMedia.split('|')

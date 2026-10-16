@@ -279,6 +279,12 @@
             <MultiSelect v-model="filterCollectors" :options="collectors" placeholder="All collectors" />
             <VToggle v-model="filterTypeOnly" size="sm">Type specimens only</VToggle>
             <VToggle v-model="filterMediaOnly" size="sm">Has media only</VToggle>
+            <VToggle
+              v-if="previousIdentificationCount"
+              v-model="showPreviousIdentifications"
+              size="sm"
+              title="Specimens once identified as this taxon and since redetermined as another"
+            >Previous identifications ({{ previousIdentificationCount }})</VToggle>
           </div>
         </div>
       </template>
@@ -361,6 +367,13 @@ const props = defineProps({
   notShownIdentifiedCount: {
     type: Number,
     default: 0
+  },
+
+  // Records listed only through an earlier determination of this taxon;
+  // the "Previous identifications" switch appears only when there are any.
+  previousIdentificationCount: {
+    type: Number,
+    default: 0
   }
 })
 
@@ -373,6 +386,7 @@ const filterMediaOnly = defineModel('filterMediaOnly')
 const filterMonth = defineModel('filterMonth')
 const filterYear = defineModel('filterYear')
 const filterIdentifiedYear = defineModel('filterIdentifiedYear')
+const showPreviousIdentifications = defineModel('showPreviousIdentifications')
 
 const showAll = ref(false)
 const activeView = ref('list')

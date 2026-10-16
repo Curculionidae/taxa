@@ -14,6 +14,7 @@
         :otu-id="selected.otuId"
         :direct-only="!!selected.isOwnTaxon"
         :preloaded-data="selected.otuId === props.otuId ? genusRawData : (selected.records || null)"
+        :taxon-name-id="selected.taxonNameId ?? null"
       />
     </template>
 
@@ -147,6 +148,7 @@ import { fetchAllPages } from '../../_shared/fetchAllPages.js'
 import { escHtml, splitScientificName, scientificNameHtml } from '../../_shared/scientificName.js'
 import { mapPool } from '../../_shared/concurrencyPool.js'
 import SingleSpeciesOccurrences from './SingleSpeciesOccurrences.vue'
+import { findPreviousIdentificationOnly } from '../lib/previousIdentifications.js'
 
 const props = defineProps({
   taxonId: {
@@ -377,8 +379,14 @@ async function loadNextBatch() {
         // Query 1 may have completed (and replaced results.value wholesale
         // with its own complete data) while this specific request was still
         // in flight — don't re-add a now-superseded/duplicate entry.
-        if (records.length > 0 && !query2Stopped.value) {
-          results.value.push({ ...sp, count: records.length, records })
+        // A species' dwc.json also lists specimens since redetermined as
+        // another species; they count only under their current species, or
+        // one specimen would sit on two bars. The drill-down still gets
+        // every record (its own switch shows them).
+        const hiddenIds = await findPreviousIdentificationOnly(sp.otuId, records, sp.taxonNameId)
+        const count = records.length - hiddenIds.size
+        if (count > 0 && !query2Stopped.value) {
+          results.value.push({ ...sp, count, records, hiddenIds })
         }
       } catch {
         // One species failing (or timing out after REQUEST_TIMEOUT_MS)
@@ -416,7 +424,12 @@ function maybeBuildFallbackTotal() {
   if (allTotal.value || !ownTaxonError.value) return
   if (hasMore.value || isFetchingBatch.value || isLoadingAll.value) return
 
-  const combinedRecords = results.value.flatMap((r) => r.records || [])
+  // Current records only, each once: a type specimen can sit on two
+  // species' lists (a synonym's type is also the valid species' material).
+  const seen = new Set()
+  const combinedRecords = results.value
+    .flatMap((r) => (r.records || []).filter((d) => !r.hiddenIds?.has(d.id)))
+    .filter((d) => !seen.has(d.id) && seen.add(d.id))
   if (!combinedRecords.length) return
 
   const name = props.taxon?.cached || props.taxon?.name || 'This taxon'
@@ -429,6 +442,7 @@ function maybeBuildFallbackTotal() {
     name: `${name}: all (from Query 2)`,
     fullNameHtml: `${nameHtml}${authorYear}: all <span class="opacity-60">(from Query 2)</span>`,
     count: combinedRecords.length,
+    taxonNameId: props.taxonId,
     isFallback: true
   }
 }
@@ -492,12 +506,17 @@ async function loadOwnTaxonSpecimens() {
     const nameHtml = props.taxon?.cached_html || escHtml(name)
     const authorYear = props.taxon?.cached_author_year ? ' ' + escHtml(props.taxon.cached_author_year) : ''
 
-    if (occurrences.length > 0) {
+    // Specimens listed only through an old determination (now determined
+    // outside this taxon) are not counted, matching the list this opens.
+    const hiddenIds = await findPreviousIdentificationOnly(props.otuId, occurrences, props.taxonId)
+
+    if (occurrences.length > hiddenIds.size) {
       allTotal.value = {
         otuId: props.otuId,
+        taxonNameId: props.taxonId,
         name: `${name}: all`,
         fullNameHtml: `${nameHtml}${authorYear}: all`,
-        count: occurrences.length
+        count: occurrences.length - hiddenIds.size
       }
 
       // Query 1's response already carries every species' own otu_id, so
@@ -539,6 +558,7 @@ async function loadOwnTaxonSpecimens() {
           const scientificName = records[0].scientificName
           return {
             otuId: speciesOtuId,
+            taxonNameId: taxonNameIdByOtuId.get(speciesOtuId),
             // italic is empty for a name above genus rank
             name: splitScientificName(scientificName).italic || scientificName,
             fullNameHtml: scientificNameHtml(scientificName),
@@ -547,6 +567,7 @@ async function loadOwnTaxonSpecimens() {
         }
         return {
           otuId: speciesOtuId,
+          taxonNameId: tn.id,
           name: tn.cached,
           fullNameHtml: `${tn.cached_html || escHtml(tn.cached)}${tn.cached_author_year ? ' ' + escHtml(tn.cached_author_year) : ''}`,
           count: records.length

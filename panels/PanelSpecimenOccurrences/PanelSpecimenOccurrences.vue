@@ -1,6 +1,6 @@
 <template>
   <SpeciesBars v-if="isHigherTaxon" :taxon-id="taxonId" :taxon="taxon" :otu-id="otuId" />
-  <SingleSpeciesOccurrences v-else :otu-id="otuId" />
+  <SingleSpeciesOccurrences v-else :otu-id="otuId" :taxon-name-id="taxonId" />
 </template>
 
 <script setup>

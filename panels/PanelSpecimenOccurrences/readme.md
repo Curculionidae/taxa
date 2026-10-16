@@ -79,6 +79,30 @@ instead.
   as "equally blank".
 - Tests: `lib/groupRecords.test.js` (part of `npm test`).
 
+## Previous identifications (hidden by default)
+
+`/otus/:id/inventory/dwc.json` also lists specimens that were once identified as this taxon and have
+since been redetermined as another (e.g. *Exechesops foliatus* specimens on the *E. leucopis* page,
+via their old *leucopis* determination). `lib/previousIdentifications.js` finds them and the list hides
+them unless the "Previous identifications (N)" switch is on; the switch only appears when N > 0.
+
+A record is hidden only when proven out of scope: it has no type status (type material is never
+hidden), it has `previousIdentifications`, and neither its current OTU nor the valid name of that OTU's
+taxon name lies at or below this taxon (`/otus?taxon_name_id[]=…&descendants=true&otu_id[]=…`;
+`descendants` does not follow synonyms, hence the valid-name step). Anything that cannot be checked
+stays visible. No request is made when no record has been redetermined away from this OTU; otherwise
+up to 4 sequential rounds of small requests (the OTU's own taxon name is passed in by the panel, so
+`/otus/:id` is only fetched when it is missing), run alongside the media lookups. IDs go out in
+chunks of 100 and every chunk follows pagination, so a large genus neither hits URL length limits nor
+gets a truncated scope list (which would wrongly hide records).
+
+Selecting a country or collector that only hidden records have, then switching previous
+identifications off, drops that selection.
+
+`SpeciesBars.vue` applies the same check to its counts: Query 1's "…: all" total leaves these records
+out, and each Query 2 species bar counts a redetermined specimen only under its current species
+(previously it was counted on both bars). Expanding a bar still offers the switch.
+
 ## Shared dependencies
 
 - `../../_shared/DwcTable.vue` — the CO/FO detail modal, opened from the ⓘ button

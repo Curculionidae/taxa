@@ -18,7 +18,10 @@
             class="mb-1 text-base font-semibold"
             v-html="enteredUnderHtml(entry.otuNameHtml)"
           />
-          <div v-html="entry.text" />
+          <div
+            v-html="entry.text"
+            @click="onTextClick"
+          />
           <div
             v-if="entry.citations.length"
             class="mt-1 text-base-soft"
@@ -43,10 +46,13 @@
 
 <script setup>
 import { computed, ref, onBeforeMount, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { makeAPIRequest } from '@/utils/request'
 import { useOtuPageRequest } from '@/modules/otus/helpers/useOtuPageRequest'
 import { stripHtml, shortCitation } from '../_shared/citationText.js'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
+import { pickTaxonPageOtu } from '../_shared/otuLink.js'
+import { rewriteContentLinks } from './contentLinks.js'
 import {
   groupByTopic,
   inventoryContent,
@@ -65,11 +71,58 @@ const props = defineProps({
   }
 })
 
+const router = useRouter()
 const contents = ref([])
 const activeCitation = ref(null)
 const controller = new AbortController()
 
-const topics = computed(() => groupByTopic(contents.value))
+const TW_BASE = __APP_ENV__.url.replace(/\/api\/v1\/?$/, '')
+
+const topics = computed(() =>
+  groupByTopic(
+    contents.value.map((item) => ({
+      ...item,
+      text: rewriteContentLinks(item.text, {
+        otuHref: (id) => router.resolve({ name: 'otus-id', params: { id } }).href,
+        twBase: TW_BASE
+      })
+    }))
+  )
+)
+
+function openOtu(id) {
+  router.push({ name: 'otus-id', params: { id } })
+}
+
+// The links contentLinks.js marked. An OTU link is a real link, so a click
+// with a modifier (new tab) is left to the browser.
+function onTextClick(event) {
+  const link = event.target.closest('[data-content-link]')
+  if (!link) return
+
+  const { contentLink: kind, id } = link.dataset
+
+  if (kind === 'otu') {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    openOtu(id)
+  } else if (kind === 'source') {
+    makeAPIRequest
+      .get(`/sources/${id}`)
+      .then(({ data }) => {
+        activeCitation.value = { id: `source-${id}`, source: data }
+      })
+      .catch(() => {})
+  } else {
+    makeAPIRequest
+      .get('/otus', { params: { taxon_name_id: [id] } })
+      .then(({ data }) => {
+        const otu = pickTaxonPageOtu(data) || data[0]
+        if (otu) openOtu(otu.id)
+      })
+      .catch(() => {})
+  }
+}
 
 // One HTML string, so the space after the label survives Vue's whitespace
 // condensing. The name is v-html-safe, see otuNameHtml().

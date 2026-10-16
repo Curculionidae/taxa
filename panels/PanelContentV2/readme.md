@@ -22,7 +22,23 @@ A text whose content record is cited has a line "Source:" (or "Sources:") under 
 
 The text itself always comes from `inventory/content`, never from `/contents`: `inventory/content` gives the rendered HTML and the topic name, `/contents` the raw Markdown and a topic id.
 
+## Links in the text
+
+TaxonWorks links three kinds of data in a text, OTUs, sources and taxon names, each written as a path of its own app: `[Otiorhynchus civis Stierlin, 1861](/otus/723793)`, `[Meregalli, 2017](/sources/226105)`. Rendered as is, the link points next to TaxonPages (in hash mode outside the app). `contentLinks.js` rewrites every text before it is shown:
+
+| Link in the text | On the page |
+|---|---|
+| `/otus/:id` | the TaxonPages page of that OTU (a real link, opens in a new tab with Ctrl/middle click) |
+| `/sources/:id` | opens the Reference modal (`GET /sources/:id`, its `cached` reference), there is no source page |
+| `/taxon_names/:id` | the page of the name's OTU (`GET /otus?taxon_name_id[]=`, picked by `pickTaxonPageOtu()`) |
+| any other app path, only if written by hand (`/images/12`) | the TaxonWorks app, new tab |
+| external link | new tab |
+| a bare URL in the text (a DOI written out) | made a link, new tab |
+
+On 2026-10-16 the project's 40 texts had OTU, source and external links and bare DOIs. Taxon name links were not in use yet.
+
 ## Gotchas
+
 
 - Never call `/contents` with an empty `otu_id[]`, it answers with every content record of the project.
 - If the synonym lookup fails, the panel shows the page's own content and nothing else, without an error. If the citation lookup fails, the texts are shown without sources.

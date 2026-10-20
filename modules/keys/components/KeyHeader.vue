@@ -105,6 +105,12 @@
       >References cited ({{ references.length }})</button>
     </div>
 
+    <!-- simple key (TaxonWorks is_virtual): a taxon list standing for a published key -->
+    <p v-if="meta.isSimpleKey" class="mt-3 text-sm text-base-content">
+      <SimpleKeyChip />The key has not been transcribed into
+      TaxonWorks. Consult the original source.
+    </p>
+
     <VModal v-if="showCompleteness && completeness" @close="showCompleteness = null">
       <template #header><div class="text-sm font-medium">{{
         showCompleteness === 'geography'
@@ -133,6 +139,7 @@ import { sanitizeAndLinkifyHtml } from '@/utils'
 import CompletenessReport from './CompletenessReport.vue'
 import GeographyPicker from './GeographyPicker.vue'
 import TwEditLink from '../../../panels/_shared/curatorMode/TwEditLink.vue'
+import SimpleKeyChip from '../../../panels/_shared/SimpleKeyChip.vue'
 import { twEditUrl, twUseKeyUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
 const props = defineProps({

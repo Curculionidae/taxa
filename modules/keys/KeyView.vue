@@ -65,6 +65,7 @@ import CoupletCitation from './components/CoupletCitation.vue'
 import { readFormat, writeFormat } from './lib/format.js'
 import { buildCompletenessReport, finestRank } from './lib/completeness.js'
 import { effectiveTaxonNameId } from './lib/validTaxonName.js'
+import { citationFullText, primarySource, looksLikeSimpleKey } from './lib/simpleKey.js'
 import { territoryLabel } from './lib/geoNormalize.js'
 import { effectiveKeys, readGeoPrefs, writeGeoPrefs } from './lib/geoPrefs.js'
 import { GEOGRAPHY_PRESETS as geoCategories } from './lib/geoData.js'
@@ -93,6 +94,8 @@ const error = ref(false)
 const rawMeta = ref({})
 const listMeta = ref({})
 const nodes = ref({})
+// Shape check from /leads/key/:id, used when the /leads row (is_virtual) is missing.
+const shapeIsSimple = ref(false)
 
 const couplets = computed(() => orderedCouplets(nodes.value))
 const terminalOtuList = computed(() => terminalOtus(nodes.value))
@@ -270,7 +273,17 @@ const completeness = computed(() => {
 const resolvedScopeOtuId = ref(null)
 const scopeTaxonName = ref(null)
 
+// Simple key (TaxonWorks is_virtual): a root lead with a flat list of OTUs and no
+// couplets, standing for a published key that is not in TaxonWorks itself. The
+// /leads row carries the flag; if that request failed, the key's shape decides.
+const isSimpleKey = computed(() =>
+  typeof listMeta.value.is_virtual === 'boolean'
+    ? listMeta.value.is_virtual
+    : shapeIsSimple.value
+)
+
 const meta = computed(() => ({
+  isSimpleKey: isSimpleKey.value,
   title: rawMeta.value.title || listMeta.value.text || '',
   taxonomicScope: rawMeta.value.taxonomic_scope || null,
   taxonomicScopeHtml: scopeTaxonName.value?.html || null,
@@ -285,11 +298,14 @@ const meta = computed(() => ({
   // a fallback for the brief moment before nodes populate (A13 Step 1). /leads
   // otus_count also counts the root's scope OTU (otu_id) when the key has one, so
   // drop that to match terminalOtuList (which is already scope-free).
-  coupletsCount: couplets.value.length || listMeta.value.couplets_count || null,
+  // a simple key has no couplets (its one root "couplet" is just the taxon list)
+  coupletsCount: isSimpleKey.value
+    ? null
+    : couplets.value.length || listMeta.value.couplets_count || null,
   otusCount:
     terminalOtuList.value.length ||
     (listMeta.value.otus_count
-      ? listMeta.value.otus_count - (listMeta.value.otu_id ? 1 : 0)
+      ? listMeta.value.otus_count - (listMeta.value.otu_id && !isSimpleKey.value ? 1 : 0)
       : null)
 }))
 
@@ -298,7 +314,16 @@ const meta = computed(() => ({
 // sources for individual couplets but is otherwise original TaxonWorks-team work
 // legitimately has NO primary source — those per-couplet citations still show
 // under "References cited".
-const primaryCitation = computed(() => meta.value.originCitation || null)
+// Exception: a simple key (is_virtual: a root plus a flat OTU list) only stands for
+// a published key, and TaxonWorks keeps that source as a plain citation on the root
+// lead (key 35019), so its root citation is the primary source.
+const primaryCitation = computed(() =>
+  primarySource({
+    originCitation: meta.value.originCitation,
+    isSimpleKey: isSimpleKey.value,
+    rootCitations: (citations.value?.[String(route.params.id)] || []).map((c) => c.full)
+  })
+)
 
 const references = computed(() => {
   const byFull = new Map()
@@ -322,6 +347,7 @@ async function load(id) {
   error.value = false
   listMeta.value = {}
   rawMeta.value = {}
+  shapeIsSimple.value = false
   resolvedScopeOtuId.value = null
   scopeTaxonName.value = null
   keyImages.reset()
@@ -334,11 +360,15 @@ async function load(id) {
   geoExpectedGen = -1
   try {
     const keyReq = makeAPIRequest.get(`/leads/key/${id}`)
-    const listReq = makeAPIRequest.get('/leads').catch(() => ({ data: [] }))
+    // is_virtual=all: /leads leaves simple keys out by default
+    const listReq = makeAPIRequest
+      .get('/leads', { params: { is_virtual: 'all' } })
+      .catch(() => ({ data: [] }))
     const { data } = await keyReq
     if (myGen !== loadGen) return
     rawMeta.value = data.metadata || {}
     nodes.value = buildNodes(data.data.entries || {}, data.data.leads || {})
+    shapeIsSimple.value = looksLikeSimpleKey(data.data.leads)
     loadCitations(Object.keys(nodes.value), myGen)
     const { data: list } = await listReq
     if (myGen !== loadGen) return
@@ -367,7 +397,7 @@ async function loadCitations(leadIds, myGen) {
       ;(map[key] ||= []).push({
         id: c.id,
         short: shortCitation(stripHtml(c.citation_source_body || '')) || c.source?.author_year || 'reference',
-        full: c.source?.cached || c.citation_source_body || ''
+        full: citationFullText(c)
       })
     }
     citations.value = map
@@ -380,7 +410,7 @@ async function loadCitations(leadIds, myGen) {
 // (header, fast) and loadCompleteness() (slow pipeline). Both previously ran the
 // terminal `/otus` batch and the up-to-15-request ancestor walk independently (F1).
 // Memoised per load generation; a fresh load() (++loadGen) invalidates it.
-// Returns { scopeTnId, scopeOtuId, otuIdToTnId }.
+// Returns { scopeTnId, validScopeTnId, scopeOtuId, otuIdToTnId }.
 let scopeResolve = { gen: -1, promise: null }
 function resolveScope(scopeOtuId, nodeMap, myGen) {
   if (scopeResolve.gen === myGen && scopeResolve.promise) return scopeResolve.promise
@@ -412,7 +442,19 @@ function resolveScope(scopeOtuId, nodeMap, myGen) {
         resolvedOtuId = Array.isArray(sOtu) ? sOtu[0]?.id ?? null : null
       }
     }
-    return { scopeTnId, scopeOtuId: resolvedOtuId, otuIdToTnId }
+    // The scope taxon may since have been sunk as a synonym (key 35046: Rhinonus, now
+    // Stenancylus). A synonym has no descendants of its own, so completeness (taxonomic
+    // and geographic) must run on the valid name. The header keeps the key's own name.
+    let validScopeTnId = scopeTnId
+    if (scopeTnId) {
+      try {
+        const { data: tn } = await makeAPIRequest.get(`/taxon_names/${scopeTnId}`)
+        validScopeTnId = effectiveTaxonNameId(tn) ?? scopeTnId
+      } catch {
+        // keep the raw scope id
+      }
+    }
+    return { scopeTnId, validScopeTnId, scopeOtuId: resolvedOtuId, otuIdToTnId }
   })()
   scopeResolve = { gen: myGen, promise }
   return promise
@@ -482,7 +524,8 @@ async function loadCompleteness(scopeOtuId, nodeMap, myGen) {
     // terminal OTU→taxon-name map + scope taxon-name id — resolved once per load
     // generation and shared with loadScope() (F1: the /otus batch and the ancestor
     // walk previously ran in both pipelines).
-    const { scopeTnId, otuIdToTnId } = await resolveScope(scopeOtuId, nodeMap, myGen)
+    // validScopeTnId: the scope redirected to its valid name if it is a synonym
+    const { validScopeTnId: scopeTnId, otuIdToTnId } = await resolveScope(scopeOtuId, nodeMap, myGen)
     if (myGen !== loadGen) return
     const rawTnIds = [...new Set([...otuIdToTnId.values()])]
     if (!scopeTnId || !rawTnIds.length) return

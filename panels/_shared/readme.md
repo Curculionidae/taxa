@@ -203,6 +203,12 @@ The type-status chip: "holotype of *Aus bus* Author, 1900" on a red label for a 
 
 Depended on by `DwcTable.vue` (identity block), `PanelSpecimenOccurrences/components/ListRecords.vue` (list rows) and `PanelMapV2/components/MapPopup.vue` (specimen and type material rows). Until 2026-10-11 the first two each had their own copy of the markup and the map popup printed the status as plain text. If you change it, check all three.
 
+## SimpleKeyChip.vue
+
+The orange "Only taxon list available" chip for a simple key (TaxonWorks `is_virtual` lead: only the key's taxon list is in TaxonWorks, not its couplets). No props; it carries its own right margin, so put the text that follows directly after the closing tag. The rules for simple keys themselves (primary source, recognising one from its shape) are in `modules/keys/lib/simpleKey.js`.
+
+Depended on by `PanelKeys/PanelKeys.vue` (before the key title), `modules/keys/KeysIndex.vue` (before the key title) and `modules/keys/components/KeyHeader.vue` (start of the note under the chips). If you change it, check all three.
+
 ## DwcTable.vue
 
 Modal showing the full DarwinCore record for a CollectionObject or FieldOccurrence: institution (resolved to full name via GRSciColl), identification, collection event, location, coordinates (with OpenStreetMap link), biological associations, and associated media thumbnails. Fetches `/collection_objects/:id/dwc` or `/field_occurrences/:id/dwc`.

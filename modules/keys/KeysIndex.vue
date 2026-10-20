@@ -17,7 +17,7 @@
         :key="k.id"
         class="rounded-lg border border-base-muted bg-base-foreground p-4 sm:p-5"
       >
-        <RouterLink
+        <SimpleKeyChip v-if="k.isSimpleKey" /><RouterLink
           :to="{ name: 'dichotomous-key', params: { id: k.id } }"
           class="text-lg text-secondary hover:underline [&_i]:italic"
           v-html="k.title"
@@ -75,14 +75,41 @@ import { makeAPIRequest } from '@/utils/request'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import { rankIndex } from './lib/completeness.js'
 import { resolveOtuLinks } from '../../panels/_shared/otuLink.js'
+import SimpleKeyChip from '../../panels/_shared/SimpleKeyChip.vue'
+import { citationFullText, primarySource } from './lib/simpleKey.js'
 
 const loading = ref(true)
 const keys = ref([])
 
 onMounted(async () => {
   try {
-    const { data: list } = await makeAPIRequest.get('/leads')
+    // is_virtual=all: /leads leaves simple keys (is_virtual) out by default
+    const { data: list } = await makeAPIRequest.get('/leads', {
+      params: { is_virtual: 'all' }
+    })
     const rows = Array.isArray(list) ? list : []
+    // A simple key keeps its published source as a plain citation on the root lead
+    // (no is_original flag, so no origin_citation). One batched call for those.
+    const virtualIds = rows.filter((r) => r.is_virtual).map((r) => r.id)
+    const rootCitationsById = new Map()
+    if (virtualIds.length) {
+      try {
+        const { data: cits } = await makeAPIRequest.get('/citations', {
+          params: {
+            citation_object_type: 'Lead',
+            'citation_object_id[]': virtualIds,
+            'extend[]': ['source']
+          }
+        })
+        for (const c of Array.isArray(cits) ? cits : []) {
+          const list = rootCitationsById.get(c.citation_object_id) || []
+          list.push(citationFullText(c))
+          rootCitationsById.set(c.citation_object_id, list)
+        }
+      } catch {
+        // no fallback citation then
+      }
+    }
     // One metadata call per key (there are only a handful) for scope + citation,
     // which the /leads list row does not carry.
     const metas = await Promise.all(
@@ -146,18 +173,23 @@ onMounted(async () => {
         scopeHtml: linkByOtuId.get(r.otu_id)?.html || null,
         // Coarse->fine index of the scope taxon's rank; -1 (unknown) sorts last.
         scopeRankIdx: rankIdxByOtuId.get(r.otu_id) ?? -1,
-        // Primary source = origin_citation only (the citation flagged is_original
-        // in TaxonWorks). No fallback — a key with no flagged original citation
-        // shows no "Primary source" line.
-        citation: metas[i].origin_citation || null,
+        // Primary source: origin_citation, or a simple key's root citation (lib/simpleKey.js)
+        citation: primarySource({
+          originCitation: metas[i].origin_citation,
+          isSimpleKey: r.is_virtual === true,
+          rootCitations: rootCitationsById.get(r.id)
+        }),
         description: r.description || null,
+        // simple key (is_virtual): a taxon list standing for a published key
+        isSimpleKey: r.is_virtual === true,
         coupletsCount: r.couplets_count || null,
         // /leads' otus_count = distinct OTUs across every lead + lead_item, which
         // includes the root's scope OTU (r.otu_id) when the key has one. Subtract
         // that so the pill counts only what the key distinguishes; a scope-less
-        // key (r.otu_id null) has nothing to subtract.
+        // key (r.otu_id null) has nothing to subtract. A simple key's otus_count
+        // counts only the root's children, so there is nothing to subtract either.
         taxaCount: r.otus_count
-          ? Math.max(0, r.otus_count - (r.otu_id ? 1 : 0))
+          ? Math.max(0, r.otus_count - (r.otu_id && !r.is_virtual ? 1 : 0))
           : null,
         updatedInWords: r.key_updated_at_in_words || null
       }))

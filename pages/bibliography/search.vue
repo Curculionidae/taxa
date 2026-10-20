@@ -67,7 +67,7 @@
           </div>
         </div>
         <p class="mt-3 text-sm text-base-soft">
-          Accents and umlauts matter: search for "Schönherr" does not return
+          Words can be typed in any order. Accents and umlauts matter: search for "Schönherr" does not return
           the same results as "Schoenherr". For a single year, set both ends
           of the range to that year.
         </p>
@@ -168,17 +168,18 @@
 import { ref, computed, watch, onBeforeMount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
-import { getPagination } from '@/modules/bibliography/utils'
 import DropdownMenu from '@/modules/bibliography/components/DropdownMenu.vue'
 import YearPicker from '@/modules/bibliography/components/YearPicker.vue'
 import VSlider from '@/modules/bibliography/components/VSlider.vue'
-import { getAll } from './utils/sourceRecords.js'
+import { createWordSearch, getAllMatches } from './utils/wordSearch.js'
 import { toBibtex } from './utils/bibtex.js'
 import OtuModal from './components/OtuModal.vue'
 
 const PER = 50
 const MIN_YEAR = 1650
 const MAX_YEAR = new Date().getFullYear()
+
+const wordSearch = createWordSearch(makeAPIRequest)
 
 const route = useRoute()
 const router = useRouter()
@@ -214,7 +215,7 @@ function downloadBibliography() {
   isDownloading.value = true
   hasDownloadFailed.value = false
 
-  getAll(makeAPIRequest, '/sources', {
+  getAllMatches(makeAPIRequest, {
     in_project: true,
     ...(isFiltered.value ? searched.value : {})
   })
@@ -269,17 +270,13 @@ function loadList(page = 1, { replace = false } = {}) {
 
   isLoading.value = true
 
-  makeAPIRequest
-    .get('/sources', {
-      params: { in_project: true, page, per: PER, ...filters }
-    })
-    .then(({ data, headers, request }) => {
+  // Words are matched in any order, see wordSearch.js.
+  wordSearch
+    .getPage({ in_project: true, ...filters }, page, PER)
+    .then((answer) => {
       if (id !== lastRequest) return
 
-      showList(
-        { filters, replace },
-        { data, url: request.responseURL, ...getPagination(headers) }
-      )
+      showList({ filters, replace }, answer)
     })
     .finally(() => {
       if (id === lastRequest) isLoading.value = false

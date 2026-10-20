@@ -42,6 +42,7 @@
             <VTableHeaderCell v-if="showTaxaColumn">Taxa</VTableHeaderCell>
             <VTableHeaderCell>Annotations</VTableHeaderCell>
             <VTableHeaderCell>Citation</VTableHeaderCell>
+            <VTableHeaderCell v-if="isCuratorMode" />
           </VTableHeaderRow>
         </VTableHeader>
         <VTableBody>
@@ -51,7 +52,7 @@
           >
             <tr>
               <td
-                :colspan="showTaxaColumn ? 4 : 3"
+                :colspan="(showTaxaColumn ? 4 : 3) + (isCuratorMode ? 1 : 0)"
                 class="px-4 pt-5 pb-1 text-sm font-bold border-b text-base-content"
               >
                 {{ group.label }}
@@ -137,6 +138,21 @@
                   />
                   <span v-if="i < item.citationList.length - 1">; </span>
                 </template>
+              </VTableBodyCell>
+
+              <!-- Curator mode only: one pencil per TaxonWorks record the row merges -->
+              <VTableBodyCell
+                v-if="isCuratorMode"
+                class="text-right whitespace-nowrap"
+              >
+                <TwEditLink
+                  v-for="(recordId, i) in item.recordIds"
+                  :key="recordId"
+                  class="ml-1 align-middle"
+                  icon-class="size-4"
+                  :href="twEditUrl.assertedDistribution(recordId)"
+                  :title="item.recordIds.length > 1 ? `Edit record ${i + 1} of ${item.recordIds.length} in TaxonWorks` : 'Edit in TaxonWorks'"
+                />
               </VTableBodyCell>
             </VTableBodyRow>
           </template>
@@ -275,6 +291,10 @@ import { fetchAllPages } from '../_shared/fetchAllPages.js'
 import { fetchAssertedDistributionTags } from '../_shared/assertedDistributionTags.js'
 import { stripHtml, shortCitation, citationWithoutPages } from '../_shared/citationText.js'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
+import TwEditLink from '../_shared/curatorMode/TwEditLink.vue'
+import { useCuratorMode, twEditUrl } from '../_shared/curatorMode/curatorMode.js'
+
+const isCuratorMode = useCuratorMode()
 
 const props = defineProps({
   otuId: {
@@ -351,10 +371,12 @@ function mergeByArea(dists) {
         tags: [],
         dataAttributes: [],
         otuEntries: [],
-        citationList: []
+        citationList: [],
+        recordIds: []
       })
     }
     const m = byArea.get(key)
+    if (!m.recordIds.includes(dist.id)) m.recordIds.push(dist.id)
     m.isAbsent = m.isAbsent || dist.isAbsent
     for (const t of dist.tags || []) if (!m.tags.includes(t)) m.tags.push(t)
     for (const a of dist.dataAttributes || []) {
@@ -497,7 +519,6 @@ async function openMapModal(item) {
     feature: shapeIdMap.value[item.shapeId] ?? null
   }
 }
-
 
 // Citations, tags, and data attributes are all fetched by id-set, and that
 // id-set is exactly what step 1/2's own pagination fix was guarding against

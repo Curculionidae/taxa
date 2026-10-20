@@ -220,6 +220,7 @@
             <VTableHeaderCell class="border-l-2 border-r-2">Relationship</VTableHeaderCell>
             <VTableHeaderCell colspan="2">Object</VTableHeaderCell>
             <VTableHeaderCell class="border-l-2" colspan="3">Metadata</VTableHeaderCell>
+            <VTableHeaderCell v-if="isCuratorMode" />
           </VTableHeaderRow>
           <VTableHeaderRow>
             <VTableHeaderCell>Family</VTableHeaderCell>
@@ -230,6 +231,7 @@
             <VTableHeaderCell class="border-l-2">Depictions</VTableHeaderCell>
             <VTableHeaderCell>Area</VTableHeaderCell>
             <VTableHeaderCell>Citations</VTableHeaderCell>
+            <VTableHeaderCell v-if="isCuratorMode" />
           </VTableHeaderRow>
         </VTableHeader>
         <VTableBody>
@@ -383,6 +385,17 @@
                 class="text-sm opacity-70"
               >{{ ba.subjectCollector || ba.objectCollector }}</span>
             </VTableBodyCell>
+            <!-- Curator mode only: edit this association in TaxonWorks -->
+            <VTableBodyCell
+              v-if="isCuratorMode"
+              class="whitespace-nowrap text-right align-middle"
+            >
+              <TwEditLink
+                :href="twEditUrl.biologicalAssociation(ba.id)"
+                title="Edit biological association in TaxonWorks"
+                icon-class="size-4"
+              />
+            </VTableBodyCell>
           </VTableBodyRow>
         </VTableBody>
       </VTable>
@@ -495,6 +508,8 @@ import {
 import DwcTable from '../_shared/DwcTable.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
+import TwEditLink from '../_shared/curatorMode/TwEditLink.vue'
+import { useCuratorMode, twEditUrl } from '../_shared/curatorMode/curatorMode.js'
 import { areaLabel } from './areaLabel.js'
 import { resolveOtuLinks } from '../_shared/otuLink.js'
 import { stripHtml, shortCitation } from '../_shared/citationText.js'
@@ -504,6 +519,8 @@ import {
   resolveSpecimenRef,
   specimenKey
 } from './makeBiologicalAssociation.js'
+
+const isCuratorMode = useCuratorMode()
 
 const fullExtend = ['object', 'subject', 'biological_relationship']
 // Advanced reads the whole taxon from the cheap, precomputed index in one go.

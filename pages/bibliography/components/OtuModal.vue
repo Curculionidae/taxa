@@ -9,8 +9,15 @@
       @close="() => (isModalVisible = false)"
     >
       <template #header>
-        <div class="text-sm">
-          Bibliography - <span v-html="sanitizeAndLinkifyHtml(label)" />
+        <div class="flex flex-1 items-start justify-between gap-3">
+          <div class="text-sm">
+            Bibliography - <span v-html="sanitizeAndLinkifyHtml(label)" />
+          </div>
+          <TwSourceLinks
+            class="p-1"
+            icon-class="size-5"
+            :source-id="sourceId"
+          />
         </div>
       </template>
 
@@ -120,6 +127,7 @@ import { ref, computed, watch } from 'vue'
 import { makeAPIRequest, sanitizeAndLinkifyHtml } from '@/utils'
 import { getSourceRecords, getCitationColor } from '../utils/sourceRecords.js'
 import { describeCitedOn } from '../utils/citationLabels.js'
+import TwSourceLinks from '../../../panels/_shared/curatorMode/TwSourceLinks.vue'
 
 const PER = 50
 

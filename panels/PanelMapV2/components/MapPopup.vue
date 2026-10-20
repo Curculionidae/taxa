@@ -4,8 +4,11 @@
       <li
         v-for="{ item, i } in rows"
         :key="i"
-        class="py-2 last:border-0 border-b"
-        :class="specimenFor(item) ? 'cursor-pointer text-secondary hover:underline' : ''"
+        class="relative py-2 last:border-0 border-b"
+        :class="[
+          specimenFor(item) ? 'cursor-pointer text-secondary hover:underline' : '',
+          isCuratorMode && editLinksFor(item).length ? 'pr-14' : ''
+        ]"
         @click="specimenFor(item) ? emit('selected', specimenFor(item)) : null"
       >
         <!-- CollectionObject / FieldOccurrence -->
@@ -143,6 +146,22 @@
           class="truncate"
           v-html="escapeHtml(item.label)"
         />
+
+        <!-- Curator mode only: edit the record(s) of this row in TaxonWorks.
+             `!` because Leaflet's popup CSS colours every link blue. -->
+        <span
+          v-if="isCuratorMode && editLinksFor(item).length"
+          class="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1.5"
+        >
+          <TwEditLink
+            v-for="link in editLinksFor(item)"
+            :key="link.href"
+            :href="link.href"
+            :title="link.title"
+            icon-class="size-4"
+            class="!text-base-soft hover:!text-base-content"
+          />
+        </span>
       </li>
     </ul>
   </div>
@@ -163,6 +182,10 @@ import { escHtml as escapeHtml, splitScientificName } from '../../_shared/scient
 import TypeStatusChip from '../../_shared/TypeStatusChip.vue'
 import { ADVENTIVE_CHIP_HTML } from '../../_shared/adventive.js'
 import { fetchTypeSpecimens, specimenByTypeMaterialId as indexByTypeMaterialId } from '../../_shared/typeMaterialSpecimen.js'
+import TwEditLink from '../../_shared/curatorMode/TwEditLink.vue'
+import { useCuratorMode, twEditUrl } from '../../_shared/curatorMode/curatorMode.js'
+
+const isCuratorMode = useCuratorMode()
 
 const CLICKABLE_TYPES = [COLLECTION_OBJECT, FIELD_OCCURRENCE]
 const AD_TYPES = [ASSERTED_DISTRIBUTION, ASSERTED_ABSENT]
@@ -274,6 +297,28 @@ async function resolveTypeSpecimens(items) {
 }
 
 // What a click on this row opens in the DwC modal, or null for a dead row.
+// Curator mode: the TaxonWorks edit pages for a row. A BA-linked asserted
+// distribution gets two, the distribution and its biological association.
+function editLinksFor(item) {
+  const links = []
+  const specimen = specimenFor(item)
+
+  if (specimen?.type === COLLECTION_OBJECT) {
+    links.push({ href: twEditUrl.collectionObject(specimen.id), title: 'Edit collection object in TaxonWorks' })
+  } else if (specimen?.type === FIELD_OCCURRENCE) {
+    links.push({ href: twEditUrl.fieldOccurrence(specimen.id), title: 'Edit field occurrence in TaxonWorks' })
+  } else if (AD_TYPES.includes(item.type)) {
+    links.push({ href: twEditUrl.assertedDistribution(item.id), title: 'Edit asserted distribution in TaxonWorks' })
+
+    const baId = baDetailsMap.value.get(item.id)?.baId
+    if (baId) {
+      links.push({ href: twEditUrl.biologicalAssociation(baId), title: 'Edit biological association in TaxonWorks' })
+    }
+  }
+
+  return links
+}
+
 function specimenFor(item) {
   if (CLICKABLE_TYPES.includes(item.type)) return item
   if (item.type !== TYPE_MATERIAL) return null
@@ -410,6 +455,7 @@ watch(
               if (subjLabel && item.label.startsWith(subjLabel)) {
                 const isSubjTarget = rec.subject.id === targetId
                 matched = {
+                  baId: rec.id,
                   otherId: isSubjTarget ? rec.object.id : rec.subject.id,
                   otherLabel: isSubjTarget ? rec.object.label : subjLabel
                 }

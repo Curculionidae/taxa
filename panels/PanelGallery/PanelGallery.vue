@@ -115,6 +115,7 @@ import { useImageStore } from '@/modules/otus/store/useImageStore'
 import { makeAPIRequest } from '@/utils/request'
 import GalleryMainImage from '@/components/Gallery/GalleryMainImage.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
+import { imageIdFromOriginalPng } from '../_shared/imageCitations.js'
 import inatMark from '../PaneliNaturalist/inat-mark.svg'
 import gbifMark from '../_gbifShared/gbif-mark.svg'
 import { CHECKLIST_KEY, deriveScientificName } from '../_gbifShared/useGbifMatch'
@@ -174,7 +175,10 @@ const props = defineProps({
 function normalizeImage(img) {
   const { url, project_token } = __APP_ENV__
   return {
-    id: img.id,
+    // The OTU image store (/otus/:id/inventory/images) leaves the id off the
+    // image object; without it the data-depiction filter below never matched
+    // (found 2026-10-19: a label photo on OTU 1409491 stayed visible).
+    id: img.id ?? imageIdFromOriginalPng(img.original_png),
     thumb: img.thumb,
     medium: img.medium,
     original: img.original_png

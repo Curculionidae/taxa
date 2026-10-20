@@ -9,14 +9,31 @@
     <!-- Toolbar -->
     <div class="flex-none h-12 flex items-center justify-between px-2">
       <span class="text-sm opacity-50 px-2">{{ index + 1 }} / {{ images.length }}</span>
-      <button
-        type="button"
-        aria-label="Close image viewer"
-        class="p-2 cursor-pointer opacity-50 text-base-content"
-        @click="emit('close')"
-      >
-        <IconClose />
-      </button>
+      <div class="flex items-center gap-1">
+        <!-- Curator mode only: edit the image, and each of its depictions, in
+             TaxonWorks. None for iNaturalist / GBIF images (no TaxonWorks id). -->
+        <TwEditLink
+          class="p-2"
+          icon="photo"
+          :href="twImageEditUrl"
+          title="Edit image in TaxonWorks"
+        />
+        <TwEditLink
+          v-for="depiction in currentDepictions"
+          :key="depiction.id"
+          class="p-2"
+          :href="twEditUrl.depiction(depiction.id)"
+          :title="`Edit depiction in TaxonWorks (${depiction.objectType} ${depiction.objectId})`"
+        />
+        <button
+          type="button"
+          aria-label="Close image viewer"
+          class="p-2 cursor-pointer opacity-50 text-base-content"
+          @click="emit('close')"
+        >
+          <IconClose />
+        </button>
+      </div>
     </div>
 
     <!-- Image area: takes all remaining vertical space -->
@@ -213,6 +230,11 @@ import {
   typeStatusHtml
 } from './scientificName.js'
 import ReferenceModal from './ReferenceModal.vue'
+import TwEditLink from './curatorMode/TwEditLink.vue'
+import { useCuratorMode, twEditUrl } from './curatorMode/curatorMode.js'
+import { loadImageDepictions } from './curatorMode/depictions.js'
+
+const isCuratorMode = useCuratorMode()
 
 // Async both ways: DwcTable imports this file back (its media strip opens this
 // lightbox). Splitting DwcTable into its own chunk also keeps it out of the
@@ -387,6 +409,27 @@ watch(
 )
 
 const image = computed(() => props.images[props.index] || {})
+
+const twImageEditUrl = computed(() => {
+  const id = twImageId(image.value)
+  return id ? twEditUrl.image(id) : null
+})
+
+// The current image's depictions with their ids (curator mode only; the
+// gallery's image data has depictions without ids).
+const currentDepictions = ref([])
+
+watch(
+  [() => twImageId(image.value), isCuratorMode],
+  ([id, isOn]) => {
+    currentDepictions.value = []
+    if (!id || !isOn) return
+    loadImageDepictions(id).then((list) => {
+      if (twImageId(image.value) === id) currentDepictions.value = list
+    })
+  },
+  { immediate: true }
+)
 
 // Citations for the current image: whatever the caller supplied, else the
 // lazily-fetched set (empty array while still loading or when there are none).

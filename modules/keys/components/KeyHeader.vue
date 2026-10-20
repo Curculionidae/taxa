@@ -1,6 +1,21 @@
 <template>
   <header class="border-b border-base-muted pb-4 mb-6">
-    <h1 class="text-2xl font-semibold text-base-content">{{ meta.title }}</h1>
+    <div class="flex items-start gap-2">
+      <h1 class="text-2xl font-semibold text-base-content">{{ meta.title }}</h1>
+      <!-- Curator mode only: edit the key's first couplet (its root lead), and
+           open the key in TaxonWorks' "Use a key" task -->
+      <TwEditLink
+        class="key-print-hide mt-1.5"
+        :href="rootLeadId ? twEditUrl.lead(rootLeadId) : null"
+        title="Edit the key (root lead) in TaxonWorks"
+      />
+      <TwEditLink
+        class="key-print-hide mt-1.5"
+        icon="open"
+        :href="rootLeadId ? twUseKeyUrl(rootLeadId) : null"
+        title="Use this key in TaxonWorks"
+      />
+    </div>
 
     <p v-if="meta.taxonomicScope" class="mt-1 text-base-content [&_i]:italic">
       <span class="text-base-soft">Scope: </span><RouterLink
@@ -117,9 +132,12 @@ import { ref, computed } from 'vue'
 import { sanitizeAndLinkifyHtml } from '@/utils'
 import CompletenessReport from './CompletenessReport.vue'
 import GeographyPicker from './GeographyPicker.vue'
+import TwEditLink from '../../../panels/_shared/curatorMode/TwEditLink.vue'
+import { twEditUrl, twUseKeyUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
 const props = defineProps({
   meta: { type: Object, required: true },
+  rootLeadId: { type: [String, Number], default: null },
   completeness: { type: Object, default: null },
   completenessLoading: { type: Boolean, default: false },
   references: { type: Array, default: () => [] },

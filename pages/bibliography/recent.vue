@@ -35,6 +35,7 @@
                 Published
               </VTableHeaderCell>
               <VTableHeaderCell class="whitespace-nowrap">Added</VTableHeaderCell>
+              <VTableHeaderCell v-if="isCuratorMode" />
             </VTableHeaderRow>
           </VTableHeader>
           <VTableBody>
@@ -62,6 +63,13 @@
               </VTableBodyCell>
               <VTableBodyCell class="whitespace-nowrap text-base-content align-top">
                 {{ formatAddedDate(item.created_at) }}
+              </VTableBodyCell>
+              <!-- Curator mode only: edit the source, and its PDF when it has one -->
+              <VTableBodyCell
+                v-if="isCuratorMode"
+                class="whitespace-nowrap text-right align-middle"
+              >
+                <TwSourceLinks :source-id="item.id" />
               </VTableBodyCell>
             </VTableBodyRow>
           </VTableBody>
@@ -91,6 +99,10 @@ import {
 } from './utils/publicationDate.js'
 import { createPublishedList } from './utils/publishedList.js'
 import OtuModal from './components/OtuModal.vue'
+import TwSourceLinks from '../../panels/_shared/curatorMode/TwSourceLinks.vue'
+import { useCuratorMode } from '../../panels/_shared/curatorMode/curatorMode.js'
+
+const isCuratorMode = useCuratorMode()
 
 const PER = 25
 const CURRENT_YEAR = new Date().getFullYear()

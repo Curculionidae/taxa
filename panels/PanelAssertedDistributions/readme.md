@@ -84,3 +84,9 @@ Clicking an area name opens a modal with a Leaflet map showing the polygon for t
 - Default `per=500` is the page size, not a hard cap: `fetchAllPages()` follows `pagination-total-pages` to load every page. Configurable as a prop in `taxa_page.yml`.
 - `useOtuPageRequest` key `panel:asserted-distributions` (page 1 of the asserted-distributions fetch) feeds the package's "view JSON used to build this page" debug link. Later pages register under `panel:asserted-distributions:page2`, `:page3`, ... so a multi-page species still shows its full request set there, not just page 1.
 - A thrown error during load (any step, including a transient failure on any one page of a multi-page fetch) shows a distinct "Something went wrong loading distributions." message with a retry button, rather than the same "No records found." an empty-but-successful result shows. The load is still all-or-nothing (a failed page still aborts the whole load), but the failure is never silently misread as "this taxon has no distributions."
+
+## Curator mode
+
+With `?curator=1` the table gets a last column with one pencil per TaxonWorks record a row
+merges (rows merge records by area), opening the asserted distribution editor, where the
+record can also be tagged. See `panels/_shared/curatorMode/readme.md`.

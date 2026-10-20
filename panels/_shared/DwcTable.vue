@@ -45,11 +45,20 @@
     @close="isModalVisible = false"
   >
     <template #header>
-      <div class="text-sm font-medium">{{ typeLabel }}</div>
-      <div
-        v-if="subtitle"
-        class="text-xs mt-0.5"
-      >{{ subtitle }}</div>
+      <div class="flex flex-1 items-start justify-between gap-3">
+        <div>
+          <div class="text-sm font-medium">{{ typeLabel }}</div>
+          <div
+            v-if="subtitle"
+            class="text-xs mt-0.5"
+          >{{ subtitle }}</div>
+        </div>
+        <!-- Curator mode only (panels/_shared/curatorMode/curatorMode.js) -->
+        <TwEditLink
+          class="p-1"
+          :href="taxonWorksEditUrl"
+        />
+      </div>
     </template>
 
     <div class="px-5 pb-5 text-sm">
@@ -377,10 +386,13 @@
               <dt class="opacity-50 whitespace-nowrap">Occurrence ID</dt>
               <dd class="break-all">{{ dwc.occurrenceID }}</dd>
             </template>
-            <!-- For database maintainers: the TaxonWorks record itself, not just the DwC export of it -->
+            <!-- For database maintainers: the TaxonWorks record itself, not just the DwC export of it.
+                 Linked in curator mode only (panels/_shared/curatorMode/curatorMode.js); the public sees the plain id. -->
             <dt class="opacity-50 whitespace-nowrap">TaxonWorks ID</dt>
             <dd>
+              <template v-if="!isCuratorMode">{{ currentId }}</template>
               <a
+                v-else
                 :href="taxonWorksUrl"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -604,6 +616,10 @@ import { ADVENTIVE_CHIP_HTML, fetchAdventiveSpecimenKeys } from './adventive.js'
 import { resolveInstitutionName, resolveCollectionName } from './grscicoll.js'
 import { formatEventDate } from './eventDate.js'
 import ReferenceModal from './ReferenceModal.vue'
+import TwEditLink from './curatorMode/TwEditLink.vue'
+import { useCuratorMode, twEditUrl, twRecordUrl } from './curatorMode/curatorMode.js'
+
+const isCuratorMode = useCuratorMode()
 
 // Lets a host that renders this above its own overlay (ImageLightbox's ⓘ button)
 // know when the modal has been dismissed — so it can re-take key handling / the
@@ -653,12 +669,19 @@ const TW_RECORD_PATH = {
   [COLLECTION_OBJECT]: (id) => `/collection_objects/${id}`,
   [FIELD_OCCURRENCE]: (id) => `/field_occurrences/${id}`
 }
-const { url: API_URL } = __APP_ENV__
-const TW_BASE = API_URL.replace(/\/api\/v1\/?$/, '')
+const TW_EDIT_URL = {
+  [COLLECTION_OBJECT]: twEditUrl.collectionObject,
+  [FIELD_OCCURRENCE]: twEditUrl.fieldOccurrence
+}
 
 const taxonWorksUrl = computed(() => {
   if (!currentId.value || !itemType.value) return null
-  return `${TW_BASE}${TW_RECORD_PATH[itemType.value](currentId.value)}`
+  return twRecordUrl(TW_RECORD_PATH[itemType.value](currentId.value))
+})
+
+const taxonWorksEditUrl = computed(() => {
+  if (!currentId.value || !TW_EDIT_URL[itemType.value]) return null
+  return TW_EDIT_URL[itemType.value](currentId.value)
 })
 
 // Link text for the iNaturalist Source row. recordedBy is the observer on an

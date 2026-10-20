@@ -98,6 +98,13 @@
            <LeadFigures :figures="sharedFiguresOf(couplet.id)" />
          </div>
         </div>
+        <!-- Curator mode only: edit this couplet in TaxonWorks -->
+        <TwEditLink
+          class="key-print-hide self-start"
+          icon-class="size-4"
+          :href="twEditUrl.lead(couplet.id)"
+          :title="`Edit couplet ${couplet.coupletNumber} in TaxonWorks`"
+        />
       </div>
     </section>
 
@@ -118,6 +125,8 @@ import { partitionCoupletFigures } from '../lib/images.js'
 import LeadText from './LeadText.vue'
 import TaxonLink from './TaxonLink.vue'
 import LeadFigures from './LeadFigures.vue'
+import TwEditLink from '../../../panels/_shared/curatorMode/TwEditLink.vue'
+import { twEditUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
 const props = defineProps({
   keyId: { type: [String, Number], required: true },

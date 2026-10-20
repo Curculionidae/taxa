@@ -4,9 +4,11 @@ taxa_page:
       - - - id: panel:gallery-v2
             bind:
               subMaxImages: 11
-          - panel:descendants
+          - panel:overlay-descendants
+#         - panel:descendants
           - panel:nomenclature
-          - panel:nomenclature-references
+          - panel:overlay-nomenclature-references
+#         - panel:nomenclature-references
           - panel:type
           - panel:type-specimen
 
@@ -55,7 +57,8 @@ taxa_page:
   references:
     label: 'Bibliography'
     panels:
-      - - - id: panel:references-cited
+      - - - id: panel:overlay-references-cited
+#     - - - id: panel:references-cited
             bind:
               title: 'Bibliography'
 

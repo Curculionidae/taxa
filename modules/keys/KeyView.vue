@@ -7,6 +7,7 @@
         <KeyHeader
           class="flex-1"
           :meta="meta"
+          :root-lead-id="route.params.id"
           :completeness="completeness"
           :completeness-loading="completenessLoading"
           :references="references"

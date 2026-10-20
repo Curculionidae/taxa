@@ -123,6 +123,7 @@
             <VTableHeaderRow>
               <VTableHeaderCell class="w-2" />
               <VTableHeaderCell> Sources </VTableHeaderCell>
+              <VTableHeaderCell v-if="isCuratorMode" />
             </VTableHeaderRow>
           </VTableHeader>
           <VTableBody>
@@ -143,6 +144,13 @@
                 class="break-all"
                 v-html="sanitizeAndLinkifyHtml(item.cached)"
               />
+              <!-- Curator mode only: edit the source, and its PDF when it has one -->
+              <VTableBodyCell
+                v-if="isCuratorMode"
+                class="whitespace-nowrap text-right align-middle"
+              >
+                <TwSourceLinks :source-id="item.id" />
+              </VTableBodyCell>
             </VTableBodyRow>
           </VTableBody>
         </VTable>
@@ -174,6 +182,10 @@ import VSlider from '@/modules/bibliography/components/VSlider.vue'
 import { createWordSearch, getAllMatches } from './utils/wordSearch.js'
 import { toBibtex } from './utils/bibtex.js'
 import OtuModal from './components/OtuModal.vue'
+import TwSourceLinks from '../../panels/_shared/curatorMode/TwSourceLinks.vue'
+import { useCuratorMode } from '../../panels/_shared/curatorMode/curatorMode.js'
+
+const isCuratorMode = useCuratorMode()
 
 const PER = 50
 const MIN_YEAR = 1650

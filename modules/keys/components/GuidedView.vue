@@ -12,7 +12,12 @@
     </nav>
 
     <div class="flex items-baseline justify-between mb-3">
-      <h2 class="text-lg font-semibold text-base-content">Couplet {{ current.coupletNumber }}</h2>
+      <h2 class="text-lg font-semibold text-base-content">Couplet {{ current.coupletNumber }}<TwEditLink
+          class="key-print-hide ml-2 align-middle"
+          icon-class="size-4"
+          :href="current.id ? twEditUrl.lead(current.id) : null"
+          :title="`Edit couplet ${current.coupletNumber} in TaxonWorks`"
+        /></h2>
       <RouterLink
         v-if="parentCouplet"
         :to="to(parentCouplet.coupletNumber)"
@@ -53,6 +58,8 @@ import { leadGeoStatus } from '../lib/geoMatch.js'
 import { partitionCoupletFigures } from '../lib/images.js'
 import GuidedChoice from './GuidedChoice.vue'
 import LeadFigures from './LeadFigures.vue'
+import TwEditLink from '../../../panels/_shared/curatorMode/TwEditLink.vue'
+import { twEditUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
 const props = defineProps({
   keyId: { type: [String, Number], required: true },

@@ -2,6 +2,12 @@
 
 Not a panel — no `main.js`, so the taxonpages panel loader ignores this directory (same convention as `panels/_gbifShared/`). Holds components shared by multiple panels, imported by relative path.
 
+## curatorMode/
+
+Everything for curator mode (hidden "Edit in TaxonWorks" links, `?curator=1`): the switch,
+`TwEditLink.vue`, the overlay pencil helpers, the source-id lookup and the two buttons. See
+`curatorMode/readme.md`.
+
 ## fetchAllPages.js
 
 `fetchAllPages(url, params, { per = 500, concurrency = 4, cacheKey, signal } = {})` → follows the `pagination-total-pages` response header to fetch every page of a paginated index endpoint instead of assuming one `per`-sized page has everything, returning the flattened array of all pages' records. Remaining pages run through a small worker pool (`concurrency`), not one unbounded `Promise.all` burst. When `cacheKey` is given, every page (not just the first) is routed through `useOtuPageRequest` under its own key (`cacheKey`, `${cacheKey}:page2`, ...) so the package's debug "view JSON used to build this page" link reflects the full fetch.

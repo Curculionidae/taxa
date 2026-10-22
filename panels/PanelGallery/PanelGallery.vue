@@ -1,9 +1,11 @@
 <template>
   <VCard v-if="showCard">
-    <!-- Source tabs — only when more than one source has images to offer -->
+    <!-- Source tabs — only when more than one source has images to offer.
+         pt-2/pb-* because the header's own py-3.5 overrides a plain p-2. -->
     <VCardHeader
       v-if="visibleTabs.length > 1"
-      class="flex flex-wrap items-center gap-1.5 p-2"
+      class="flex flex-wrap items-center gap-1.5 p-2 pt-2"
+      :class="activeNote && !activeLoading ? 'pb-1' : 'pb-2'"
     >
       <button
         v-for="t in visibleTabs"
@@ -25,7 +27,8 @@
       </button>
     </VCardHeader>
 
-    <VCardContent>
+    <!-- Pull the notice / image up under the tabs instead of the default p-5 gap -->
+    <VCardContent :class="activeNote && !activeLoading ? 'pt-0.5' : visibleTabs.length > 1 ? 'pt-2' : ''">
       <VSpinner v-if="activeLoading" />
       <template v-else>
         <p

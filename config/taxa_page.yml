@@ -9,7 +9,7 @@ taxa_page:
           - panel:nomenclature
           - panel:overlay-nomenclature-references
 #         - panel:nomenclature-references
-          - panel:type
+#          - panel:type
           - panel:type-specimen
 
         - - panel:map-v2

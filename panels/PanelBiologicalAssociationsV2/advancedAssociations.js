@@ -1,5 +1,5 @@
 import { alphabetical, relationshipValue } from './groupStandardAssociations.js'
-import { anatomicalPartName, displayFamily, hasTaxonName, plainText, resolveSpecimenRef, specimenKey } from './makeBiologicalAssociation.js'
+import { anatomicalPartName, displayFamily, hasTaxonName, plainText, publishedTaxonName, resolveSpecimenRef, specimenKey } from './makeBiologicalAssociation.js'
 import { isReferenceCitation, rankName } from './loadAdvancedAssociations.js'
 import { citationWithoutPages } from '../_shared/citationText.js'
 export { advancedScope } from './browserSessionStorage.js'
@@ -70,7 +70,8 @@ export function advancedParticipant(row, side, taxa, original = false, classific
   const entity = row[side] || {}
   const otuId = row[`${side}_otu_id`] || (entity.type === 'Otu' ? entity.id : null)
   const otu = taxa.otuById.get(String(otuId))
-  const taxon = (!original && otu?.accepted_taxon_name) || otu?.taxon_name
+  const filedTaxon = (!original && otu?.accepted_taxon_name) || otu?.taxon_name
+  const taxon = publishedTaxonName(filedTaxon)
   const specimen = resolveSpecimenRef({ base_class: entity.type, id: entity.id, object_label: entity.label })
   const dwc = specimen && taxa.dwcBySpecimen.get(specimenKey(specimen))
   const part = anatomicalPartName(entity)
@@ -99,7 +100,8 @@ export function advancedParticipant(row, side, taxa, original = false, classific
   const family = familyLevel ? indexFamily || names.genus : indexFamily
   const participant = {
     ...names, family, subfamily: taxonomy.subfamily || '', tribe: taxonomy.tribe || '',
-    genusOtuId: taxonomy.genusOtuId || null,
+    // A name published in another genus would link to the genus it is filed under
+    genusOtuId: taxon === filedTaxon ? taxonomy.genusOtuId || null : null,
     part: displayFamily(part),
     otuId: linked && family ? (!original && otu?.accepted_otu_id) || otuId : null,
     specimen, italic: linked && !!scientificName, dwc, hasTaxonName: linked

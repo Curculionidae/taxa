@@ -15,7 +15,7 @@
 
 import { isSpecimenType, resolveSpecimenRef, specimenKey } from '../_shared/specimenRef.js'
 import { escHtml, splitScientificName } from '../_shared/scientificName.js'
-import { extractOtuTagSpan, otuDistinctOwnName, withoutOtuOwnName } from '../_shared/otuTag.js'
+import { extractOtuTagSpan, nameKey, otuDistinctOwnName, withoutOtuOwnName } from '../_shared/otuTag.js'
 export { isSpecimenType, resolveSpecimenRef, specimenKey }
 
 /** Plain text for taxonomic name columns, filters and spreadsheet copying. */
@@ -32,6 +32,33 @@ export function displayFamily(value) {
 
 export function hasTaxonName(otu) {
   return !!(otu?.accepted_taxon_name?.id || otu?.taxon_name_id || otu?.taxon_name?.id)
+}
+
+/**
+ * A plant synonym's TaxonName as it was published; any other TaxonName as is.
+ *
+ * TaxonWorks files a synonym under the parent of its valid name and builds
+ * `cached` from that parent. A name published in another genus therefore
+ * reads as one nobody published: Dorycnium suffruticosum Vill. under Lotus as
+ * "Lotus suffruticosus Vill." (OTU 736069), Lens esculenta Moench under Vicia
+ * as "Vicia esculenta Moench" -- a homonym of V. esculenta Salisb., the broad
+ * bean. Only the original combination keeps the genus of publication; its
+ * author follows it, as on the package's Nomenclature panel.
+ *
+ * ICN synonyms only. An ICZN name marks a transfer itself, with the author in
+ * parentheses, and the original combination of a valid name is its basionym,
+ * not the name.
+ *
+ * Used by the Raw data and Advanced views only; the Field Assistant shows
+ * accepted names.
+ */
+export function publishedTaxonName(taxonName) {
+  const original = taxonName?.cached_original_combination
+  const synonym = taxonName?.cached_valid_taxon_name_id != null
+    && String(taxonName.cached_valid_taxon_name_id) !== String(taxonName.id)
+  if (!original || original === taxonName.cached || !synonym || taxonName.nomenclatural_code !== 'icn') return taxonName
+  return { ...taxonName, cached: original,
+    cached_html: taxonName.cached_original_combination_html || `<i>${escHtml(original)}</i>` }
 }
 
 /**
@@ -125,6 +152,20 @@ function recordedName(otu) {
   return taxonNameHtml(otu?.taxon_name)
 }
 
+/**
+ * The recorded name of a plant synonym as published (see publishedTaxonName),
+ * or null when TaxonWorks' own name stands. A name of the OTU's own is still
+ * the name to show (otuTag.js), unless it only repeats the published one:
+ * "Dorycnium suffruticosum" on Lotus suffruticosus Vill. (OTU 736069) is the
+ * name TaxonWorks could not show, and gains its author here.
+ */
+function publishedName(entity, otu, otuLink) {
+  const published = publishedTaxonName(otu?.taxon_name)
+  if (published === otu?.taxon_name) return null
+  const ownName = otuLink ? otuLink.ownName : otuDistinctOwnName(extractOtuTagSpan(entity?.object_tag))
+  return ownName && nameKey(ownName) !== nameKey(published.cached) ? null : taxonNameHtml(published)
+}
+
 function taxonNameHtml(taxonName) {
   const name = taxonName?.cached_html || (taxonName?.cached ? `<i>${escHtml(taxonName.cached)}</i>` : '')
   if (!name) return null
@@ -163,8 +204,10 @@ function nameHtmlFromScientificName(scientificName) {
  * indefinitus", OTU 722800). The recorded name then comes from the object_tag's
  * "det. <otu_tag>" span, or -- for an AnatomicalPart wrapping the specimen,
  * whose tag has no such span -- from the determination OTU (`recordedHtml`).
+ * A plant synonym published in another genus reads wrong in both; its
+ * `publishedHtml` (see publishedName) then replaces them.
  */
-function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recordedHtml = null, otuLink = null) {
+function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recordedHtml = null, otuLink = null, publishedHtml = null) {
   // "sp." for a genus-only determination of a specimen, also when an
   // AnatomicalPart (a nidus, an egg) wraps that specimen.
   const speciesHtml = extractNameHtml(entity.object_tag, dropAcceptedTail, !!resolveSpecimenRef(entity), otuLink)
@@ -186,8 +229,8 @@ function buildLabelParts(entity, specimenName, dropAcceptedTail = false, recorde
     }
   }
 
-  if (dropAcceptedTail && (speciesHtml || recordedHtml)) {
-    return { prefix, html: speciesHtml || recordedHtml }
+  if (dropAcceptedTail && (publishedHtml || speciesHtml || recordedHtml)) {
+    return { prefix, html: publishedHtml || speciesHtml || recordedHtml }
   }
 
   // Preferred for any CO/FO (directly, or wrapped in an AnatomicalPart): the
@@ -239,9 +282,11 @@ export function makeBiologicalAssociation(
   const objAccepted  = acceptedName(objOtu)
 
   const subjLabel = buildLabelParts(subj, subjDwc?.scientificName || null, !!subjAccepted,
-    subjAccepted ? recordedName(subjOtu) : null, otuLink(subj))
+    subjAccepted ? recordedName(subjOtu) : null, otuLink(subj),
+    subjAccepted ? publishedName(subj, subjOtu, otuLink(subj)) : null)
   const objLabel  = buildLabelParts(obj, objDwc?.scientificName || null, !!objAccepted,
-    objAccepted ? recordedName(objOtu) : null, otuLink(obj))
+    objAccepted ? recordedName(objOtu) : null, otuLink(obj),
+    objAccepted ? publishedName(obj, objOtu, otuLink(obj)) : null)
 
   return {
     id: data.id,

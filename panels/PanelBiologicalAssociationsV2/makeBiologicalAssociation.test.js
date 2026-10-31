@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { makeBiologicalAssociation } from './makeBiologicalAssociation.js'
+import { makeBiologicalAssociation, publishedTaxonName } from './makeBiologicalAssociation.js'
 
 // Real API shapes captured from /biological_associations?extend[]=object,subject
 // on sfg.taxonworks.org (project 40). A CO/FO subject/object serialises its
@@ -260,4 +260,69 @@ test('a specimen keeps the link to the OTU it is filed under', () => {
   const links = new Map([['1411454', { ownName: null, otuId: 999 }], ['5000', { ownName: null, otuId: 999 }]])
   const ba = makeBiologicalAssociation(baseData, [], [], [], basic, new Map(), new Map(), links)
   assert.equal(ba.subjectOtuId, 1411454)
+})
+
+// Dorycnium suffruticosum Vill. (TN 1630373) is filed, as TaxonWorks wants a
+// synonym, under Lotus, the genus of its valid name; `cached` therefore reads
+// "Lotus suffruticosus". OTU 736069 carries the published name as its own.
+// Shapes from /otus?otu_id[]=736069&extend[]=taxon_name and the association's
+// object_tag (2026-10-28).
+const LOTUS_DORYCNIUM = {
+  id: 1630374, nomenclatural_code: 'icn', cached: 'Lotus dorycnium', cached_html: '<i>Lotus dorycnium</i>',
+  cached_author_year: 'L.', cached_valid_taxon_name_id: 1630374
+}
+const DORYCNIUM_SUFFRUTICOSUM = {
+  id: 1630373, type: 'Protonym', nomenclatural_code: 'icn', cached: 'Lotus suffruticosus',
+  cached_html: '<i>Lotus suffruticosus</i>', cached_author_year: 'Vill.',
+  cached_original_combination: 'Dorycnium suffruticosum',
+  cached_original_combination_html: '<i>Dorycnium suffruticosum</i>', cached_valid_taxon_name_id: 1630374
+}
+const DORYCNIUM_OTU = {
+  id: 736069, name: 'Dorycnium suffruticosum', taxon_name_id: 1630373, taxon_name: DORYCNIUM_SUFFRUTICOSUM,
+  accepted_otu_id: 1447207, accepted_taxon_name: LOTUS_DORYCNIUM
+}
+const DORYCNIUM_OBJECT = {
+  base_class: 'Otu',
+  id: 736069,
+  object_tag: '<span class="otu_tag"><i>Lotus suffruticosus</i> Vill.&nbsp;<b>Dorycnium suffruticosum</b> <em>now</em> <i>Lotus dorycnium</i> L.&nbsp;<b>Dorycnium suffruticosum</b></span>',
+  object_label: 'Lotus suffruticosus Vill. Dorycnium suffruticosum now Lotus dorycnium L. Dorycnium suffruticosum'
+}
+
+test('a plant synonym from another genus reads as published, with its author', () => {
+  const row = { ...basic, object_otu_id: 736069 }
+  const otus = new Map([['736069', DORYCNIUM_OTU]])
+  const data = { ...baseData, object: DORYCNIUM_OBJECT }
+  // The own name only repeats the published name, from the tag and from the OTU record
+  for (const links of [new Map(), new Map([['736069', { ownName: 'Dorycnium suffruticosum', otuId: 736069 }]])]) {
+    const ba = makeBiologicalAssociation(data, [], [], [], row, new Map(), otus, links)
+    assert.equal(ba.objectSpeciesHtml, '<i>Dorycnium suffruticosum</i> Vill.')
+    assert.equal(ba.objectAcceptedNameHtml, '<i>Lotus dorycnium</i> L.')
+  }
+  // Without its own name, the OTU would otherwise show "Lotus suffruticosus Vill."
+  const plainTag = { ...DORYCNIUM_OBJECT, object_tag: '<span class="otu_tag"><i>Lotus suffruticosus</i> Vill. <em>now</em> <i>Lotus dorycnium</i> L.</span>' }
+  const plain = makeBiologicalAssociation({ ...baseData, object: plainTag }, [], [], [], row, new Map(),
+    new Map([['736069', { ...DORYCNIUM_OTU, name: null }]]))
+  assert.equal(plain.objectSpeciesHtml, '<i>Dorycnium suffruticosum</i> Vill.')
+})
+
+test('an own name other than the published one still stands', () => {
+  const row = { ...basic, object_otu_id: 736069 }
+  const otus = new Map([['736069', { ...DORYCNIUM_OTU, name: 'Dorycnium sp.' }]])
+  const links = new Map([['736069', { ownName: 'Dorycnium sp.', otuId: 736069 }]])
+  const ba = makeBiologicalAssociation({ ...baseData, object: DORYCNIUM_OBJECT }, [], [], [], row, new Map(), otus, links)
+  assert.equal(ba.objectSpeciesHtml, 'Dorycnium sp.')
+})
+
+test('only an ICN synonym with an original combination reads as published', () => {
+  assert.equal(publishedTaxonName(DORYCNIUM_SUFFRUTICOSUM).cached, 'Dorycnium suffruticosum')
+  // a valid name's original combination is its basionym (Lychnis alba)
+  const silene = { id: 1585386, nomenclatural_code: 'icn', cached: 'Silene latifolia subsp. alba',
+    cached_author_year: '(Mill.) Greuter & Burdet', cached_original_combination: 'Lychnis alba', cached_valid_taxon_name_id: 1585386 }
+  assert.equal(publishedTaxonName(silene), silene)
+  // an ICZN synonym marks the transfer with parentheses around the author
+  const weevil = { ...DORYCNIUM_SUFFRUTICOSUM, nomenclatural_code: 'iczn' }
+  assert.equal(publishedTaxonName(weevil), weevil)
+  // without an original combination there is nothing else to show
+  const lens = { ...DORYCNIUM_SUFFRUTICOSUM, cached_original_combination: null, cached_original_combination_html: null }
+  assert.equal(publishedTaxonName(lens), lens)
 })

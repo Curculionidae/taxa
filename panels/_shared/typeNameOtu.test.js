@@ -84,3 +84,39 @@ test('findTypeNameOtuId: null on a failed request or a name without an OTU, neve
     null
   )
 })
+
+test('findTypeNameOtuId: a failed lookup is not kept, the next call asks again', async () => {
+  const cache = new Map()
+  let fail = true
+  const get = async (path, config = {}) => {
+    if (fail) throw new Error('timeout')
+    if (path === '/taxon_names') return { data: [meridionalis] }
+    return { data: [{ id: 732705, name: null }] }
+  }
+  const status = 'syntypes of Bothynoderes meridionalis Chevrolat, 1873'
+  assert.equal(await findTypeNameOtuId(status, { get, cache }), null)
+  fail = false
+  assert.equal(await findTypeNameOtuId(status, { get, cache }), 732705)
+})
+
+test('findTypeNameOtuId: a name with no match is kept (no second lookup)', async () => {
+  const cache = new Map()
+  let calls = 0
+  const get = async () => { calls++; return { data: [otherMeridionalis] } }
+  const status = 'syntypes of Bothynoderes meridionalis Chevrolat, 1873'
+  await findTypeNameOtuId(status, { get, cache })
+  await findTypeNameOtuId(status, { get, cache })
+  assert.equal(calls, 1)
+})
+
+test('findTypeNameOtuId: reads every page of names with the epithet', async () => {
+  const get = async (path, { params }) => {
+    if (path === '/otus') return { data: [{ id: 732705, name: null }] }
+    const pages = [[otherMeridionalis], [meridionalis]]
+    return { data: pages[params.page - 1], headers: { 'pagination-total-pages': '2' } }
+  }
+  assert.equal(
+    await findTypeNameOtuId('syntypes of Bothynoderes meridionalis Chevrolat, 1873', { get }),
+    732705
+  )
+})

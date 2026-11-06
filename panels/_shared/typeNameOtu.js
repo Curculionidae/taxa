@@ -17,6 +17,7 @@
 
 import { splitScientificName } from './scientificName.js'
 import { pickTaxonPageOtu } from './otuLink.js'
+import { getAllPages } from './pagedGet.js'
 
 /**
  * The name a type status names, or null for a bare status ("paratype"). Pure.
@@ -35,43 +36,46 @@ export function typeStatusName(status) {
 
 const bare = (author) => String(author || '').replace(/[()]/g, '').trim()
 
-const cache = new Map() // status -> Promise<otuId | null>
+const moduleCache = new Map() // status -> Promise<otuId | null>
 
 /**
+ * Cached per status for the page's lifetime. An answer is kept, also "no
+ * match"; a failed request is not, so the next chip asks again.
  * @param {string} status  one status, "<type> of <name> <author>"
- * @param {{ get?: Function }} [options]  `get` is injectable for unit tests (bypasses the cache)
+ * @param {{ get?: Function, cache?: Map }} [options]  injectable for unit
+ *   tests; a `get` without a `cache` bypasses caching
  * @returns {Promise<number|null>}  never rejects
  */
-export function findTypeNameOtuId(status, { get } = {}) {
-  if (get) return lookUp(status, get)
+export function findTypeNameOtuId(status, { get, cache = get ? null : moduleCache } = {}) {
+  if (!cache) return lookUp(status, get).catch(() => null)
   if (!cache.has(status)) {
-    const pending = lookUp(status)
-    cache.set(status, pending)
+    cache.set(
+      status,
+      lookUp(status, get).catch(() => {
+        cache.delete(status)
+        return null
+      })
+    )
   }
   return cache.get(status)
 }
 
+// Rejects when a request fails, null when there is nothing to link.
 async function lookUp(status, get) {
   const parsed = typeStatusName(status)
   if (!parsed) return null
-  try {
-    // dynamic, so node --test needn't resolve the `@/` alias
-    const request = get || (await import('@/utils/request')).makeAPIRequest.get
-    const { data: names } = await request('/taxon_names', {
-      params: { name: parsed.epithet, per: 500 }
-    })
-    const matches = (Array.isArray(names) ? names : []).filter(
-      (n) =>
-        n.cached_original_combination === parsed.name &&
-        bare(n.cached_author_year) === bare(parsed.author)
-    )
-    if (matches.length !== 1) return null
-    const { data: otus } = await request('/otus', {
-      params: { 'taxon_name_id[]': matches[0].id }
-    })
-    const list = Array.isArray(otus) ? otus : []
-    return (pickTaxonPageOtu(list) || list[0])?.id ?? null
-  } catch {
-    return null
-  }
+  // dynamic, so node --test needn't resolve the `@/` alias
+  const request = get || (await import('@/utils/request')).makeAPIRequest.get
+  const names = await getAllPages(request, '/taxon_names', { name: parsed.epithet })
+  const matches = names.filter(
+    (n) =>
+      n.cached_original_combination === parsed.name &&
+      bare(n.cached_author_year) === bare(parsed.author)
+  )
+  if (matches.length !== 1) return null
+  const { data: otus } = await request('/otus', {
+    params: { 'taxon_name_id[]': matches[0].id }
+  })
+  const list = Array.isArray(otus) ? otus : []
+  return (pickTaxonPageOtu(list) || list[0])?.id ?? null
 }

@@ -16,8 +16,7 @@
           class="underline underline-offset-2 hover:no-underline"
           :style="{ color: 'inherit' }"
           @click="emit('navigate')"
-          v-html="typeStatusHtmlParts(label).name"
-        /></template>
+        ><span v-html="typeStatusHtmlParts(label).name" /></RouterLink></template>
         <span
           v-else
           v-html="typeStatusHtml(label)"
@@ -50,7 +49,7 @@
 //   - ./DwcTable.vue (identity block, with `linkNames`)
 //   - ../PanelSpecimenOccurrences/components/ListRecords.vue (list rows)
 //   - ../PanelMapV2/components/MapPopup.vue (specimen and type material rows)
-import { computed, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, watch } from 'vue'
 import './panel-tokens.css'
 import { typeLabelStyle, typeStatusLabels } from './typeStatus.js'
 import { typeStatusHtml, typeStatusHtmlParts } from './scientificName.js'
@@ -72,20 +71,24 @@ const emit = defineEmits(['navigate'])
 
 const labels = computed(() => [...new Set(typeStatusLabels(props.status))])
 
-// label -> OTU id, filled in as the lookups come back
+// label -> OTU id, filled in as the lookups come back. Browser only (looked
+// up from onMounted): server-rendered, the chips are plain and the lookups
+// don't fill a cache shared by every visitor.
 const otuIdByLabel = reactive({})
 
-watch(
-  () => (props.linkNames ? labels.value : []),
-  (list) => {
-    for (const label of list) {
-      if (label in otuIdByLabel) continue
-      otuIdByLabel[label] = null
-      findTypeNameOtuId(label).then((id) => {
-        otuIdByLabel[label] = id
-      })
-    }
-  },
-  { immediate: true }
-)
+function lookUpLinks() {
+  if (!props.linkNames) return
+  for (const label of labels.value) {
+    if (label in otuIdByLabel) continue
+    otuIdByLabel[label] = null
+    findTypeNameOtuId(label).then((id) => {
+      otuIdByLabel[label] = id
+    })
+  }
+}
+
+onMounted(() => {
+  lookUpLinks()
+  watch(labels, lookUpLinks)
+})
 </script>

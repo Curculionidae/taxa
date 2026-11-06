@@ -8,13 +8,10 @@ project: "TaxonPages: Curculionidae of the World"
     <img src="/images/otiorhynchus_carinatopunctatus_500.png" 
          alt="Otiorhynchus (Nihus) carinatopunctatus (Retzius, 1783). Photo by Jakob Jilg">
   </a>
+  <RandomImage />
   <a href="#/otus/729972/overview">
     <img src="/images/chlorophanus_viridis_500.png" 
          alt="Chlorophanus viridis (Linnaeus, 1758). Photo by Jakob Jilg">
-  </a>
-  <a href="#/otus/718330/overview">
-    <img src="/images/exophtalmus_triangulifer_500.png" 
-         alt="Exophthalmus triangulifer Champion, 1911. Photo by Jakob Jilg">
   </a>
 </div>
 

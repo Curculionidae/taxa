@@ -4,7 +4,8 @@ import {
   escHtml,
   splitScientificName,
   scientificNameHtml,
-  typeStatusHtml
+  typeStatusHtml,
+  typeStatusHtmlParts
 } from './scientificName.js'
 
 test('escHtml: escapes &, <, > and is null/undefined-safe', () => {
@@ -151,4 +152,15 @@ test('splitScientificName: an unrecognised rank falls back to the spelling', () 
   })
   // A recognised genus-or-lower rank wins over the spelling
   assert.deepEqual(splitScientificName('Ausini Smith', { rank: 'genus' }), { italic: 'Ausini', plain: 'Smith' })
+})
+
+test('typeStatusHtmlParts: the status prefix and the name as separate HTML, together typeStatusHtml', () => {
+  const s = 'syntypes of Bothynoderes meridionalis Chevrolat, 1873'
+  const parts = typeStatusHtmlParts(s)
+  assert.deepEqual(parts, {
+    prefix: 'syntypes of ',
+    name: '<em>Bothynoderes meridionalis</em> Chevrolat, 1873'
+  })
+  assert.equal(parts.prefix + parts.name, typeStatusHtml(s))
+  assert.deepEqual(typeStatusHtmlParts('paratype'), { prefix: 'paratype', name: '' })
 })

@@ -88,6 +88,8 @@
             v-if="dwc.typeStatus"
             class="mt-1.5"
             :status="dwc.typeStatus"
+            link-names
+            @navigate="isModalVisible = false"
           />
           <!-- Tagged "Adventive" (introduced) in TaxonWorks: the same purple the
                map draws the specimen in (./adventive.js) -->

@@ -10,8 +10,19 @@
       <span
         class="inline-block max-w-full break-words text-xs font-medium rounded px-1.5 py-0.5 [&_em]:italic"
         :style="typeLabelStyle(label)"
-        v-html="typeStatusHtml(label)"
-      />
+      >
+        <template v-if="otuIdByLabel[label]"><span v-html="typeStatusHtmlParts(label).prefix" /><RouterLink
+          :to="{ name: 'otus-id', params: { id: otuIdByLabel[label] } }"
+          class="underline underline-offset-2 hover:no-underline"
+          :style="{ color: 'inherit' }"
+          @click="emit('navigate')"
+          v-html="typeStatusHtmlParts(label).name"
+        /></template>
+        <span
+          v-else
+          v-html="typeStatusHtml(label)"
+        />
+      </span>
     </div>
   </div>
 </template>
@@ -26,25 +37,55 @@
 // Nothing is rendered for an empty one. Spacing is the caller's: pass a
 // margin class.
 //
+// `linkNames` links the name in each chip to that name's OTU page (found by
+// ./typeNameOtu.js; a name it can't pin down stays plain). Off by default: the
+// map popup and the specimen list rows are themselves clickable. A click on
+// the link emits `navigate`, so the caller can close its modal. The link keeps
+// the chip's ink (the global `a` colour would be unreadable on the chip).
+//
 // Each chip is an inline-block on purpose: a clickable row that underlines
 // itself on hover (the map popup) then leaves the label alone.
 //
 // Depended on by:
-//   - ./DwcTable.vue (identity block)
+//   - ./DwcTable.vue (identity block, with `linkNames`)
 //   - ../PanelSpecimenOccurrences/components/ListRecords.vue (list rows)
 //   - ../PanelMapV2/components/MapPopup.vue (specimen and type material rows)
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import './panel-tokens.css'
 import { typeLabelStyle, typeStatusLabels } from './typeStatus.js'
-import { typeStatusHtml } from './scientificName.js'
+import { typeStatusHtml, typeStatusHtmlParts } from './scientificName.js'
+import { findTypeNameOtuId } from './typeNameOtu.js'
 
 const props = defineProps({
   // "holotype of Aus bus Author, 1900", or several joined by " | ".
   status: {
     type: String,
     default: ''
+  },
+  linkNames: {
+    type: Boolean,
+    default: false
   }
 })
 
+const emit = defineEmits(['navigate'])
+
 const labels = computed(() => [...new Set(typeStatusLabels(props.status))])
+
+// label -> OTU id, filled in as the lookups come back
+const otuIdByLabel = reactive({})
+
+watch(
+  () => (props.linkNames ? labels.value : []),
+  (list) => {
+    for (const label of list) {
+      if (label in otuIdByLabel) continue
+      otuIdByLabel[label] = null
+      findTypeNameOtuId(label).then((id) => {
+        otuIdByLabel[label] = id
+      })
+    }
+  },
+  { immediate: true }
+)
 </script>

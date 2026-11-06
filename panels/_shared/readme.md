@@ -201,7 +201,15 @@ raw table turn plain or doubled again, check the tag shape first.
 
 The type-status chip: "holotype of *Aus bus* Author, 1900" on a red label for a name-bearing type, a yellow one for other type material (paratype, ...), black print on both. One prop, `status`: one status or a whole DwC `typeStatus` cell (" | "-joined). Every status gets a chip of its own, coloured on its own; nothing is rendered for an empty one. Colour comes from `typeLabelStyle()` in `typeStatus.js`, the italics from `typeStatusHtml()` in `scientificName.js`, the tokens from `panel-tokens.css`, which the component imports itself. Spacing is the caller's: pass a margin class.
 
-Depended on by `DwcTable.vue` (identity block), `PanelSpecimenOccurrences/components/ListRecords.vue` (list rows) and `PanelMapV2/components/MapPopup.vue` (specimen and type material rows). Until 2026-10-11 the first two each had their own copy of the markup and the map popup printed the status as plain text. If you change it, check all three.
+`linkNames` (off by default) links the name in each chip to that name's OTU page, through `typeNameOtu.js`; a name it can't pin down stays plain. The link keeps the chip's black print (the global `a` colour is unreadable on the chip), and a click emits `navigate` so the caller can close its modal. Only `DwcTable.vue` turns it on: the map popup and specimen list rows are clickable themselves.
+
+Depended on by `DwcTable.vue` (identity block, with `linkNames`), `PanelSpecimenOccurrences/components/ListRecords.vue` (list rows) and `PanelMapV2/components/MapPopup.vue` (specimen and type material rows). Until 2026-10-11 the first two each had their own copy of the markup and the map popup printed the status as plain text. If you change it, check all three.
+
+## typeNameOtu.js
+
+`findTypeNameOtuId(status)`: the OTU id of the name a type status names ("syntypes of Bothynoderes meridionalis Chevrolat, 1873" → the *Asproparthenis meridionalis* page), or null. Cached per status, never rejects. `typeStatusName(status)` is the pure parse (`{ name, author, epithet }`).
+
+TaxonWorks doesn't say which name record a type belongs to (a specimen's `type_material` entry carries only label text), so this matches the label against what TaxonWorks builds it from: `/taxon_names?name=<epithet>`, then the one row whose `cached_original_combination` equals the name and whose `cached_author_year` (parentheses dropped) equals the author; then `/otus?taxon_name_id[]=` (`pickTaxonPageOtu`). No match, or more than one: null, the name stays unlinked. Used by `TypeStatusChip.vue` (`linkNames`). Tests: `typeNameOtu.test.js`.
 
 ## SimpleKeyChip.vue
 

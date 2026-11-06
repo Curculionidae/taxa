@@ -164,10 +164,25 @@ export function scientificNameHtml(name, { tag = 'em', rank } = {}) {
  * @param {{tag?: string}} [opt] wrapping tag for the italic part (default 'em')
  * @returns {string}
  */
-export function typeStatusHtml(status, { tag = 'em' } = {}) {
+export function typeStatusHtml(status, opt) {
+  const { prefix, name } = typeStatusHtmlParts(status, opt)
+  return prefix + name
+}
+
+/**
+ * typeStatusHtml in two parts, for a caller that wraps the name (a link):
+ * `prefix` is the escaped "syntypes of " (trailing space kept), `name` the
+ * name's HTML, '' for a bare status.
+ * @param {string} status
+ * @param {{tag?: string}} [opt]
+ * @returns {{prefix: string, name: string}}
+ */
+export function typeStatusHtmlParts(status, { tag = 'em' } = {}) {
   const str = String(status || '')
-  if (!str) return ''
   const idx = str.lastIndexOf(' of ')
-  if (idx === -1) return escHtml(str)
-  return escHtml(str.slice(0, idx + 4)) + scientificNameHtml(str.slice(idx + 4), { tag })
+  if (idx === -1) return { prefix: escHtml(str), name: '' }
+  return {
+    prefix: escHtml(str.slice(0, idx + 4)),
+    name: scientificNameHtml(str.slice(idx + 4), { tag })
+  }
 }

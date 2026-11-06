@@ -16,7 +16,7 @@
       <AnimateNumber
         class="font-semibold tabular-nums"
         :number="p.count"
-        :duration="2600"
+        :duration="3500"
       />
       <span class="text-xs">{{ p.label }}</span>
     </span>
@@ -25,20 +25,21 @@
 
 <script setup>
 // The "project at a glance" figures under the hero images on the home page.
-// Pattern borrowed from sfg-taxonpages/orthoptera SectionData.vue: seed each
-// figure with a rough estimate so the count-up starts immediately, then let the
-// /stats call (and the validity-scoped taxon-name query that ValidSpeciesCount
-// still runs for pages/about.md) overwrite each with the real number, which
-// re-drives <AnimateNumber>. Seeds are deliberately BELOW the real figures so
-// the correction only ever counts upward; the catalog only grows. A failed
-// request just leaves the estimate showing.
+// The count-up starts at once, toward the last known real figures: the ones
+// this browser saw on its last visit (STORAGE_KEY), else the built-in
+// BUILT_IN figures. The live requests then replace them. /stats takes about
+// 3 s, so the count-up lasts 3.5 s (it eases out: most of the climb is in the
+// first second) and the live figure lands while it still runs, which moves
+// its end point with no pause. Should it land later, <AnimateNumber> only
+// ticks the small difference. Starting from real figures keeps that small. A failed request
+// just leaves the last known figure showing.
 //
 // "taxon names" is NOT the /stats figure: that one is project-wide and also
 // counts the host plants and other taxa that only exist as partners in
 // biological associations. It is a header count of the names under
 // Curculionoidea instead, same root as "valid species".
 
-import { reactive, computed, onMounted } from 'vue'
+import { reactive, computed, onMounted, watch } from 'vue'
 import { makeAPIRequest } from '@/utils'
 import AnimateNumber from './AnimateNumber.vue'
 import {
@@ -49,16 +50,41 @@ import {
 // The root this catalog covers.
 const ROOT_TAXON_NAME_ID = CURCULIONOIDEA_TAXON_NAME_ID
 
-// Roughly two thirds of the current real figures: enough runway that the
-// correction is a visible continuation, never a jump, and always upward.
-const counts = reactive({
-  species: 14000,
-  names: 22000,
-  specimens: 16000,
-  distributions: 32000,
-  bioassoc: 1900,
-  images: 800,
-  refs: 4800
+// The real figures on 2026-11-06. Only a fallback for a first visit; worth
+// refreshing now and then so the live correction stays small.
+const BUILT_IN = {
+  species: 23631,
+  names: 37940,
+  specimens: 26136,
+  distributions: 53838,
+  bioassoc: 4329,
+  images: 1435,
+  refs: 7998
+}
+
+const STORAGE_KEY = 'tp-home-stats'
+
+function lastSeen() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY))
+
+    return Object.fromEntries(
+      Object.keys(BUILT_IN)
+        .filter((key) => Number.isFinite(stored?.[key]))
+        .map((key) => [key, stored[key]])
+    )
+  } catch {
+    return {}
+  }
+}
+
+const counts = reactive({ ...BUILT_IN })
+
+// Remembers live figures for the next visit.
+watch(counts, () => {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(counts))
+  } catch {}
 })
 
 const META = [
@@ -107,6 +133,10 @@ const pills = computed(() =>
 )
 
 onMounted(() => {
+  // Read here, not at setup, so a server render and the first client render
+  // agree. The count has already started; it just moves its end point.
+  Object.assign(counts, lastSeen())
+
   makeAPIRequest
     .get('/stats')
     .then(({ data }) => {

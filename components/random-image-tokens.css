@@ -1,0 +1,13 @@
+/*
+ * Colour tokens of RandomImage.global.vue (same convention as
+ * panels/_shared/panel-tokens.css: `--pp-` prefix, consumed as var(), a host
+ * can retint them in its own :root / .dark).
+ *
+ * The photo credit sits on the photo itself, not on a theme surface, so it
+ * keeps the same dark scrim and white print in light and dark mode.
+ */
+:root,
+.dark {
+  --pp-photo-scrim: rgb(0 0 0 / 0.7);
+  --pp-photo-credit-ink: #fff;
+}

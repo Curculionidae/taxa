@@ -182,6 +182,7 @@ import { escHtml as escapeHtml, splitScientificName } from '../../_shared/scient
 import TypeStatusChip from '../../_shared/TypeStatusChip.vue'
 import { ADVENTIVE_CHIP_HTML } from '../../_shared/adventive.js'
 import { fetchTypeSpecimens, specimenByTypeMaterialId as indexByTypeMaterialId } from '../../_shared/typeMaterialSpecimen.js'
+import { associationAdIds } from '../utils/associationAdIds.js'
 import TwEditLink from '../../_shared/curatorMode/TwEditLink.vue'
 import { useCuratorMode, twEditUrl } from '../../_shared/curatorMode/curatorMode.js'
 
@@ -333,28 +334,12 @@ function specimenFor(item) {
 // point to isn't useful in the popup.
 // For a BA-linked AD the reassessment usually sits on the biological
 // association instead, so those are asked for too and filed under the AD's
-// id. The association id comes from the AD record itself: the label match
-// above misses associations whose sides are AnatomicalParts (an egg, a stem),
-// /biological_associations/basic?otu_id[] does not return those.
+// id. Which ADs come from an association is read from the AD records
+// themselves (asked for alongside the AD attributes), not guessed from the
+// label: the label match misses associations whose sides are AnatomicalParts
+// (an egg, a stem), /biological_associations/basic?otu_id[] does not return those.
 async function fetchReassessments(adIds) {
   try {
-    const baLinkedAdIds = props.items
-      .filter((item, i) => adIds.includes(item.id) && isBaLinked(item, props.targets?.[i]))
-      .map((item) => item.id)
-
-    const adIdsByBaId = new Map()
-    if (baLinkedAdIds.length) {
-      const params = new URLSearchParams()
-      baLinkedAdIds.forEach((id) => params.append('asserted_distribution_id[]', id))
-      const { data: ads } = await makeAPIRequest.get(`/asserted_distributions?${params.toString()}`)
-      for (const ad of ads || []) {
-        if (ad.asserted_distribution_object_type !== 'BiologicalAssociation') continue
-        const baId = ad.asserted_distribution_object_id
-        if (!adIdsByBaId.has(baId)) adIdsByBaId.set(baId, [])
-        adIdsByBaId.get(baId).push(ad.id)
-      }
-    }
-
     const fetchAttrs = async (subjectType, ids) => {
       if (!ids.length) return []
       const params = new URLSearchParams()
@@ -363,10 +348,19 @@ async function fetchReassessments(adIds) {
       const { data } = await makeAPIRequest.get(`/data_attributes?${params.toString()}`)
       return data || []
     }
-    const [adAttrs, baAttrs] = await Promise.all([
+    const fetchAds = async (ids) => {
+      if (!ids.length) return []
+      const params = new URLSearchParams()
+      ids.forEach((id) => params.append('asserted_distribution_id[]', id))
+      const { data } = await makeAPIRequest.get(`/asserted_distributions?${params.toString()}`)
+      return data || []
+    }
+    const [adAttrs, ads] = await Promise.all([
       fetchAttrs('AssertedDistribution', adIds),
-      fetchAttrs('BiologicalAssociation', [...adIdsByBaId.keys()])
+      fetchAds(adIds)
     ])
+    const adIdsByBaId = associationAdIds(ads)
+    const baAttrs = await fetchAttrs('BiologicalAssociation', [...adIdsByBaId.keys()])
     const isReassessment = (a) => (a.predicate_name || '').toLowerCase() === 'reassessment'
     // each match paired with the AD id(s) it belongs to
     const matches = [

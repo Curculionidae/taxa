@@ -30,6 +30,22 @@ To compare with the site on GitHub once this is deployed:
   `distribution.geojson` (TaxonWorks serialising the shapes: about 93 ms per
   area plus 54 µs per point; Canada alone about 4 s).
 
+### Live site after deploying the cached shapes (2026-11-06, 22:53 UTC)
+
+Same script and species, `--base https://catalog.curculionoidea.org/`, right
+after `setup` at `9a4e670` was deployed. Shapes come from GitHub Pages
+(compressed JSON; Canada 237 KB in 0.3 s).
+
+| OTU | Species | Before (live) | After (live) | Layers |
+|---|---|---|---|---|
+| 723601 | *Otiorhynchus (Nihus) carinatopunctatus* | 16.7 s | 2.4 s | 38 |
+| 729972 | *Chlorophanus viridis* | 11.7 s | 2.5 s | 52 |
+| 732706 | *Asproparthenis punctiventris* | 12.5 s | 2.6 s | 36 |
+| 730565 | *Pandeleteius (P.) hilaris* | 5.1 s | 2.0 s | 27 |
+| 738662 | *Polydrusus (Metallites) aeratus aeratus* | 6.4 s | 1.4 s | 23 |
+
+Same layer counts before and after: the same maps.
+
 ### Effect of simplifying the shapes
 
 Same dev server, cached shapes, full-detail shapes swapped in for two species

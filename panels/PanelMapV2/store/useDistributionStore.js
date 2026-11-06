@@ -18,7 +18,8 @@ import {
   classifyTypeStatus,
   classifyOneTypeStatus,
   typeStatusLabels,
-  typeColourOnlyForName
+  typeColourOnlyForName,
+  hasOrdinarySpecimen
 } from '../composables/enrichedStyle.js'
 import { fetchAssertedDistributionTags } from '../../_shared/assertedDistributionTags.js'
 import { adventiveIds, fetchAdventiveSpecimenKeys } from '../../_shared/adventive.js'
@@ -300,6 +301,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       }
 
       this.setTypeStatus(typeByCo)
+      this.syncCollectionObjectLegend(features)
 
       // slower, and independent of the styling above - so it runs after it
       await this.addMissingTypeSpecimens(features, otuId, typeByCo, ownTypeCoIds, signal)
@@ -313,6 +315,19 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
         ...(kinds.has('primary') ? ['TypeMaterial'] : []),
         ...(kinds.has('other') ? ['OtherTypeMaterial'] : [])
       ])
+    },
+
+    // "Collection object" in the legend only while some specimen on the map is
+    // drawn in that colour, not when every one is coloured as a type (see
+    // hasOrdinarySpecimen). Only touched when the map has specimens at all.
+    syncCollectionObjectLegend(features) {
+      const all = [...(features || []), ...this.typeSpecimenFeatures]
+      const types = this.distribution.currentShapeTypes
+      if (hasOrdinarySpecimen(all, this.typeStatusByCoId)) {
+        this.addShapeTypes(['CollectionObject'])
+      } else if (types.includes('CollectionObject')) {
+        this.distribution.currentShapeTypes = types.filter((t) => t !== 'CollectionObject')
+      }
     },
 
     addShapeTypes(types) {
@@ -362,12 +377,12 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       }
       const addedOwnTypes = typeColourOnlyForName(addedTypes, ownTypeCoIds)
       const withAdded = new Map([...typeByCo, ...addedOwnTypes])
-      // a type of another name is drawn as an ordinary specimen: give it its legend entry
-      if ([...addedOwnTypes.values()].some((t) => !t.kind)) this.addShapeTypes(['CollectionObject'])
 
       // type status first, so the new layers come out coloured as types
       this.setTypeStatus(withAdded)
       this.typeSpecimenFeatures = markRaw(added)
+      // a type of another name among them is drawn as an ordinary specimen
+      this.syncCollectionObjectLegend(features)
     }
   }
 })

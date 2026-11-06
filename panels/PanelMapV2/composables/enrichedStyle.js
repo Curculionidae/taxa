@@ -47,6 +47,20 @@ export function typeColourOnlyForName(typeStatusByCoId, ownTypeCoIds) {
   return out
 }
 
+// True when at least one CollectionObject on the map is drawn in the ordinary
+// specimen colour (no type colour in `typeStatusByCoId`). The legend shows
+// "Collection object" only then: a map whose only specimens are types (a
+// synonym's page with just its own syntype) would otherwise list a colour
+// nothing on it has.
+export function hasOrdinarySpecimen(features, typeStatusByCoId) {
+  for (const f of features || []) {
+    for (const b of asArray(f?.properties?.base)) {
+      if (b?.type === 'CollectionObject' && !typeStatusByCoId?.get(b.id)?.kind) return true
+    }
+  }
+  return false
+}
+
 // True when the feature carries an AssertedDistribution tagged "Adventive".
 export function featureIsAdventive(feature, adventiveAdIds) {
   if (!adventiveAdIds || !adventiveAdIds.size) return false

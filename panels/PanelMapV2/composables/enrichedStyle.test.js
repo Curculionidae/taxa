@@ -13,6 +13,7 @@ import {
   classifyTypeStatus,
   typeStatusLabels,
   typeColourOnlyForName,
+  hasOrdinarySpecimen,
   ADVENTIVE_HATCH_CLASS
 } from './enrichedStyle.js'
 
@@ -394,4 +395,22 @@ test('typeColourOnlyForName: a type of another name keeps its statuses but loses
 test('typeColourOnlyForName: unknown name types (null) leave every colour as it was', () => {
   const byCo = typeMap([[2, { kind: 'other', statuses: ['paratype of X'] }]])
   assert.equal(typeColourOnlyForName(byCo, null), byCo)
+})
+
+test('hasOrdinarySpecimen: false when every specimen on the map is drawn as a type', () => {
+  const byCo = typeMap([[1, { kind: 'primary', statuses: ['syntypes of X'] }]])
+  assert.equal(hasOrdinarySpecimen([feature([co(1)]), feature([ad(9)])], byCo), false)
+})
+
+test('hasOrdinarySpecimen: true for a specimen without a type colour, also a type of another name', () => {
+  const byCo = typeMap([
+    [1, { kind: 'primary', statuses: ['syntypes of X'] }],
+    [2, { kind: null, statuses: ['syntypes of Y'] }]
+  ])
+  assert.equal(hasOrdinarySpecimen([feature([co(1)]), feature([co(2)])], byCo), true)
+  assert.equal(hasOrdinarySpecimen([feature([co(3)])], byCo), true)
+})
+
+test('hasOrdinarySpecimen: a single base entry (not an array) counts too', () => {
+  assert.equal(hasOrdinarySpecimen([{ properties: { base: co(3) } }], new Map()), true)
 })

@@ -31,7 +31,6 @@ CLI: `taxonpages package list/add/remove/unpack` manages panels and packages.
 - TaxonWorks API documentation: https://github.com/SpeciesFileGroup/taxonworks_api (local copy may be available)
 - TaxonWorks source repo: https://github.com/SpeciesFileGroup/taxonworks (local copy may be avalable)
 - TaxonPages framework source (the actual npm package's upstream dev repo, SpeciesFileGroup/taxonpages, forked as weevil-see/taxonpages): sibling directory `../taxonpages` (i.e. `TaxonPagesDev/taxonpages`). Its `setup` branch there is just a config scaffold; the real framework source history is on its `development` branch. Currently running `@sfgrp/taxonpages` v0.7.4 there vs this project's pinned v0.7.2 — useful for checking what changed before upgrading, or for reading the framework's own panel/service code when `node_modules` alone isn't enough context.
-- This repo's own branches not merged into `setup`: `bibliography-source-records` and `home-stats-strip` (each carry one unmerged file, `panels/PanelKeys/geographyCategories.js`, superseded by `modules/keys/lib/geoData.js`, check before assuming it's fully dead) and remote `origin/lightbox-consolidation` (one unmerged commit reworking `panels/_shared/ImageLightbox.vue`, including a `minimal`-prop idea for caption-only rendering that `modules/keys/components/LeadFigures.vue` currently solves differently via implicit data-absence guards).
 
 ## Critical: path alias
 

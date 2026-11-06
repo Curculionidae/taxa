@@ -296,6 +296,7 @@ import { stripHtml, shortCitation, citationWithoutPages } from '../_shared/citat
 import ReferenceModal from '../_shared/ReferenceModal.vue'
 import TwEditLink from '../_shared/curatorMode/TwEditLink.vue'
 import { useCuratorMode, twEditUrl } from '../_shared/curatorMode/curatorMode.js'
+import { withPredicates, attributesBySubject } from './lib/dataAttributes.js'
 
 const isCuratorMode = useCuratorMode()
 
@@ -311,6 +312,13 @@ const props = defineProps({
   per: {
     type: Number,
     default: 500
+  },
+  // Predicates (case ignored) of a biological association's data attributes
+  // shown under the distributions derived from it. taxa_page.yml can widen
+  // it with `bind: { associationAttributes: [Reassessment, Microhabitat] }`.
+  associationAttributes: {
+    type: Array,
+    default: () => ['Reassessment']
   }
 })
 
@@ -579,31 +587,30 @@ async function fetchDataAttributeCitations(dataAttributeIds) {
   return result
 }
 
-// Data attributes keyed by subject id. A BA-object record's reassessment is
-// usually recorded on the biological association, not on the distribution,
-// so this is called for both subject types.
-async function fetchDataAttributes(subjectType, subjectIds) {
-  if (!subjectIds.length) return new Map()
-
-  const list = await fetchAllPages('/data_attributes', {
-    attribute_subject_type: subjectType,
-    'attribute_subject_id[]': subjectIds
-  }, { per: props.per })
-  const citationByAttrId = await fetchDataAttributeCitations(list.map((a) => a.id))
-
-  const result = new Map()
-  for (const attr of list) {
-    const entry = {
-      id: attr.id,
-      predicate: attr.predicate_name || attr.import_predicate || '',
-      value: attr.value,
-      citation: citationByAttrId.get(attr.id) || null
-    }
-    const id = attr.attribute_subject_id
-    if (!result.has(id)) result.set(id, [])
-    result.get(id).push(entry)
+// Data attributes of the distributions and of the biological associations
+// behind BA-object records: a BA-object record's reassessment is usually
+// recorded on the association, not on the distribution. Of the association's
+// attributes only the `associationAttributes` predicates are kept (its
+// Microhabitat or Activity pattern says nothing about the distribution). Both
+// lists are asked for in parallel, their citations in one go.
+// Returns { byAd, byAssociation }: Map<subjectId, entry[]> each.
+async function fetchDataAttributes(distributionIds, associationIds) {
+  const list = (subjectType, ids) => ids.length
+    ? fetchAllPages('/data_attributes', {
+        attribute_subject_type: subjectType,
+        'attribute_subject_id[]': ids
+      }, { per: props.per })
+    : Promise.resolve([])
+  const [adList, baListAll] = await Promise.all([
+    list('AssertedDistribution', distributionIds),
+    list('BiologicalAssociation', associationIds)
+  ])
+  const baList = withPredicates(baListAll, props.associationAttributes)
+  const citationByAttrId = await fetchDataAttributeCitations([...adList, ...baList].map((a) => a.id))
+  return {
+    byAd: attributesBySubject(adList, citationByAttrId),
+    byAssociation: attributesBySubject(baList, citationByAttrId)
   }
-  return result
 }
 
 async function loadDistributions() {
@@ -647,11 +654,10 @@ async function loadDistributions() {
     const associationIds = [...new Set(allData
       .filter((d) => d.asserted_distribution_object_type === 'BiologicalAssociation')
       .map((d) => d.asserted_distribution_object_id))]
-    const [citationsMap, tagsMap, dataAttributesMap, baDataAttributesMap, associationById] = await Promise.all([
+    const [citationsMap, tagsMap, dataAttributes, associationById] = await Promise.all([
       fetchCitations(allData.map((d) => d.id)),
       fetchAssertedDistributionTags(allData.map((d) => d.id)),
-      fetchDataAttributes('AssertedDistribution', allData.map((d) => d.id)),
-      fetchDataAttributes('BiologicalAssociation', associationIds),
+      fetchDataAttributes(allData.map((d) => d.id), associationIds),
       fetchAssociations(associationIds)
     ])
 
@@ -661,9 +667,9 @@ async function loadDistributions() {
         citationsMap.get(item.id) || [],
         tagsMap.get(item.id) || [],
         [
-          ...(dataAttributesMap.get(item.id) || []),
+          ...(dataAttributes.byAd.get(item.id) || []),
           ...(item.asserted_distribution_object_type === 'BiologicalAssociation'
-            ? baDataAttributesMap.get(item.asserted_distribution_object_id) || []
+            ? dataAttributes.byAssociation.get(item.asserted_distribution_object_id) || []
             : [])
         ],
         otuInfo,

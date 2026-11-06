@@ -19,6 +19,14 @@ taxa_page:
 
 > **Note:** Using `rank_group: SpeciesGroup` ensures the panel only appears on species and subspecies pages. It is not useful at genus or family level.
 
+`associationAttributes` (default `['Reassessment']`) lists the data-attribute predicates of a biological association shown under the distributions derived from it, case ignored. The distribution's own data attributes are always all shown. To also show, say, an association's microhabitat:
+
+```yaml
+      - - - id: panel:asserted-distributions
+            bind:
+              associationAttributes: [Reassessment, Microhabitat]
+```
+
 ## Display
 
 ### Tabs
@@ -61,7 +69,7 @@ Groups and areas within groups are sorted alphabetically.
 **Step 3, one batch each, in parallel, for all records:**
 
 3. **`/citations`**: `citation_object_type=AssertedDistribution&citation_object_id[]=...&extend[]=source`. Returns citation records with the full source object embedded, no separate `/sources` call needed.
-4. Tags and data attributes, one batch each.
+4. Tags, one batch. Data attributes: the distributions' and, for records whose object is a biological association, the association's (filtered to `associationAttributes`, `lib/dataAttributes.js`), the two lists in parallel and their citations in one `/citations` batch.
 5. **`/biological_associations/basic`**: `biological_association_id[]=...`, only for records whose object is a biological association rather than an OTU (e.g. "larvae of X collected from *Trifolium*" asserted for Tunisia). For those, `asserted_distribution_object_id` is the association's id, not an OTU's; the record is filed under whichever side's `subject_otu_id`/`object_otu_id` is one of the OTUs from step 1 (these also resolve an AnatomicalPart side to its OTU). Without this, each such record became its own nameless tab and an empty Taxa entry.
 
 OTU names and the synonym ❌ come from the step 1 `/otus` records (`extend[]=taxon_name`: `cached`, and `cached_valid_taxon_name_id !== id`), since an OTU with only association-based records has no OTU-object record to read a name from, and the AD's `object_tag` no longer carries TaxonWorks' ❌ marker.

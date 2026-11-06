@@ -297,6 +297,7 @@ import ReferenceModal from '../_shared/ReferenceModal.vue'
 import TwEditLink from '../_shared/curatorMode/TwEditLink.vue'
 import { useCuratorMode, twEditUrl } from '../_shared/curatorMode/curatorMode.js'
 import { withPredicates, attributesBySubject } from './lib/dataAttributes.js'
+import { isSynonymPage } from '../_shared/synonymPage.js'
 
 const isCuratorMode = useCuratorMode()
 
@@ -620,11 +621,11 @@ async function loadDistributions() {
     // Step 1: resolve the full OTU set via TaxonWorks' own coordinatify,
     // this panel does not determine synonymy itself (see the file header).
     // On a synonym's page only the name's own OTU(s): coordinatify would add
-    // the valid name's and every other synonym's.
+    // the valid name's and every other synonym's (../_shared/synonymPage.js).
     const otus = await fetchAllPages('/otus', {
       'taxon_name_id[]': props.taxon.id,
       descendants: true,
-      ...(props.taxon.is_valid === false ? {} : { coordinatify: true }),
+      ...(isSynonymPage(props.taxon) ? {} : { coordinatify: true }),
       'extend[]': 'taxon_name'
     }, { per: props.per })
     const otuIds = [...new Set(otus.map((o) => o.id))]

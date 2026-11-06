@@ -93,6 +93,7 @@ import CachedMap from './components/CachedMap.vue'
 import OtuSearch from './components/Search/OtuSearch.vue'
 import DwcTable from '../_shared/DwcTable.vue'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
+import { isSynonymPage } from '../_shared/synonymPage.js'
 
 const props = defineProps({
   otuId: {
@@ -256,7 +257,7 @@ onMounted(() => {
     otuId: props.otuId,
     rankString: props.taxon.rank_string,
     taxonNameId: props.taxon.id,
-    isSynonym: props.taxon.is_valid === false
+    isSynonym: isSynonymPage(props.taxon)
   })
 })
 

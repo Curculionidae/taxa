@@ -497,6 +497,7 @@ import {
   STANDARD_SUMMARY_PAGE_SIZE
 } from './loadStandardAssociations.js'
 import { loadAdvancedClassification } from './loadAdvancedAssociations.js'
+import { isSynonymPage } from '../_shared/synonymPage.js'
 import {
   indexRelationshipIds,
   readSessionRelationshipPreferences,
@@ -594,9 +595,9 @@ const RANK_ORDER = [
 // everything narrower (species, infraspecies) is flat-eligible; only
 // FamilyGroup/HigherClassificationGroup collapse unconditionally.
 // On a synonym's page only the name's own associations: TaxonWorks'
-// coordinatify would add the valid name's and every other synonym's OTU. Same
-// rule as the package panels since taxonpages PR 380; the valid page stays merged.
-const coordinatify = computed(() => props.taxon?.is_valid !== false)
+// coordinatify would add the valid name's and every other synonym's OTU
+// (../_shared/synonymPage.js). The valid page stays merged.
+const coordinatify = computed(() => !isSynonymPage(props.taxon))
 
 const isFlatRank = computed(() => {
   const cutoffIndex = RANK_ORDER.indexOf(props.collapseAboveRank)

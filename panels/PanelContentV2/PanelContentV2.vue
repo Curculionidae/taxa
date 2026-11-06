@@ -53,6 +53,7 @@ import { stripHtml, shortCitation } from '../_shared/citationText.js'
 import ReferenceModal from '../_shared/ReferenceModal.vue'
 import { pickTaxonPageOtu } from '../_shared/otuLink.js'
 import { rewriteContentLinks } from './contentLinks.js'
+import { isSynonymPage } from '../_shared/synonymPage.js'
 import {
   groupByTopic,
   inventoryContent,
@@ -133,7 +134,7 @@ function enteredUnderHtml(nameHtml) {
 onBeforeMount(() => {
   loadContents(makeAPIRequest, {
     otuId: props.otuId,
-    isValid: props.taxon?.is_valid !== false,
+    isValid: !isSynonymPage(props.taxon),
     ownRequest: useOtuPageRequest('panel:content-v2', () =>
       inventoryContent(makeAPIRequest, props.otuId, controller.signal)
     ),

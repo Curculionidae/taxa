@@ -119,6 +119,7 @@ import { makeAPIRequest } from '@/utils/request'
 import GalleryMainImage from '@/components/Gallery/GalleryMainImage.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
 import { imageIdFromOriginalPng } from '../_shared/imageCitations.js'
+import { isSynonymPage } from '../_shared/synonymPage.js'
 import inatMark from '../PaneliNaturalist/inat-mark.svg'
 import gbifMark from '../_gbifShared/gbif-mark.svg'
 import { CHECKLIST_KEY, deriveScientificName } from '../_gbifShared/useGbifMatch'
@@ -378,10 +379,8 @@ async function orchestrate() {
   }
 }
 
-// On a synonym's page only the name's own images. By default TaxonWorks adds
-// the valid name's and every synonym's ("coordinate OTUs"); same switch as the
-// package's gallery since taxonpages PR 380. The valid name's page stays merged.
-const coordinateOtus = computed(() => props.taxon?.is_valid !== false)
+// On a synonym's page only the name's own images (../_shared/synonymPage.js).
+const coordinateOtus = computed(() => !isSynonymPage(props.taxon))
 
 onServerPrefetch(async () => {
   await store.loadImages(props.otuId, {

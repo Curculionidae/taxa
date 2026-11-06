@@ -211,6 +211,10 @@ Depended on by `DwcTable.vue` (identity block, with `linkNames`), `PanelSpecimen
 
 TaxonWorks doesn't say which name record a type belongs to (a specimen's `type_material` entry carries only label text), so this matches the label against what TaxonWorks builds it from: `/taxon_names?name=<epithet>` (every page, `pagedGet.js`), then the one row whose `cached_original_combination` equals the name and whose `cached_author_year` (parentheses dropped) equals the author; then `/otus?taxon_name_id[]=` (`pickTaxonPageOtu`). No match, or more than one: null, the name stays unlinked. Used by `TypeStatusChip.vue` (`linkNames`). Tests: `typeNameOtu.test.js`.
 
+## synonymPage.js
+
+`isSynonymPage(taxon)`: whether the OTU page is a synonym's (`taxon.is_valid === false`; an OTU without a taxon name counts as valid). On such a page the map, gallery, asserted distributions, biological associations and content panels show only what is recorded under that exact name, by leaving TaxonWorks' coordinate OTUs out (`coordinate_otus=false`, `otu_scope[]` without `coordinate_otus`, no `coordinatify`). The valid name's page stays merged. Same rule as the package panels since taxonpages PR 380. Tests: `synonymPage.test.js`.
+
 ## pagedGet.js
 
 `getAllPages(get, url, params, { per, signal })`: every page of a TaxonWorks index through a `get` the caller passes in, following `pagination-total-pages`, one page after the other. Rejects when a page fails. It exists beside `fetchAllPages.js` because it imports nothing through `@/`, so modules unit-tested with an injected `get` can use it (`typeNameOtu.js`, `typeMaterialSpecimen.js`). Tests: `pagedGet.test.js`.

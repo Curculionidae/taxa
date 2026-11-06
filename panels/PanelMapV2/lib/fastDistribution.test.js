@@ -56,10 +56,32 @@ test('a specimen whose first copy is outside the OTU set still shows', async () 
   const features = await load({
     '/otus': () => page([otu(1)]),
     '/asserted_distributions': () => page([]),
-    '/otus/1/inventory/dwc.json': () => ({ data: [coRow(5, 99), coRow(5, 1)] })
+    '/otus/1/inventory/dwc.json': () => ({ data: [coRow(5, 99), coRow(5, 1)] }),
+    '/collection_objects': () => page([{ id: 5, collecting_event_id: 50 }])
   })
 
   assert.deepEqual(features.map((f) => [f.properties.base.id, f.properties.target.id]), [[5, 1]])
+})
+
+test('specimens of one collecting event share a marker, others at the same spot do not', async () => {
+  const features = await load({
+    '/otus': () => page([otu(1)]),
+    '/asserted_distributions': () => page([]),
+    '/otus/1/inventory/dwc.json': () => ({ data: [coRow(5, 1), coRow(6, 1), coRow(7, 1)] }),
+    // 5 and 6 from one event, 7 from another at the same coordinates
+    '/collection_objects': () =>
+      page([
+        { id: 5, collecting_event_id: 50 },
+        { id: 6, collecting_event_id: 50 },
+        { id: 7, collecting_event_id: 70 }
+      ])
+  })
+  const markers = new Map()
+
+  features.forEach((f) =>
+    markers.set(f.properties.shape.id, [...(markers.get(f.properties.shape.id) || []), f.properties.base.id])
+  )
+  assert.deepEqual([...markers.values()], [[5, 6], [7]])
 })
 
 test('an association distribution targets the side that is an OTU of the page', async () => {

@@ -116,11 +116,30 @@ for (const otuId of otuIds) {
     }
   }
 
+  // Which specimens share a marker: same groups on both maps.
+  const groups = (features) => {
+    const byShape = new Map()
+
+    for (const f of features.filter(isSpecimen)) {
+      const k = `${f.properties.shape.type}:${f.properties.shape.id}`
+
+      byShape.set(k, [...(byShape.get(k) || []), key(f)])
+    }
+
+    return new Set([...byShape.values()].map((list) => list.sort().join(' + ')))
+  }
+  const slowGroups = groups([...slowByKey.values()])
+  const fastGroups = groups([...fastByKey.values()])
+  const groupDiffer = [...slowGroups].filter((g) => !fastGroups.has(g))
+
+  groupDiffer.slice(0, 4).forEach((g) => differ.push(`marker grouping in geojson not matched: ${g}`))
+
   const ok = !onlySlow.length && !onlyFast.length && !differ.length
 
   console.log(
     `OTU ${otuId}: ${ok ? 'MATCH' : 'DIFFERENT'}, ${fastByKey.size} features ` +
       `(geojson ${slowByKey.size} + ${typeMaterial.length} TypeMaterial left to the store); ` +
+      `${slowGroups.size} specimen markers; ` +
       `fast ${(fastMs / 1000).toFixed(1)} s (${liveShapes} shapes live), slow ${(slowMs / 1000).toFixed(1)} s`
   )
   if (onlySlow.length) console.log(`   only in geojson: ${onlySlow.join(', ')}`)

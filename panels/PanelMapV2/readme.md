@@ -104,10 +104,11 @@ What it rebuilds, checked feature by feature against `distribution.geojson`:
 - Specimens from each OTU's `dwc.json`: at the georeference, else as the
   collecting event's area (collection objects only: there is no
   `/field_occurrences` index to look up a field occurrence's event).
-  Specimens at identical coordinates share one marker (`dwc.json` does not say
-  which collecting event a specimen belongs to); `distribution.geojson` gives
-  each georeference its own marker, so two events at one spot are two stacked
-  markers there. Same specimens, fewer markers (cluster counts can be lower).
+  Markers are grouped as in `distribution.geojson`: specimens of one
+  georeference share a marker. The API exposes no georeference ids, so the
+  grouping goes by collecting event (one georeference each), looked up with
+  one batched `/collection_objects` request; field occurrences get a marker
+  each. The compare script checks this grouping too (cluster counts match).
 - Areas without a shape in TaxonWorks (`without-shape.json`) are left out, as
   TaxonWorks does. TypeMaterial entries are left to `addMissingTypeSpecimens`.
 

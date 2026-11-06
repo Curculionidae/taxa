@@ -23,6 +23,10 @@
 // - Specimens (CollectionObject, FieldOccurrence) from each OTU's DwC records:
 //   at their georeference, or, without one, as their collecting event's area
 //   (collection objects only; a field occurrence without one falls back).
+//   Specimens of one collecting event share one marker, as specimens of one
+//   georeference do in distribution.geojson (an event has one georeference;
+//   the API exposes no georeference ids). Field occurrences, whose event
+//   can't be looked up, get a marker each.
 // - Areas TaxonWorks has no shape for are left out, as it does itself.
 // TypeMaterial entries are left out: the popup drops them next to their
 // specimen anyway, and type specimens missing from the list are added by the
@@ -126,21 +130,22 @@ async function loadOtus(get, { otuId, taxonNameId, isSynonym }) {
   return getAll(get, '/otus', params)
 }
 
-// Map<collectionObjectId, geographicAreaId|null> for collection objects
-// without a georeference: specimen -> collecting event -> its area.
-async function specimenAreas(get, collectionObjectIds) {
+// Map<collectionObjectId, collectingEventId|null>.
+async function collectingEvents(get, collectionObjectIds) {
   if (!collectionObjectIds.length) return new Map()
 
   const records = await getByIds(get, '/collection_objects', 'collection_object_id[]', collectionObjectIds)
-  const events = await getByIds(
-    get,
-    '/collecting_events',
-    'collecting_event_id[]',
-    records.map((r) => r.collecting_event_id).filter(Boolean)
-  )
-  const areaByEvent = new Map(events.map((ce) => [ce.id, ce.geographic_area_id]))
 
-  return new Map(records.map((r) => [r.id, areaByEvent.get(r.collecting_event_id) ?? null]))
+  return new Map(records.map((r) => [r.id, r.collecting_event_id ?? null]))
+}
+
+// Map<collectingEventId, geographicAreaId|null>.
+async function eventAreas(get, eventIds) {
+  if (!eventIds.length) return new Map()
+
+  const events = await getByIds(get, '/collecting_events', 'collecting_event_id[]', eventIds)
+
+  return new Map(events.map((ce) => [ce.id, ce.geographic_area_id ?? null]))
 }
 
 // Map<"<type>:<id>", Promise<geometry|null>>, each shape asked for once.
@@ -256,14 +261,23 @@ export async function loadFastDistribution({
         throw new Declined('field occurrence without a georeference')
       }
 
-      const areas = await specimenAreas(get, unplaced.map((row) => row.dwc_occurrence_object_id))
+      const eventByObject = await collectingEvents(
+        get,
+        rows
+          .filter((row) => row.dwc_occurrence_object_type === 'CollectionObject')
+          .map((row) => row.dwc_occurrence_object_id)
+      )
+      const areaByEvent = await eventAreas(
+        get,
+        unplaced.map((row) => eventByObject.get(row.dwc_occurrence_object_id)).filter(Boolean)
+      )
 
-      areas.forEach((areaId) => areaId && shape('GeographicArea', areaId))
+      areaByEvent.forEach((areaId) => areaId && shape('GeographicArea', areaId))
 
-      return { placed, areas }
+      return { placed, eventByObject, areaByEvent }
     })
 
-    const [distributions, associations, { placed, areas }] = await Promise.all([
+    const [distributions, associations, { placed, eventByObject, areaByEvent }] = await Promise.all([
       distributionsPromise,
       associationsPromise,
       specimensPromise
@@ -322,22 +336,23 @@ export async function loadFastDistribution({
         label: row.occurrenceID ? `${type} ${id}; ${row.occurrenceID}` : `${type} ${id}`
       }
 
+      const eventId = type === 'CollectionObject' ? eventByObject.get(id) : null
+
       if (geometry) {
-        // Specimens at exactly one spot share a marker, as specimens of one
-        // collecting event (one georeference) do in distribution.geojson.
+        // One marker per collecting event (= per georeference).
         features.push({
           type: 'Feature',
           geometry,
           properties: {
             target: target(row.otu_id),
             base,
-            shape: { type: 'Georeference', id: JSON.stringify(geometry.coordinates) }
+            shape: { type: 'Georeference', id: eventId ? `event:${eventId}` : `${type}:${id}` }
           }
         })
         continue
       }
 
-      const areaId = areas.get(id)
+      const areaId = eventId ? areaByEvent.get(eventId) : null
       const areaGeometry = areaId ? await shape('GeographicArea', areaId) : null
 
       if (areaGeometry) {

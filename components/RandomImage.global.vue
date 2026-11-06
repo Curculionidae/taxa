@@ -1,8 +1,14 @@
 <!--
-  One random project image for the home page, between the two hero photos:
-  same height and rounded corners, its own landscape width, never cropped.
-  Links to its taxon page and carries the image's credit from TaxonWorks.
-  Used in pages/home.md as <RandomImage />.
+  A slideshow of random project images for the home page, between the two
+  hero photos: same height and rounded corners, each image at its own
+  landscape width, never cropped. The shown image links to its taxon page and
+  carries its credit from TaxonWorks. Used in pages/home.md as <RandomImage />.
+
+  Starts at a random image and moves through the pool in shuffled order every
+  INTERVAL_MS, crossfading while the frame eases to the next image's width.
+  The next image is loaded before the switch. Pauses while hovered, focused,
+  the credit is open or the tab is hidden; stays on one image for visitors
+  who ask for reduced motion.
 
   The images are files on the site (public/images/random/), listed in
   randomImagePool.json; both are built by scripts/build-random-images.mjs
@@ -20,18 +26,25 @@
       v-if="picked"
       class="random-image"
       :style="shapeStyle"
+      @mouseenter="isHovered = true"
+      @mouseleave="isHovered = false"
+      @focusin="isFocused = true"
+      @focusout="isFocused = false"
     >
       <RouterLink
         class="random-image__link"
         :to="{ name: 'otus-id', params: { id: picked.otuId } }"
         :title="picked.name"
       >
-        <img
-          :src="picked.file"
-          :alt="picked.name"
-          :width="picked.width"
-          :height="picked.height"
-        />
+        <Transition name="random-image-fade">
+          <img
+            :key="picked.file"
+            :src="picked.file"
+            :alt="picked.name"
+            :width="picked.width"
+            :height="picked.height"
+          />
+        </Transition>
       </RouterLink>
 
       <p class="random-image__credit">
@@ -85,9 +98,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import pool from './randomImagePool.json'
 import './random-image-tokens.css'
+
+const INTERVAL_MS = 6000
 
 // The hero photos are 500 × 333 with a 34 px corner radius (measured from
 // the PNGs, whose corners are baked in).
@@ -95,34 +110,107 @@ const HERO_WIDTH = 500
 const HERO_ASPECT = 1.5
 const CORNER_OF_HEIGHT = 34 / 333
 
-const picked = pool.length
-  ? pool[Math.floor(Math.random() * pool.length)]
-  : null
+// Fisher-Yates: every image once before any repeats.
+function shuffled(list) {
+  const out = [...list]
+
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+
+  return out
+}
+
+const order = shuffled(pool)
+const index = ref(0)
+const picked = computed(() => order[index.value] || null)
 
 const isCreditOpen = ref(false)
+const isHovered = ref(false)
+const isFocused = ref(false)
+const isHidden = ref(false)
 
-const aspect = picked ? picked.width / picked.height : HERO_ASPECT
+const isPaused = computed(
+  () => isHovered.value || isFocused.value || isCreditOpen.value || isHidden.value
+)
 
 // Wider than the heroes by its aspect, so at full size and when the row
 // shrinks (in proportion to each item's basis) all three stay the same
 // height. The corner radius in % of width shrinks with the aspect to stay
 // the same in pixels.
-const shapeStyle = {
-  aspectRatio: `${aspect}`,
-  flex: `0 1 ${(HERO_WIDTH * aspect) / HERO_ASPECT}px`,
-  borderRadius: `${(CORNER_OF_HEIGHT * 100) / aspect}% / ${CORNER_OF_HEIGHT * 100}%`
-}
+const shapeStyle = computed(() => {
+  const aspect = picked.value
+    ? picked.value.width / picked.value.height
+    : HERO_ASPECT
+
+  return {
+    aspectRatio: `${aspect}`,
+    flex: `0 1 ${(HERO_WIDTH * aspect) / HERO_ASPECT}px`,
+    borderRadius: `${(CORNER_OF_HEIGHT * 100) / aspect}% / ${CORNER_OF_HEIGHT * 100}%`
+  }
+})
 
 // "©2025 Jane Doe. License: CC BY 4.0" → text plus the license name, which
 // is shown as the link to the license.
-const credit = (() => {
-  const label = picked?.credit || ''
+const credit = computed(() => {
+  const label = picked.value?.credit || ''
   const match = label.match(/^(.*?)\s*License:\s*(.+)$/)
 
-  if (!match || !picked.licenseUrl) return { text: label, license: null }
+  if (!match || !picked.value.licenseUrl) return { text: label, license: null }
 
   return { text: match[1] ? `${match[1]} ` : '', license: match[2] }
-})()
+})
+
+let timer = null
+
+function schedule() {
+  clearTimeout(timer)
+  timer = null
+
+  if (isPaused.value || order.length < 2) return
+
+  timer = setTimeout(showNext, INTERVAL_MS)
+}
+
+// Switches only once the next image is loaded, so it never shows half drawn.
+function showNext() {
+  const nextIndex = (index.value + 1) % order.length
+  const preload = new Image()
+
+  preload.onload = preload.onerror = () => {
+    if (isPaused.value) return
+
+    index.value = nextIndex
+    schedule()
+  }
+  preload.src = order[nextIndex].file
+}
+
+function onVisibilityChange() {
+  isHidden.value = document.hidden
+}
+
+let reducedMotion = false
+
+onMounted(() => {
+  reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (reducedMotion) return
+
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  schedule()
+})
+
+watch(isPaused, () => {
+  if (!reducedMotion) schedule()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(timer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <style scoped>
@@ -132,6 +220,36 @@ const credit = (() => {
   align-self: center;
   overflow: hidden;
   container-type: inline-size;
+  /* Eases the frame to the next image's width during the crossfade. */
+  transition:
+    flex-basis 0.8s ease,
+    aspect-ratio 0.8s ease,
+    border-radius 0.8s ease;
+}
+
+/* Crossfade: the old image is lifted out of the flow and fades out over the
+   new one fading in. */
+.random-image-fade-enter-active,
+.random-image-fade-leave-active {
+  transition: opacity 0.8s ease;
+}
+
+.random-image-fade-leave-active {
+  position: absolute;
+  inset: 0;
+}
+
+.random-image-fade-enter-from,
+.random-image-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .random-image,
+  .random-image-fade-enter-active,
+  .random-image-fade-leave-active {
+    transition: none;
+  }
 }
 
 .random-image__link {
@@ -147,6 +265,8 @@ const credit = (() => {
   margin: 0;
   width: 100%;
   height: 100%;
+  /* Only matters mid-transition, while the frame is between two shapes. */
+  object-fit: cover;
 }
 
 /* The credit over the bottom of the photo, on a gradient that darkens it,

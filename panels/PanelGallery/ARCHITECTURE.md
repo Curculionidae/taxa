@@ -95,7 +95,13 @@ the OTU, but only the CO depiction is ticked). It's shown only when the flag is
 on an `Otu` depiction.
 
 `otu_scope` matches what `useImageStore` sends, so the depiction rows cover the
-same image-id universe as the inventory endpoint (TW's Depiction and Image otu
+same image-id universe as the inventory endpoint. On a synonym's page
+(`taxon.is_valid === false`) both drop `coordinate_otus` (`loadImages` gets
+`coordinateOtus: false`, the package's switch since taxonpages PR 380): the page
+shows only the name's own images, not the valid name's and every synonym's. A
+synonym with none and no iNaturalist / GBIF images has no gallery card. Those two
+tabs need no switch: the iNaturalist lookup only accepts a taxon of exactly the
+page's name, and the GBIF tab keeps only records identified under it (TW's Depiction and Image otu
 scope facets share code). On any failure the drop set stays empty → no filtering,
 same as before. The same `dropIdsFromDepictions()` is applied to the
 subordinate-taxa fallback (keyed by `image_id[]` of the sampled images).

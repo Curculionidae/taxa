@@ -378,13 +378,24 @@ async function orchestrate() {
   }
 }
 
+// On a synonym's page only the name's own images. By default TaxonWorks adds
+// the valid name's and every synonym's ("coordinate OTUs"); same switch as the
+// package's gallery since taxonpages PR 380. The valid name's page stays merged.
+const coordinateOtus = computed(() => props.taxon?.is_valid !== false)
+
 onServerPrefetch(async () => {
-  await store.loadImages(props.otuId, { sortOrder: props.sort_order })
+  await store.loadImages(props.otuId, {
+    sortOrder: props.sort_order,
+    coordinateOtus: coordinateOtus.value
+  })
 })
 
 onMounted(() => {
   if (!store.images) {
-    store.loadImages(props.otuId, { sortOrder: props.sort_order })
+    store.loadImages(props.otuId, {
+      sortOrder: props.sort_order,
+      coordinateOtus: coordinateOtus.value
+    })
   }
   // Client-only on purpose: dataDepictionDropIds isn't part of the SSR payload,
   // so filtering during onServerPrefetch would make the server markup disagree
@@ -418,7 +429,7 @@ async function fetchDataDepictionFilter() {
     const { data } = await makeAPIRequest.get('/depictions', {
       params: {
         'otu_id[]': [props.otuId],
-        'otu_scope[]': ['all', 'coordinate_otus'],
+        'otu_scope[]': coordinateOtus.value ? ['all', 'coordinate_otus'] : ['all'],
         per: 500
       }
     })

@@ -121,6 +121,27 @@ export function fetchTypeSpecimenRecord(collectionObjectId) {
   return recordCache.get(collectionObjectId)
 }
 
+/**
+ * Ids of the collection objects TaxonWorks lists as types of exactly this name
+ * (not of its synonyms). One request. Null when that can't be told: no name, or
+ * the request failed.
+ * @param {number|string|null} taxonNameId
+ * @param {{ get?: Function }} [options]  `get` is injectable for unit tests
+ * @returns {Promise<Set<number>|null>}
+ */
+export async function fetchTypeSpecimenIdsOfName(taxonNameId, { get } = {}) {
+  if (!taxonNameId) return null
+  try {
+    const request = get || (await import('@/utils/request')).makeAPIRequest.get
+    const { data } = await request(
+      `/collection_objects?type_specimen_taxon_name_id=${taxonNameId}&per=500`
+    )
+    return new Set((Array.isArray(data) ? data : []).map((co) => co.id))
+  } catch {
+    return null
+  }
+}
+
 // Exported for unit testing: `complete` is false when any request failed.
 export async function loadTypeSpecimens(otuId, get) {
   const specimens = []

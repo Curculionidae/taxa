@@ -17,13 +17,15 @@ import { LEGEND } from '../constants'
 import {
   classifyTypeStatus,
   classifyOneTypeStatus,
-  typeStatusLabels
+  typeStatusLabels,
+  typeColourOnlyForName
 } from '../composables/enrichedStyle.js'
 import { fetchAssertedDistributionTags } from '../../_shared/assertedDistributionTags.js'
 import { adventiveIds, fetchAdventiveSpecimenKeys } from '../../_shared/adventive.js'
 import {
   fetchTypeSpecimens,
-  fetchTypeSpecimenRecord
+  fetchTypeSpecimenRecord,
+  fetchTypeSpecimenIdsOfName
 } from '../../_shared/typeMaterialSpecimen.js'
 import { mapPool } from '../../_shared/concurrencyPool.js'
 
@@ -41,11 +43,11 @@ function normalizeAbsentFeatures(arr) {
 // removeDuplicateShapes, so a shape asserted both present and absent (e.g. an
 // old record later corrected as a misidentification) becomes one feature with
 // both citations, styled as absent - see enrichedStyle.js / geojsonOptions.js.
-async function fetchAbsentFeatures(otuId, signal) {
+async function fetchAbsentFeatures(otuId, signal, params) {
   try {
     const { data } = await makeAPIRequest.get(
       `/otus/${otuId}/inventory/distribution_is_absent.geojson`,
-      { signal }
+      { signal, params }
     )
     return Array.isArray(data?.features) ? data.features : []
   } catch {
@@ -165,7 +167,9 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       adventiveAdIds: new Set(),
       // "<type>:<id>" of specimens (CO / FO) tagged "Adventive": purple markers
       adventiveSpecimenKeys: new Set(),
-      // Map<collectionObjectId, 'primary' | 'other'> for type-material styling
+      // Map<collectionObjectId, { kind: 'primary' | 'other' | null, statuses }>:
+      // kind colours the marker (null: a type of another name, drawn as an
+      // ordinary specimen), statuses are the popup's type pills
       typeStatusByCoId: new Map(),
       // features for type specimens the geojson lacks (see addMissingTypeSpecimens)
       typeSpecimenFeatures: [],
@@ -210,7 +214,11 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
         })
     },
 
-    async loadDistribution({ otuId, rankString }) {
+    // `taxonNameId` is the page's name: only its own types are coloured as type
+    // material. On a synonym page (`isSynonym`) TaxonWorks is asked for the
+    // name's own records only; by default it adds the valid name's and every
+    // synonym's ("coordinate OTUs"), same switch as the package's map.
+    async loadDistribution({ otuId, rankString, taxonNameId = null, isSynonym = false }) {
       this.tagsByAdId = new Map()
       this.adventiveAdIds = new Set()
       this.adventiveSpecimenKeys = new Set()
@@ -224,10 +232,12 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       this.controller = new AbortController()
 
       if (isSpeciesGroup) {
-        const absentFeaturesPromise = fetchAbsentFeatures(otuId, this.controller.signal)
+        const params = isSynonym ? { coordinate_otus: false } : {}
+        const absentFeaturesPromise = fetchAbsentFeatures(otuId, this.controller.signal, params)
 
         useOtuPageRequest('panel:map-v2', () =>
           makeAPIRequest.get(`/otus/${otuId}/inventory/distribution.geojson`, {
+            params,
             signal: this.controller.signal
           })
         )
@@ -248,7 +258,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
                 features
               }
 
-              this.enrichFeatures(features, otuId, this.controller.signal)
+              this.enrichFeatures(features, otuId, taxonNameId, this.controller.signal)
             }
           })
           .catch((e) => {
@@ -267,13 +277,15 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     // legend; PanelMapV2 restyles the already-drawn layers in place from
     // `adventiveAdIds` / `typeStatusByCoId` (no geojson re-emit, so VMap does not
     // tear the layer group down and rebuild it).
-    async enrichFeatures(features, otuId, signal) {
-      const [tagsByAd, adventiveSpecimens, typeByCo] = await Promise.all([
+    async enrichFeatures(features, otuId, taxonNameId, signal) {
+      const [tagsByAd, adventiveSpecimens, allTypesByCo, ownTypeCoIds] = await Promise.all([
         fetchAssertedDistributionTags(assertedDistributionIds(features), { signal }),
         fetchAdventiveSpecimenKeys(specimenRefs(features), { signal }),
-        fetchTypeStatusByCoId(otuId, signal)
+        fetchTypeStatusByCoId(otuId, signal),
+        fetchTypeSpecimenIdsOfName(taxonNameId)
       ])
       if (signal?.aborted) return
+      const typeByCo = typeColourOnlyForName(allTypesByCo, ownTypeCoIds)
 
       if (tagsByAd.size) {
         this.tagsByAdId = tagsByAd
@@ -290,7 +302,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       this.setTypeStatus(typeByCo)
 
       // slower, and independent of the styling above - so it runs after it
-      await this.addMissingTypeSpecimens(features, otuId, typeByCo, signal)
+      await this.addMissingTypeSpecimens(features, otuId, typeByCo, ownTypeCoIds, signal)
     },
 
     setTypeStatus(typeByCo) {
@@ -317,7 +329,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     // group it already has. Deliberately NOT merged into `distribution.geojson`:
     // VMap deep-watches that and would clear every layer and refit the view,
     // seconds after the user started using the map.
-    async addMissingTypeSpecimens(features, otuId, typeByCo, signal) {
+    async addMissingTypeSpecimens(features, otuId, typeByCo, ownTypeCoIds, signal) {
       const missing = specimensNotOnMap(features, await fetchTypeSpecimens(otuId))
       if (signal?.aborted || !missing.length) return
 
@@ -339,15 +351,19 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       }
       if (!added.length) return
 
-      const withAdded = new Map(typeByCo)
+      const addedTypes = new Map()
       for (const s of missing) {
         if (!drawn.has(s.collectionObjectId)) continue
         const statuses = s.typeMaterials.map((tm) => tm.label)
-        withAdded.set(s.collectionObjectId, {
+        addedTypes.set(s.collectionObjectId, {
           kind: statuses.some((l) => classifyOneTypeStatus(l) === 'primary') ? 'primary' : 'other',
           statuses
         })
       }
+      const addedOwnTypes = typeColourOnlyForName(addedTypes, ownTypeCoIds)
+      const withAdded = new Map([...typeByCo, ...addedOwnTypes])
+      // a type of another name is drawn as an ordinary specimen: give it its legend entry
+      if ([...addedOwnTypes.values()].some((t) => !t.kind)) this.addShapeTypes(['CollectionObject'])
 
       // type status first, so the new layers come out coloured as types
       this.setTypeStatus(withAdded)

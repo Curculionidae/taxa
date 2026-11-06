@@ -12,6 +12,7 @@ import {
   classifyOneTypeStatus,
   classifyTypeStatus,
   typeStatusLabels,
+  typeColourOnlyForName,
   ADVENTIVE_HATCH_CLASS
 } from './enrichedStyle.js'
 
@@ -375,4 +376,22 @@ test('restyleEnriched: paints an adventive specimen marker purple and stamps it'
   // type status wins over the adventive tag
   assert.equal(typed.feature.properties.adventive, undefined)
   assert.match(typed.calls.setIcon[0].opts.className, /bg-map-type-material/)
+})
+
+test('typeColourOnlyForName: a type of another name keeps its statuses but loses its colour', () => {
+  const byCo = typeMap([
+    [1, { kind: 'primary', statuses: ['syntypes of Bothynoderes crotchi Chevrolat, 1873'] }],
+    [2, { kind: 'primary', statuses: ['syntypes of Bothynoderes genei Chevrolat, 1873'] }]
+  ])
+  const out = typeColourOnlyForName(byCo, new Set([1]))
+  assert.deepEqual(out.get(1), byCo.get(1))
+  assert.deepEqual(out.get(2), { kind: null, statuses: ['syntypes of Bothynoderes genei Chevrolat, 1873'] })
+  // the other type's marker is drawn as an ordinary specimen
+  assert.equal(featureTypeMaterialKind(feature([co(2)]), out), null)
+  assert.equal(featureTypeMaterialKind(feature([co(1)]), out), 'primary')
+})
+
+test('typeColourOnlyForName: unknown name types (null) leave every colour as it was', () => {
+  const byCo = typeMap([[2, { kind: 'other', statuses: ['paratype of X'] }]])
+  assert.equal(typeColourOnlyForName(byCo, null), byCo)
 })

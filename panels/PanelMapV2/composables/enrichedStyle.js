@@ -34,6 +34,19 @@ export function featureTypeMaterialKind(feature, typeStatusByCoId) {
   return kind
 }
 
+// Only types of the page's own name are coloured as type material. A type of a
+// synonym (shown on the valid name's map) keeps its statuses, so the popup still
+// names it, but `kind: null` draws it as an ordinary specimen.
+// `ownTypeCoIds` null (not known) leaves every colour as it was.
+export function typeColourOnlyForName(typeStatusByCoId, ownTypeCoIds) {
+  if (!ownTypeCoIds) return typeStatusByCoId
+  const out = new Map()
+  for (const [id, entry] of typeStatusByCoId) {
+    out.set(id, ownTypeCoIds.has(id) ? entry : { ...entry, kind: null })
+  }
+  return out
+}
+
 // True when the feature carries an AssertedDistribution tagged "Adventive".
 export function featureIsAdventive(feature, adventiveAdIds) {
   if (!adventiveAdIds || !adventiveAdIds.size) return false

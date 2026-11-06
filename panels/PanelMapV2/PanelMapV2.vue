@@ -254,7 +254,9 @@ onMounted(() => {
 
   store.loadDistribution({
     otuId: props.otuId,
-    rankString: props.taxon.rank_string
+    rankString: props.taxon.rank_string,
+    taxonNameId: props.taxon.id,
+    isSynonym: props.taxon.is_valid === false
   })
 })
 

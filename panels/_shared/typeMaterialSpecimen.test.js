@@ -5,7 +5,8 @@ import {
   typeMaterialsOf,
   specimenByTypeMaterialId,
   fetchTypeSpecimens,
-  loadTypeSpecimens
+  loadTypeSpecimens,
+  fetchTypeSpecimenIdsOfName
 } from './typeMaterialSpecimen.js'
 
 const co = (id, ...typeMaterialIds) => ({
@@ -106,4 +107,19 @@ test('loadTypeSpecimens: complete only when every request succeeded', async () =
 test('fetchTypeSpecimens: never throws', async () => {
   const { get } = fakeGet({})
   assert.deepEqual(await fetchTypeSpecimens(10, { get }), [])
+})
+
+test('fetchTypeSpecimenIdsOfName: the specimens TaxonWorks lists as types of exactly this name', async () => {
+  const { get, calls } = fakeGet({
+    '/collection_objects?type_specimen_taxon_name_id=77&': [{ id: 501 }, { id: 503 }]
+  })
+  assert.deepEqual(await fetchTypeSpecimenIdsOfName(77, { get }), new Set([501, 503]))
+  assert.equal(calls.length, 1)
+})
+
+test('fetchTypeSpecimenIdsOfName: null when it cannot tell (no name, failed request)', async () => {
+  const { get, calls } = fakeGet({})
+  assert.equal(await fetchTypeSpecimenIdsOfName(null, { get }), null)
+  assert.equal(calls.length, 0)
+  assert.equal(await fetchTypeSpecimenIdsOfName(77, { get }), null)
 })

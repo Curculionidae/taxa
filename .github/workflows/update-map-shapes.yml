@@ -1,0 +1,67 @@
+name: Update map shapes
+
+# Rebuilds the species map's shape cache (public/map-shapes/, see
+# panels/PanelMapV2/readme.md): fetches the shapes of areas that new
+# distributions or specimens started using. When anything changed, it is
+# committed to `setup` and the site is deployed.
+
+on:
+  schedule:
+    # Mondays 03:17 UTC
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: update-map-shapes
+  cancel-in-progress: false
+
+permissions:
+  contents: write # commit the new shapes
+  actions: write # start the deploy workflow
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: setup
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      # The script uses only Node itself, no packages to install.
+      - name: Fetch new shapes
+        run: node scripts/build-map-shapes.mjs
+
+      - name: Commit new shapes
+        id: commit
+        run: |
+          if [ -z "$(git status --porcelain public/map-shapes)" ]; then
+            echo "No new shapes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/map-shapes
+          git commit -m "Map shapes: weekly update"
+
+          # `setup` may have moved on while this ran (edits on GitHub).
+          for attempt in 1 2 3; do
+            git push origin HEAD:setup && break
+            git pull --rebase origin setup
+          done
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # A push made with the workflow's own token starts no other workflow,
+      # so the deploy is started explicitly.
+      - name: Deploy
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref setup

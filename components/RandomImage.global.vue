@@ -39,7 +39,7 @@
         <Transition name="random-image-fade">
           <img
             :key="picked.file"
-            :src="picked.file"
+            :src="imageUrl(picked)"
             :alt="picked.name"
             :width="picked.width"
             :height="picked.height"
@@ -127,6 +127,12 @@ const order = shuffled(pool)
 const index = ref(0)
 const picked = computed(() => order[index.value] || null)
 
+// The pool lists files from the site root ("/images/random/…"); the site
+// itself may live under a sub-path (base_url), like a fork at /taxa/.
+function imageUrl(image) {
+  return `${import.meta.env.BASE_URL}${image.file.replace(/^\//, '')}`
+}
+
 const isCreditOpen = ref(false)
 const isHovered = ref(false)
 const isFocused = ref(false)
@@ -185,7 +191,7 @@ function showNext() {
     index.value = nextIndex
     schedule()
   }
-  preload.src = order[nextIndex].file
+  preload.src = imageUrl(order[nextIndex])
 }
 
 function onVisibilityChange() {

@@ -5,12 +5,12 @@ project: "TaxonPages: Curculionidae of the World"
 ---
 <div style="display: flex; justify-content: center; gap: 1rem;">
   <a href="#/otus/723601/overview">
-    <img src="/images/otiorhynchus_carinatopunctatus_500.png" 
+    <img src="../assets/home/otiorhynchus_carinatopunctatus_500.png" 
          alt="Otiorhynchus (Nihus) carinatopunctatus (Retzius, 1783). Photo by Jakob Jilg">
   </a>
   <RandomImage />
   <a href="#/otus/729972/overview">
-    <img src="/images/chlorophanus_viridis_500.png" 
+    <img src="../assets/home/chlorophanus_viridis_500.png" 
          alt="Chlorophanus viridis (Linnaeus, 1758). Photo by Jakob Jilg">
   </a>
 </div>

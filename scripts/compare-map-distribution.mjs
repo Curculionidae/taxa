@@ -51,6 +51,23 @@ async function loadShape(type, id) {
 }
 
 const key = (f) => `${f.properties.base.type}:${f.properties.base.id}`
+// Bounding box of a geometry, to check an area's stored outline is that
+// area's (simplified) outline and not another one.
+function bbox(geometry) {
+  const points = []
+  const walk = (c) => (typeof c[0] === 'number' ? points.push(c) : c.forEach(walk))
+
+  if (geometry?.type === 'GeometryCollection') geometry.geometries.forEach((g) => walk(g.coordinates))
+  else if (geometry) walk(geometry.coordinates)
+
+  const xs = points.map((p) => p[0])
+  const ys = points.map((p) => p[1])
+
+  return points.length ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] : null
+}
+
+const OUTLINE_TOLERANCE = 0.05 // degrees, about 5 km; simplification moves edges by < 0.01
+
 const isSpecimen = (f) => ['CollectionObject', 'FieldOccurrence'].includes(f.properties.base.type)
 // A specimen's label only shows when its target has none, which never
 // happens here, so only its presence is compared.
@@ -100,6 +117,17 @@ for (const otuId of otuIds) {
   const slowByKey = new Map(slow.filter((f) => f.properties.base.type !== 'TypeMaterial').map((f) => [key(f), f]))
   const fastByKey = new Map(fast.map((f) => [key(f), f]))
 
+  // TaxonWorks sends an area's shape once per map: a second record in the
+  // same area has a null geometry (the map merges them by area anyway). So
+  // outlines are compared with the area's drawn shape on that map.
+  const outlineOf = new Map()
+
+  for (const f of slow) {
+    const shapeKey = `${f.properties.shape.type}:${f.properties.shape.id}`
+
+    if (f.geometry && !outlineOf.has(shapeKey)) outlineOf.set(shapeKey, f.geometry)
+  }
+
   const onlySlow = [...slowByKey.keys()].filter((k) => !fastByKey.has(k))
   const onlyFast = [...fastByKey.keys()].filter((k) => !slowByKey.has(k))
   const differ = []
@@ -113,6 +141,14 @@ for (const otuId of otuIds) {
 
     for (const field of Object.keys(a)) {
       if (a[field] !== b[field]) differ.push(`${k} ${field}: fast ${JSON.stringify(a[field])} / geojson ${JSON.stringify(b[field])}`)
+    }
+
+    if (f.properties.shape.type !== 'Georeference') {
+      const fb = bbox(f.geometry)
+      const sb = bbox(outlineOf.get(`${s.properties.shape.type}:${s.properties.shape.id}`))
+      const off = fb && sb ? Math.max(...fb.map((v, i) => Math.abs(v - sb[i]))) : Infinity
+
+      if (off > OUTLINE_TOLERANCE) differ.push(`${k} outline off by ${off.toFixed(3)}°`)
     }
   }
 

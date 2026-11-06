@@ -224,6 +224,15 @@ async function fetchGeometry(type, id, key) {
 
     if (!data[0]) return undefined
 
+    // The filter matches the exact shape (checked 2026-11-06), but a wrong
+    // outline must never be stored, so this is verified on every record.
+    if (
+      data[0].asserted_distribution_shape_type !== type ||
+      String(data[0].asserted_distribution_shape_id) !== String(id)
+    ) {
+      throw new Error(`asked for ${type} ${id}, got ${data[0].asserted_distribution_shape_type} ${data[0].asserted_distribution_shape_id}`)
+    }
+
     return data[0].asserted_distribution_shape?.geo_json?.geometry ?? null
   }
 

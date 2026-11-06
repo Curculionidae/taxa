@@ -48,9 +48,9 @@ test('fetchTypeSpecimens: types of the valid name and of its synonyms', async ()
   const { get } = fakeGet({
     '/otus/10': { id: 10, taxon_name_id: 77 },
     '/taxon_names?taxon_name_id[]=77&synonymify=true': [{ id: 77 }, { id: 78 }, { id: 79 }],
-    '/collection_objects?type_specimen_taxon_name_id=77&': [{ id: 501 }],
-    '/collection_objects?type_specimen_taxon_name_id=78&': [{ id: 502 }],
-    '/collection_objects?type_specimen_taxon_name_id=79&': [],
+    '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }],
+    '/collection_objects?type_specimen_taxon_name_id=78': [{ id: 502 }],
+    '/collection_objects?type_specimen_taxon_name_id=79': [],
     '/collection_objects/501': co(501, 245733),
     '/collection_objects/502': co(502, 245734)
   })
@@ -64,7 +64,7 @@ test('fetchTypeSpecimens: types of the valid name and of its synonyms', async ()
 test('fetchTypeSpecimens: a failed synonym lookup still resolves the own name', async () => {
   const { get } = fakeGet({
     '/otus/10': { id: 10, taxon_name_id: 77 },
-    '/collection_objects?type_specimen_taxon_name_id=77&': [{ id: 501 }],
+    '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }],
     '/collection_objects/501': co(501, 245733)
   })
   const specimens = await fetchTypeSpecimens(10, { get })
@@ -81,7 +81,7 @@ test('fetchTypeSpecimens: a failing specimen lookup only drops that specimen', a
   const { get } = fakeGet({
     '/otus/10': { id: 10, taxon_name_id: 77 },
     '/taxon_names?': [{ id: 77 }],
-    '/collection_objects?type_specimen_taxon_name_id=77&': [{ id: 501 }, { id: 502 }],
+    '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }, { id: 502 }],
     '/collection_objects/502': co(502, 245734)
   })
   const specimens = await fetchTypeSpecimens(10, { get })
@@ -92,7 +92,7 @@ test('loadTypeSpecimens: complete only when every request succeeded', async () =
   const routes = {
     '/otus/10': { id: 10, taxon_name_id: 77 },
     '/taxon_names?': [{ id: 77 }],
-    '/collection_objects?type_specimen_taxon_name_id=77&': [{ id: 501 }, { id: 502 }],
+    '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }, { id: 502 }],
     '/collection_objects/501': co(501, 245733),
     '/collection_objects/502': co(502, 245734)
   }
@@ -111,7 +111,7 @@ test('fetchTypeSpecimens: never throws', async () => {
 
 test('fetchTypeSpecimenIdsOfName: the specimens TaxonWorks lists as types of exactly this name', async () => {
   const { get, calls } = fakeGet({
-    '/collection_objects?type_specimen_taxon_name_id=77&': [{ id: 501 }, { id: 503 }]
+    '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }, { id: 503 }]
   })
   assert.deepEqual(await fetchTypeSpecimenIdsOfName(77, { get }), new Set([501, 503]))
   assert.equal(calls.length, 1)
@@ -122,4 +122,41 @@ test('fetchTypeSpecimenIdsOfName: null when it cannot tell (no name, failed requ
   assert.equal(await fetchTypeSpecimenIdsOfName(null, { get }), null)
   assert.equal(calls.length, 0)
   assert.equal(await fetchTypeSpecimenIdsOfName(77, { get }), null)
+})
+
+test('fetchTypeSpecimenIdsOfName: one request per name, shared by every caller', async () => {
+  const cache = new Map()
+  const { get, calls } = fakeGet({
+    '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }]
+  })
+  await fetchTypeSpecimenIdsOfName(77, { get, cache })
+  assert.deepEqual(await fetchTypeSpecimenIdsOfName(77, { get, cache }), new Set([501]))
+  assert.equal(calls.length, 1)
+})
+
+test('fetchTypeSpecimenIdsOfName: a failure is not cached', async () => {
+  const cache = new Map()
+  assert.equal(await fetchTypeSpecimenIdsOfName(77, { get: fakeGet({}).get, cache }), null)
+  const { get } = fakeGet({ '/collection_objects?type_specimen_taxon_name_id=77': [{ id: 501 }] })
+  assert.deepEqual(await fetchTypeSpecimenIdsOfName(77, { get, cache }), new Set([501]))
+})
+
+test('fetchTypeSpecimenIdsOfName: reads past the first page', async () => {
+  const get = async (path, { params }) => ({
+    data: params.page === 1 ? [{ id: 501 }] : [{ id: 502 }],
+    headers: { 'pagination-total-pages': '2' }
+  })
+  assert.deepEqual(await fetchTypeSpecimenIdsOfName(77, { get }), new Set([501, 502]))
+})
+
+test('loadTypeSpecimens: reuses a name already looked up (no second request)', async () => {
+  const nameCache = new Map([[77, Promise.resolve(new Set([501]))]])
+  const { get, calls } = fakeGet({
+    '/otus/10': { id: 10, taxon_name_id: 77 },
+    '/taxon_names?': [{ id: 77 }],
+    '/collection_objects/501': co(501, 245733)
+  })
+  const { specimens } = await loadTypeSpecimens(10, get, { nameCache })
+  assert.deepEqual(specimens.map((s) => s.collectionObjectId), [501])
+  assert.ok(!calls.some((c) => c.includes('type_specimen_taxon_name_id')))
 })

@@ -41,6 +41,7 @@
  */
 
 import { mapPool } from './concurrencyPool.js'
+import { getAllPages } from './pagedGet.js'
 
 const CONCURRENCY = 4
 
@@ -121,29 +122,48 @@ export function fetchTypeSpecimenRecord(collectionObjectId) {
   return recordCache.get(collectionObjectId)
 }
 
+const nameCache = new Map() // taxonNameId -> Promise<Set<number>|null>
+
 /**
  * Ids of the collection objects TaxonWorks lists as types of exactly this name
- * (not of its synonyms). One request. Null when that can't be told: no name, or
- * the request failed.
+ * (not of its synonyms), every page. Null when that can't be told: no name, or
+ * a request failed. Cached per name and shared: the map asks for the page's
+ * own name early (to colour its markers) and `loadTypeSpecimens` asks for the
+ * same name again, one request serves both. A failure is not cached. No abort
+ * signal on purpose: an answer one panel aborted would fail for the others.
  * @param {number|string|null} taxonNameId
- * @param {{ get?: Function }} [options]  `get` is injectable for unit tests
- * @returns {Promise<Set<number>|null>}
+ * @param {{ get?: Function, cache?: Map }} [options]  injectable for unit
+ *   tests; a `get` without a `cache` bypasses caching
+ * @returns {Promise<Set<number>|null>}  never rejects
  */
-export async function fetchTypeSpecimenIdsOfName(taxonNameId, { get } = {}) {
-  if (!taxonNameId) return null
-  try {
-    const request = get || (await import('@/utils/request')).makeAPIRequest.get
-    const { data } = await request(
-      `/collection_objects?type_specimen_taxon_name_id=${taxonNameId}&per=500`
-    )
-    return new Set((Array.isArray(data) ? data : []).map((co) => co.id))
-  } catch {
-    return null
-  }
+export function fetchTypeSpecimenIdsOfName(taxonNameId, { get, cache = get ? null : nameCache } = {}) {
+  if (!taxonNameId) return Promise.resolve(null)
+  const key = Number(taxonNameId)
+  const load = () =>
+    loadTypeSpecimenIdsOfName(key, get).catch(() => {
+      cache?.delete(key)
+      return null
+    })
+  if (!cache) return load()
+  if (!cache.has(key)) cache.set(key, load())
+  return cache.get(key)
+}
+
+async function loadTypeSpecimenIdsOfName(taxonNameId, get) {
+  const request = get || (await import('@/utils/request')).makeAPIRequest.get
+  // scalar filter: the `[]` form is ignored and returns every type in the project
+  const rows = await getAllPages(
+    request,
+    `/collection_objects?type_specimen_taxon_name_id=${taxonNameId}`,
+    {}
+  )
+  return new Set(rows.map((co) => co.id))
 }
 
 // Exported for unit testing: `complete` is false when any request failed.
-export async function loadTypeSpecimens(otuId, get) {
+// `nameCache` (the per-name type lookup's cache) is injectable for unit tests;
+// with an injected `get` and no `nameCache` nothing is cached.
+export async function loadTypeSpecimens(otuId, get, { nameCache: names } = {}) {
   const specimens = []
   let complete = true
   try {
@@ -166,14 +186,12 @@ export async function loadTypeSpecimens(otuId, get) {
 
     const coIds = new Set()
     await mapPool([...nameIds], CONCURRENCY, async (nameId) => {
-      try {
-        const { data } = await request(
-          `/collection_objects?type_specimen_taxon_name_id=${nameId}&per=500`
-        )
-        for (const co of Array.isArray(data) ? data : []) coIds.add(co.id)
-      } catch {
-        complete = false // this name's types stay unresolved
-      }
+      const ids = await fetchTypeSpecimenIdsOfName(nameId, {
+        get,
+        ...(names ? { cache: names } : {})
+      })
+      if (!ids) complete = false // this name's types stay unresolved
+      else ids.forEach((id) => coIds.add(id))
     })
 
     await mapPool([...coIds], CONCURRENCY, async (id) => {

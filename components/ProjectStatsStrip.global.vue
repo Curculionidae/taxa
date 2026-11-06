@@ -16,7 +16,7 @@
       <AnimateNumber
         class="font-semibold tabular-nums"
         :number="p.count"
-        :duration="3500"
+        :duration="1200"
       />
       <span class="text-xs">{{ p.label }}</span>
     </span>
@@ -27,11 +27,11 @@
 // The "project at a glance" figures under the hero images on the home page.
 // The count-up starts at once, toward the last known real figures: the ones
 // this browser saw on its last visit (STORAGE_KEY), else the built-in
-// BUILT_IN figures. The live requests then replace them. /stats takes about
-// 3 s, so the count-up lasts 3.5 s (it eases out: most of the climb is in the
-// first second) and the live figure lands while it still runs, which moves
-// its end point with no pause. Should it land later, <AnimateNumber> only
-// ticks the small difference. Starting from real figures keeps that small. A failed request
+// BUILT_IN figures. The live requests run alongside. A live figure that lands
+// during the 1.2 s count-up moves its end point; one that lands later (/stats
+// takes about 3 s) is not shown, since any change after the count reads as a
+// break, but is remembered, and the next visit counts straight to it. So a
+// figure can lag by one visit, usually by a handful. A failed request
 // just leaves the last known figure showing.
 //
 // "taxon names" is NOT the /stats figure: that one is project-wide and also
@@ -51,12 +51,12 @@ import {
 const ROOT_TAXON_NAME_ID = CURCULIONOIDEA_TAXON_NAME_ID
 
 // The real figures on 2026-11-06. Only a fallback for a first visit; worth
-// refreshing now and then so the live correction stays small.
+// refreshing now and then: a first visit shows these, not the live ones.
 const BUILT_IN = {
-  species: 23631,
-  names: 37940,
+  species: 23634,
+  names: 37943,
   specimens: 26136,
-  distributions: 53838,
+  distributions: 53840,
   bioassoc: 4329,
   images: 1435,
   refs: 7998

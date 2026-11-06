@@ -7,8 +7,11 @@
 // figure replacing the built-in one) does not start a second count:
 // - still counting: the target moves and the count carries on along the same
 //   curve, so there is no pause and no restart;
-// - already done: the difference ticks up in CORRECTION_MS.
-// Only ever counts upward: a lower figure settles at once.
+// - already done: the shown number stays. Any change after the count has
+//   finished would read as a break, so a late figure is left for the
+//   caller to use next time (ProjectStatsStrip remembers it).
+// Never counts backward: a figure below what is shown mid-count settles.
+// With reduced motion there is no count, and a new figure just replaces it.
 // Adapted from sfg-taxonpages/orthoptera pages/components/AnimateNumber.vue.
 //
 // `display` is seeded with `number` rather than 0 so a server render (dev:ssr)
@@ -16,8 +19,6 @@
 // 0 is a client-only flourish kicked off in onMounted, after hydration.
 
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
-
-const CORRECTION_MS = 700
 
 const props = defineProps({
   number: { type: Number, default: 0 },
@@ -83,13 +84,10 @@ watch(
     } else if (run) {
       // Still counting: same start and timing, new end point. Below what is
       // already shown it would tick back, so it settles instead.
-      if (to < display.value) settle()
-      else run.to = to
-    } else if (to > display.value) {
-      start(display.value, to, CORRECTION_MS)
-    } else {
-      settle()
+      if (to >= display.value) run.to = to
+      else settle()
     }
+    // Count finished: the shown number stays.
   }
 )
 

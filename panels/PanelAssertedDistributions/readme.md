@@ -52,7 +52,7 @@ Groups and areas within groups are sorted alphabetically.
 
 **Step 1:**
 
-1. **`/otus`**: `taxon_name_id[]=X&descendants=true&coordinatify=true`. Resolves the full OTU set: the valid taxon, its descendants (subspecies/varieties), and every coordinate OTU (true synonym sharing the same valid taxon name), all decided by TaxonWorks itself via `coordinatify`, not by this panel walking `taxon_name_relationships` (an earlier version did that, filtering by `type.includes('Invalidating')`, which also matched Misapplication/Homonym relationships and could pull in an unrelated taxon's distributions). Result is deduplicated. `/otus` has no id-only/lean response mode, but `rank_group: ['SpeciesGroup']` (below) keeps the resolved OTU set, and so this payload, small in practice.
+1. **`/otus`**: `taxon_name_id[]=X&descendants=true&coordinatify=true`. Resolves the full OTU set: the valid taxon, its descendants (subspecies/varieties), and every coordinate OTU (true synonym sharing the same valid taxon name), all decided by TaxonWorks itself via `coordinatify`, not by this panel walking `taxon_name_relationships` (an earlier version did that, filtering by `type.includes('Invalidating')`, which also matched Misapplication/Homonym relationships and could pull in an unrelated taxon's distributions). Result is deduplicated. On a synonym's page (`taxon.is_valid === false`) `coordinatify` is left off, so only the name's own records are listed ("No records found." when it has none), the rule the package panels follow since taxonpages PR 380; the valid name's page stays merged. `/otus` has no id-only/lean response mode, but `rank_group: ['SpeciesGroup']` (below) keeps the resolved OTU set, and so this payload, small in practice.
 
 **Step 2:**
 

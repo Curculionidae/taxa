@@ -244,7 +244,10 @@
  *   taxon's distributions (see issue #35). `coordinatify` is TaxonWorks'
  *   own, correct notion of "same taxon, different OTU record". Deduplicated
  *   (`new Set`), since coordinatify can list an OTU that also qualifies as
- *   a plain descendant. `/otus` has no id-only/lean response mode, but this
+ *   a plain descendant. On a synonym's page (`taxon.is_valid === false`)
+ *   coordinatify is left off, so the panel lists only that name's own
+ *   records ("No records found." when it has none), like the package panels
+ *   since taxonpages PR 380. The valid name's page stays merged. `/otus` has no id-only/lean response mode, but this
  *   panel is restricted to `rank_group: ['SpeciesGroup']` (taxa_page.yml),
  *   which keeps the OTU set (and so this payload) small in practice.
  *
@@ -609,10 +612,12 @@ async function loadDistributions() {
   try {
     // Step 1: resolve the full OTU set via TaxonWorks' own coordinatify,
     // this panel does not determine synonymy itself (see the file header).
+    // On a synonym's page only the name's own OTU(s): coordinatify would add
+    // the valid name's and every other synonym's.
     const otus = await fetchAllPages('/otus', {
       'taxon_name_id[]': props.taxon.id,
       descendants: true,
-      coordinatify: true,
+      ...(props.taxon.is_valid === false ? {} : { coordinatify: true }),
       'extend[]': 'taxon_name'
     }, { per: props.per })
     const otuIds = [...new Set(otus.map((o) => o.id))]

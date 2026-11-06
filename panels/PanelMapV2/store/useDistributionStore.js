@@ -29,6 +29,8 @@ import {
   fetchTypeSpecimenIdsOfName
 } from '../../_shared/typeMaterialSpecimen.js'
 import { mapPool } from '../../_shared/concurrencyPool.js'
+import { loadFastDistribution } from '../lib/fastDistribution.js'
+import { loadShape } from '../lib/shapeCache.js'
 
 function normalizeAbsentFeatures(arr) {
   arr.forEach((feature) => {
@@ -219,7 +221,17 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
     // material. On a synonym page (`isSynonym`) TaxonWorks is asked for the
     // name's own records only; by default it adds the valid name's and every
     // synonym's ("coordinate OTUs"), same switch as the package's map.
-    async loadDistribution({ otuId, rankString, taxonNameId = null, isSynonym = false }) {
+    //
+    // A species map is first built from cached shapes (lib/fastDistribution.js,
+    // about 1 to 2 s); only if that can't be done faithfully does it wait for
+    // distribution.geojson (up to 15 s, the server serialising every shape).
+    async loadDistribution({
+      otuId,
+      rankString,
+      taxonNameId = null,
+      validTaxonNameId = null,
+      isSynonym = false
+    }) {
       this.tagsByAdId = new Map()
       this.adventiveAdIds = new Set()
       this.adventiveSpecimenKeys = new Set()
@@ -231,6 +243,24 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
           isRankGroup('SpeciesAndInfraspeciesGroup', rankString))
 
       this.controller = new AbortController()
+
+      if (isSpeciesGroup && taxonNameId) {
+        const signal = this.controller.signal
+        const features = await loadFastDistribution({
+          otuId: Number(otuId),
+          taxonNameId,
+          validTaxonNameId,
+          isSynonym,
+          get: this.fastDistributionRequest(signal),
+          loadShape
+        })
+
+        if (signal.aborted) return
+        if (features) {
+          this.showDistribution(features, otuId, taxonNameId)
+          return
+        }
+      }
 
       if (isSpeciesGroup) {
         const params = isSynonym ? { coordinate_otus: false } : {}
@@ -247,19 +277,11 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
               this.distribution.geojson = null
               this.distribution.errorMessage = data.message
             } else {
-              const allFeatures = [...data.features, ...(await absentFeaturesPromise)]
-              normalizeAbsentFeatures(allFeatures)
-
-              const { features, shapeTypes } = removeDuplicateShapes(
-                sortFeaturesByType(allFeatures, Object.keys(LEGEND))
+              this.showDistribution(
+                [...data.features, ...(await absentFeaturesPromise)],
+                otuId,
+                taxonNameId
               )
-
-              this.distribution.currentShapeTypes = shapeTypes
-              this.distribution.geojson = {
-                features
-              }
-
-              this.enrichFeatures(features, otuId, taxonNameId, this.controller.signal)
             }
           })
           .catch((e) => {
@@ -269,6 +291,48 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
           })
       } else {
         this.getAggregateShape(otuId)
+      }
+    },
+
+    // The features of distribution.geojson (+ the absent ones), however they
+    // were obtained, onto the map, then the second pass.
+    showDistribution(allFeatures, otuId, taxonNameId) {
+      normalizeAbsentFeatures(allFeatures)
+
+      const { features, shapeTypes } = removeDuplicateShapes(
+        sortFeaturesByType(allFeatures, Object.keys(LEGEND))
+      )
+
+      this.distribution.currentShapeTypes = shapeTypes
+      this.distribution.geojson = {
+        features
+      }
+
+      this.enrichFeatures(features, otuId, taxonNameId, this.controller.signal)
+    },
+
+    // The `get` lib/fastDistribution.js asks TaxonWorks with. Its first
+    // distributions request stands for the panel's data in the panel menu,
+    // as distribution.geojson did.
+    fastDistributionRequest(signal) {
+      let registered = false
+
+      return (path, params) => {
+        // Repeated keys (otu_id[]=1&otu_id[]=2) need URLSearchParams, which
+        // replaces the instance's default params rather than merging them,
+        // so the project token is added here.
+        const query = new URLSearchParams(params)
+
+        query.set('project_token', makeAPIRequest.defaults.params.project_token)
+
+        const request = () => makeAPIRequest.get(path, { params: query, signal })
+
+        if (path === '/asserted_distributions' && !registered) {
+          registered = true
+          return useOtuPageRequest('panel:map-v2', request)
+        }
+
+        return request()
       }
     },
 

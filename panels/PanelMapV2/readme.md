@@ -75,3 +75,40 @@ PanelMapV2/
     makeSegmentedCircle.js
     isRankGroup.js
 ```
+
+## Cached shapes (fast species map)
+
+`/otus/:id/inventory/distribution.geojson` makes TaxonWorks serialise every
+shape on the map on every visit: about 93 ms per area plus 54 µs per point
+(Canada alone about 4 s), 10 to 15 s for a widespread species. The same
+records without geometry come back in about 1 s.
+
+So a species map is first built by `lib/fastDistribution.js` from requests
+without geometry plus shapes stored with the site in `public/map-shapes/`
+(`<GeographicArea|Gazetteer>/<id>.json`, loaded by `lib/shapeCache.js`). Only if
+that can't be done faithfully (a request fails, a field occurrence without a
+georeference, a distribution of something other than an OTU or association)
+does the store fall back to `distribution.geojson`. Measured in the browser:
+15.6 s → 3.1 s (Otiorhynchus carinatopunctatus), 11.2 s → 2.4 s (Chlorophanus
+viridis), 5.2 s → 1.9 s (Pandeleteius hilaris).
+
+What it rebuilds, checked feature by feature against `distribution.geojson`:
+- OTUs: the page name's *valid* name, its descendants and the synonyms of both
+  (`/otus?taxon_name_id[]=&descendants=true&coordinatify=true`); a synonym page
+  only its own OTU. The valid name matters: a nominotypical subspecies can have
+  the species as valid name and then shows the species' synonyms.
+- Their asserted distributions, labelled `<OTU label> in <area> [Geographic
+  Area]`. Absent ones target the page OTU and are dropped on synonym pages (as
+  `distribution_is_absent.geojson` does). Association distributions use the
+  association's `object_label` and target its side that is one of the OTUs.
+- Specimens from each OTU's `dwc.json`: at the georeference, else as the
+  collecting event's area (collection objects only: there is no
+  `/field_occurrences` index to look up a field occurrence's event).
+- Areas without a shape in TaxonWorks (`without-shape.json`) are left out, as
+  TaxonWorks does. TypeMaterial entries are left to `addMissingTypeSpecimens`.
+
+Shapes: `npm run map-shapes` (`scripts/build-map-shapes.mjs`) fetches each shape
+any distribution of the project uses, simplified (0.005°, 4 decimals): 2,420
+shapes, 30 MB. Re-runs only fetch new ones; a shape not cached yet is fetched
+live by the map. To check the rebuild against TaxonWorks for some OTUs:
+`node scripts/compare-map-distribution.mjs <otuId> … [--synonym]`.

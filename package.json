@@ -10,6 +10,7 @@
     "serve": "taxonpages serve",
     "preview": "taxonpages preview",
     "setup": "taxonpages setup",
+    "map-shapes": "node scripts/build-map-shapes.mjs",
     "test": "node --test 'panels/_gbifShared/**/*.test.js' 'panels/_shared/**/*.test.js' 'panels/PanelMapV2/**/*.test.js' 'panels/PanelBiologicalAssociationsV2/**/*.test.js' 'panels/PanelSpecimenOccurrences/**/*.test.js' 'panels/PanelContentV2/**/*.test.js' 'modules/keys/**/*.test.js' 'panels/OverlayPanelDescendants/**/*.test.js' 'pages/bibliography/**/*.test.js' 'panels/PanelAssertedDistributions/**/*.test.js'"
   },
   "dependencies": {

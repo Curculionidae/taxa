@@ -257,6 +257,7 @@ onMounted(() => {
     otuId: props.otuId,
     rankString: props.taxon.rank_string,
     taxonNameId: props.taxon.id,
+    validTaxonNameId: props.taxon.cached_valid_taxon_name_id,
     isSynonym: isSynonymPage(props.taxon)
   })
 })

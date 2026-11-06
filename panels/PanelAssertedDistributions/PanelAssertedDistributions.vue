@@ -576,12 +576,15 @@ async function fetchDataAttributeCitations(dataAttributeIds) {
   return result
 }
 
-async function fetchDataAttributes(distributionIds) {
-  if (!distributionIds.length) return new Map()
+// Data attributes keyed by subject id. A BA-object record's reassessment is
+// usually recorded on the biological association, not on the distribution,
+// so this is called for both subject types.
+async function fetchDataAttributes(subjectType, subjectIds) {
+  if (!subjectIds.length) return new Map()
 
   const list = await fetchAllPages('/data_attributes', {
-    attribute_subject_type: 'AssertedDistribution',
-    'attribute_subject_id[]': distributionIds
+    attribute_subject_type: subjectType,
+    'attribute_subject_id[]': subjectIds
   }, { per: props.per })
   const citationByAttrId = await fetchDataAttributeCitations(list.map((a) => a.id))
 
@@ -639,10 +642,11 @@ async function loadDistributions() {
     const associationIds = [...new Set(allData
       .filter((d) => d.asserted_distribution_object_type === 'BiologicalAssociation')
       .map((d) => d.asserted_distribution_object_id))]
-    const [citationsMap, tagsMap, dataAttributesMap, associationById] = await Promise.all([
+    const [citationsMap, tagsMap, dataAttributesMap, baDataAttributesMap, associationById] = await Promise.all([
       fetchCitations(allData.map((d) => d.id)),
       fetchAssertedDistributionTags(allData.map((d) => d.id)),
-      fetchDataAttributes(allData.map((d) => d.id)),
+      fetchDataAttributes('AssertedDistribution', allData.map((d) => d.id)),
+      fetchDataAttributes('BiologicalAssociation', associationIds),
       fetchAssociations(associationIds)
     ])
 
@@ -651,7 +655,12 @@ async function loadDistributions() {
         item,
         citationsMap.get(item.id) || [],
         tagsMap.get(item.id) || [],
-        dataAttributesMap.get(item.id) || [],
+        [
+          ...(dataAttributesMap.get(item.id) || []),
+          ...(item.asserted_distribution_object_type === 'BiologicalAssociation'
+            ? baDataAttributesMap.get(item.asserted_distribution_object_id) || []
+            : [])
+        ],
         otuInfo,
         associationById
       )

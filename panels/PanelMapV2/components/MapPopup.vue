@@ -331,16 +331,48 @@ function specimenFor(item) {
 // misidentification and was asserted absent elsewhere). Only surfaced when it
 // carries its own citation - "Reassessed by [citation]" with no citation to
 // point to isn't useful in the popup.
+// For a BA-linked AD the reassessment usually sits on the biological
+// association instead, so those are asked for too and filed under the AD's
+// id. The association id comes from the AD record itself: the label match
+// above misses associations whose sides are AnatomicalParts (an egg, a stem),
+// /biological_associations/basic?otu_id[] does not return those.
 async function fetchReassessments(adIds) {
   try {
-    const params = new URLSearchParams()
-    params.append('attribute_subject_type', 'AssertedDistribution')
-    adIds.forEach((id) => params.append('attribute_subject_id[]', id))
+    const baLinkedAdIds = props.items
+      .filter((item, i) => adIds.includes(item.id) && isBaLinked(item, props.targets?.[i]))
+      .map((item) => item.id)
 
-    const { data: attrs } = await makeAPIRequest.get(`/data_attributes?${params.toString()}`)
-    const matches = (attrs || []).filter(
-      (a) => (a.predicate_name || '').toLowerCase() === 'reassessment'
-    )
+    const adIdsByBaId = new Map()
+    if (baLinkedAdIds.length) {
+      const params = new URLSearchParams()
+      baLinkedAdIds.forEach((id) => params.append('asserted_distribution_id[]', id))
+      const { data: ads } = await makeAPIRequest.get(`/asserted_distributions?${params.toString()}`)
+      for (const ad of ads || []) {
+        if (ad.asserted_distribution_object_type !== 'BiologicalAssociation') continue
+        const baId = ad.asserted_distribution_object_id
+        if (!adIdsByBaId.has(baId)) adIdsByBaId.set(baId, [])
+        adIdsByBaId.get(baId).push(ad.id)
+      }
+    }
+
+    const fetchAttrs = async (subjectType, ids) => {
+      if (!ids.length) return []
+      const params = new URLSearchParams()
+      params.append('attribute_subject_type', subjectType)
+      ids.forEach((id) => params.append('attribute_subject_id[]', id))
+      const { data } = await makeAPIRequest.get(`/data_attributes?${params.toString()}`)
+      return data || []
+    }
+    const [adAttrs, baAttrs] = await Promise.all([
+      fetchAttrs('AssertedDistribution', adIds),
+      fetchAttrs('BiologicalAssociation', [...adIdsByBaId.keys()])
+    ])
+    const isReassessment = (a) => (a.predicate_name || '').toLowerCase() === 'reassessment'
+    // each match paired with the AD id(s) it belongs to
+    const matches = [
+      ...adAttrs.filter(isReassessment).map((a) => ({ ...a, adIds: [a.attribute_subject_id] })),
+      ...baAttrs.filter(isReassessment).map((a) => ({ ...a, adIds: adIdsByBaId.get(a.attribute_subject_id) || [] }))
+    ]
 
     if (matches.length) {
       const citParams = new URLSearchParams()
@@ -369,10 +401,10 @@ async function fetchReassessments(adIds) {
       for (const attr of matches) {
         const citation = citationByAttrId.get(attr.id)
         if (!citation) continue
-        if (!reassessmentCache.has(attr.attribute_subject_id)) {
-          reassessmentCache.set(attr.attribute_subject_id, [])
+        for (const adId of attr.adIds) {
+          if (!reassessmentCache.has(adId)) reassessmentCache.set(adId, [])
+          reassessmentCache.get(adId).push({ value: attr.value, citation })
         }
-        reassessmentCache.get(attr.attribute_subject_id).push({ value: attr.value, citation })
       }
     }
 

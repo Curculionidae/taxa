@@ -1,7 +1,7 @@
 // The species map's features, built without /otus/:id/inventory/distribution.geojson.
 //
 // That request makes TaxonWorks serialise every shape on the map, about 93 ms
-// per area plus 54 µs per point, 10 to 13 s for a widespread species, on
+// per area plus 54 µs per point, 10 to 15 s for a widespread species, on
 // every visit. Here the same features come from requests without geometry
 // (about 1 s each, run side by side) and the shapes from files built ahead of
 // time (public/map-shapes/, scripts/build-map-shapes.mjs).
@@ -19,19 +19,20 @@
 //   and are left out on a synonym page, where that endpoint returns none.
 // - Distributions of a biological association of those OTUs, labelled with
 //   the association ("<subject> collected from <object> in <area> [...]") and
-//   targeting the side that is one of those OTUs.
-// - Areas TaxonWorks has no shape for are left out, as it does itself.
+//   targeting its side that is one of those OTUs.
 // - Specimens (CollectionObject, FieldOccurrence) from each OTU's DwC records:
 //   at their georeference, or, without one, as their collecting event's area
 //   (collection objects only; a field occurrence without one falls back).
+// - Areas TaxonWorks has no shape for are left out, as it does itself.
 // TypeMaterial entries are left out: the popup drops them next to their
 // specimen anyway, and type specimens missing from the list are added by the
 // store's addMissingTypeSpecimens, as before.
 //
 // Returns null whenever something can't be rebuilt faithfully (a request or
 // a shape failed to load, a distribution of something else than an OTU or an
-// association); the caller then falls back to distribution.geojson. No Vue and no '@/' imports:
-// `get` and `loadShape` are passed in, so node can run it.
+// association); the caller then falls back to distribution.geojson. Each such
+// check runs as soon as its data is in, so a fallback starts early. No Vue and
+// no '@/' imports: `get` and `loadShape` are passed in, so node can run it.
 
 import { specimenGeometry } from '../utils/typeSpecimenFeatures.js'
 
@@ -43,16 +44,22 @@ const SHAPE_TYPE_LABELS = {
 }
 
 const PER = 500
+const BATCH = 100
 
-function stripTags(html = '') {
+// Thrown to stop as soon as the map can't be rebuilt faithfully.
+class Declined extends Error {}
+
+const NAMED_ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+
+export function stripTags(html = '') {
   return String(html)
     .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
+    .replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (entity, dec, hex, name) => {
+      if (dec) return String.fromCodePoint(Number(dec))
+      if (hex) return String.fromCodePoint(parseInt(hex, 16))
+
+      return NAMED_ENTITIES[name.toLowerCase()] ?? entity
+    })
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -65,16 +72,45 @@ function chunks(list, size) {
   return out
 }
 
-// Every page of an index request.
+function header(headers, name) {
+  return typeof headers?.get === 'function' ? headers.get(name) : headers?.[name]
+}
+
+// Every page of an index request: the first page says how many there are,
+// the rest are fetched side by side.
 async function getAll(get, path, params) {
-  const all = []
+  const page = (n) => get(path, [...params, ['per', PER], ['page', n]])
+  const first = await page(1)
+  const pages = Number(header(first.headers, 'pagination-total-pages'))
 
-  for (let page = 1; ; page++) {
-    const { data } = await get(path, [...params, ['per', PER], ['page', page]])
+  if (!pages) {
+    // No page count: page on while pages come back full.
+    const all = [...first.data]
 
-    all.push(...data)
-    if (data.length < PER) return all
+    for (let n = 2, last = first.data; last.length >= PER; n++) {
+      last = (await page(n)).data
+      all.push(...last)
+    }
+
+    return all
   }
+
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, i) => page(i + 2).then(({ data }) => data))
+  )
+
+  return [first.data, ...rest].flat()
+}
+
+// The same index request for many ids, in batches side by side.
+async function getByIds(get, path, param, ids) {
+  const lists = await Promise.all(
+    chunks([...new Set(ids)], BATCH).map((batch) =>
+      getAll(get, path, batch.map((id) => [param, id]))
+    )
+  )
+
+  return lists.flat()
 }
 
 async function loadOtus(get, { otuId, taxonNameId, isSynonym }) {
@@ -90,55 +126,41 @@ async function loadOtus(get, { otuId, taxonNameId, isSynonym }) {
   return getAll(get, '/otus', params)
 }
 
-// Map<"CollectionObject:<id>", geographicAreaId> for collection objects
-// without a georeference: specimen -> collecting event -> its geographic area.
-async function specimenAreas(get, rows) {
-  const ceBySpecimen = new Map()
-  const ids = rows.map((r) => r.dwc_occurrence_object_id)
+// Map<collectionObjectId, geographicAreaId|null> for collection objects
+// without a georeference: specimen -> collecting event -> its area.
+async function specimenAreas(get, collectionObjectIds) {
+  if (!collectionObjectIds.length) return new Map()
 
-  for (const batch of chunks(ids, 100)) {
-    const records = await getAll(
-      get,
-      '/collection_objects',
-      batch.map((id) => ['collection_object_id[]', id])
-    )
-
-    records.forEach((r) => ceBySpecimen.set(`CollectionObject:${r.id}`, r.collecting_event_id))
-  }
-
-  const ceIds = [...new Set([...ceBySpecimen.values()].filter(Boolean))]
-  const areaByCe = new Map()
-
-  for (const batch of chunks(ceIds, 100)) {
-    const events = await getAll(
-      get,
-      '/collecting_events',
-      batch.map((id) => ['collecting_event_id[]', id])
-    )
-
-    events.forEach((ce) => areaByCe.set(ce.id, ce.geographic_area_id))
-  }
-
-  return new Map(
-    [...ceBySpecimen].map(([key, ceId]) => [key, areaByCe.get(ceId) ?? null])
+  const records = await getByIds(get, '/collection_objects', 'collection_object_id[]', collectionObjectIds)
+  const events = await getByIds(
+    get,
+    '/collecting_events',
+    'collecting_event_id[]',
+    records.map((r) => r.collecting_event_id).filter(Boolean)
   )
+  const areaByEvent = new Map(events.map((ce) => [ce.id, ce.geographic_area_id]))
+
+  return new Map(records.map((r) => [r.id, areaByEvent.get(r.collecting_event_id) ?? null]))
 }
 
-// Map<associationId, association> (with its `object_label`).
-async function loadAssociations(get, ids) {
-  const byId = new Map()
+// Map<"<type>:<id>", Promise<geometry|null>>, each shape asked for once.
+function shapeLoader(loadShape) {
+  const shapes = new Map()
 
-  for (const batch of chunks([...new Set(ids)], 100)) {
-    const list = await getAll(
-      get,
-      '/biological_associations',
-      batch.map((id) => ['biological_association_id[]', id])
-    )
+  return (type, id) => {
+    const key = `${type}:${id}`
 
-    list.forEach((association) => byId.set(association.id, association))
+    if (!shapes.has(key)) {
+      const promise = loadShape(type, Number(id))
+
+      // Started early, awaited later: a failure is handled where it is
+      // awaited, not reported as unhandled meanwhile.
+      promise.catch(() => {})
+      shapes.set(key, promise)
+    }
+
+    return shapes.get(key)
   }
-
-  return byId
 }
 
 /**
@@ -148,7 +170,7 @@ async function loadAssociations(get, ids) {
  * @param {number|null} [options.validTaxonNameId] its valid name
  *   (`cached_valid_taxon_name_id`), the page's name when not given
  * @param {boolean} options.isSynonym      a synonym page: its own records only
- * @param {(path: string, params: Array<[string, any]>) => Promise<{ data: any }>} options.get
+ * @param {(path: string, params: Array<[string, any]>) => Promise<{ data: any, headers?: any }>} options.get
  * @param {(type: string, id: number) => Promise<object|null>} options.loadShape
  *   the geometry of a GeographicArea / Gazetteer, null when TaxonWorks has no
  *   shape for it; rejects when it could not be loaded
@@ -175,91 +197,99 @@ export async function loadFastDistribution({
     const otuIds = otus.map((otu) => otu.id)
     const otuLabels = new Map(otus.map((otu) => [otu.id, stripTags(otu.object_tag)]))
     const target = (id) => ({ id, label: otuLabels.get(id) ?? '', type: 'Otu' })
+    const shape = shapeLoader(loadShape)
 
-    const [allDistributions, dwcRows] = await Promise.all([
-      getAll(get, '/asserted_distributions', [
-        ...otuIds.map((id) => ['otu_id[]', id]),
-        ['extend[]', 'asserted_distribution_shape']
-      ]),
-      Promise.all(
-        otuIds.map((id) => get(`/otus/${id}/inventory/dwc.json`, []).then(({ data }) => data))
-      ).then((lists) => lists.flat())
-    ])
+    // Distributions, and from them their associations and shapes, run side
+    // by side with the specimens and their areas.
+    const distributionsPromise = getAll(get, '/asserted_distributions', [
+      ...otuIds.map((id) => ['otu_id[]', id]),
+      ['extend[]', 'asserted_distribution_shape']
+    ]).then((all) => {
+      const distributions = isSynonym ? all.filter((ad) => !ad.is_absent) : all
 
-    const distributions = isSynonym
-      ? allDistributions.filter((ad) => !ad.is_absent)
-      : allDistributions
+      if (
+        distributions.some(
+          (ad) => !['Otu', 'BiologicalAssociation'].includes(ad.asserted_distribution_object_type)
+        )
+      ) {
+        throw new Declined('distribution of something else than an OTU or association')
+      }
 
-    // Distributions of anything else than an OTU or an association: not
-    // rebuilt here.
-    if (
-      distributions.some(
-        (ad) => !['Otu', 'BiologicalAssociation'].includes(ad.asserted_distribution_object_type)
+      // Shapes start loading now, not after the specimens are in.
+      distributions.forEach((ad) =>
+        shape(ad.asserted_distribution_shape_type, ad.asserted_distribution_shape_id)
       )
-    ) {
-      return null
-    }
 
-    const associations = await loadAssociations(
-      get,
-      distributions
+      return distributions
+    })
+
+    const associationsPromise = distributionsPromise.then(async (distributions) => {
+      const ids = distributions
         .filter((ad) => ad.asserted_distribution_object_type === 'BiologicalAssociation')
         .map((ad) => ad.asserted_distribution_object_id)
-    )
+      const list = await getByIds(get, '/biological_associations', 'biological_association_id[]', ids)
 
-    // One row per specimen, even if two OTUs' lists both carry it.
-    const seen = new Set()
-    const specimens = dwcRows.filter((row) => {
-      const key = `${row.dwc_occurrence_object_type}:${row.dwc_occurrence_object_id}`
-
-      if (!SPECIMEN_TYPES.includes(row.dwc_occurrence_object_type) || seen.has(key)) return false
-      seen.add(key)
-
-      return otuLabels.has(row.otu_id)
+      return new Map(list.map((association) => [association.id, association]))
     })
-    const placed = specimens.map((row) => ({ row, geometry: specimenGeometry(row) }))
-    const unplaced = placed.filter((p) => !p.geometry).map((p) => p.row)
 
-    // A field occurrence's collecting event can't be looked up (the API has
-    // no field_occurrences index), so it can't be placed by its area.
-    if (unplaced.some((row) => row.dwc_occurrence_object_type !== 'CollectionObject')) return null
-    const areaBySpecimen = unplaced.length ? await specimenAreas(get, unplaced) : new Map()
+    const specimensPromise = Promise.all(
+      otuIds.map((id) => get(`/otus/${id}/inventory/dwc.json`, []).then(({ data }) => data))
+    ).then(async (lists) => {
+      // One row per specimen, even if two OTUs' lists both carry it; a row
+      // determined to an OTU outside the set does not hide a copy within it.
+      const seen = new Set()
+      const rows = lists.flat().filter((row) => {
+        const key = `${row.dwc_occurrence_object_type}:${row.dwc_occurrence_object_id}`
 
-    // Every shape needed, loaded side by side.
-    const shapeKeys = new Set(
-      distributions.map((ad) => `${ad.asserted_distribution_shape_type}:${ad.asserted_distribution_shape_id}`)
-    )
+        if (!SPECIMEN_TYPES.includes(row.dwc_occurrence_object_type)) return false
+        if (!otuLabels.has(row.otu_id) || seen.has(key)) return false
+        seen.add(key)
 
-    areaBySpecimen.forEach((areaId) => areaId && shapeKeys.add(`GeographicArea:${areaId}`))
+        return true
+      })
+      const placed = rows.map((row) => ({ row, geometry: specimenGeometry(row) }))
+      const unplaced = placed.filter((p) => !p.geometry).map((p) => p.row)
 
-    const shapes = new Map(
-      await Promise.all(
-        [...shapeKeys].map(async (key) => {
-          const [type, id] = key.split(':')
+      // A field occurrence's collecting event can't be looked up (the API has
+      // no field_occurrences index), so it can't be placed by its area.
+      if (unplaced.some((row) => row.dwc_occurrence_object_type !== 'CollectionObject')) {
+        throw new Declined('field occurrence without a georeference')
+      }
 
-          return [key, await loadShape(type, Number(id))]
-        })
-      )
-    )
+      const areas = await specimenAreas(get, unplaced.map((row) => row.dwc_occurrence_object_id))
+
+      areas.forEach((areaId) => areaId && shape('GeographicArea', areaId))
+
+      return { placed, areas }
+    })
+
+    const [distributions, associations, { placed, areas }] = await Promise.all([
+      distributionsPromise,
+      associationsPromise,
+      specimensPromise
+    ])
 
     const features = []
 
     for (const ad of distributions) {
       const shapeType = ad.asserted_distribution_shape_type
       const shapeId = ad.asserted_distribution_shape_id
-      const geometry = shapes.get(`${shapeType}:${shapeId}`)
+      const geometry = await shape(shapeType, shapeId)
       const areaName = ad.asserted_distribution_shape?.name ?? ''
       let subject
       let targetId
 
       if (ad.asserted_distribution_object_type === 'BiologicalAssociation') {
         const association = associations.get(ad.asserted_distribution_object_id)
+        const side = ['subject', 'object'].find(
+          (s) =>
+            association?.[`biological_association_${s}_type`] === 'Otu' &&
+            otuLabels.has(association[`biological_association_${s}_id`])
+        )
 
-        if (!association) return null
+        if (!side) return null
         subject = association.object_label
-        targetId = otuLabels.has(association.biological_association_subject_id)
-          ? association.biological_association_subject_id
-          : association.biological_association_object_id
+        targetId = association[`biological_association_${side}_id`]
       } else {
         subject = otuLabels.get(ad.asserted_distribution_object_id) ?? ''
         targetId = ad.is_absent ? otuId : ad.asserted_distribution_object_id
@@ -286,7 +316,6 @@ export async function loadFastDistribution({
     for (const { row, geometry } of placed) {
       const type = row.dwc_occurrence_object_type
       const id = row.dwc_occurrence_object_id
-      const areaId = areaBySpecimen.get(`${type}:${id}`)
       const base = {
         type,
         id,
@@ -305,10 +334,16 @@ export async function loadFastDistribution({
             shape: { type: 'Georeference', id: JSON.stringify(geometry.coordinates) }
           }
         })
-      } else if (areaId && shapes.get(`GeographicArea:${areaId}`)) {
+        continue
+      }
+
+      const areaId = areas.get(id)
+      const areaGeometry = areaId ? await shape('GeographicArea', areaId) : null
+
+      if (areaGeometry) {
         features.push({
           type: 'Feature',
-          geometry: shapes.get(`GeographicArea:${areaId}`),
+          geometry: areaGeometry,
           properties: {
             target: target(row.otu_id),
             base,
@@ -320,6 +355,7 @@ export async function loadFastDistribution({
 
     return features
   } catch {
+    // Declined, or a request / shape failed.
     return null
   }
 }

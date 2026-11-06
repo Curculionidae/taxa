@@ -104,11 +104,17 @@ What it rebuilds, checked feature by feature against `distribution.geojson`:
 - Specimens from each OTU's `dwc.json`: at the georeference, else as the
   collecting event's area (collection objects only: there is no
   `/field_occurrences` index to look up a field occurrence's event).
+  Specimens at identical coordinates share one marker (`dwc.json` does not say
+  which collecting event a specimen belongs to); `distribution.geojson` gives
+  each georeference its own marker, so two events at one spot are two stacked
+  markers there. Same specimens, fewer markers (cluster counts can be lower).
 - Areas without a shape in TaxonWorks (`without-shape.json`) are left out, as
   TaxonWorks does. TypeMaterial entries are left to `addMissingTypeSpecimens`.
 
 Shapes: `npm run map-shapes` (`scripts/build-map-shapes.mjs`) fetches each shape
-any distribution of the project uses, simplified (0.005°, 4 decimals): 2,420
-shapes, 30 MB. Re-runs only fetch new ones; a shape not cached yet is fetched
+any distribution of the project uses, plus the collecting-event areas of
+determined collection objects without a georeference that no distribution
+uses (taken from the distribution.geojson of an OTU with such a specimen),
+simplified (0.005°, 4 decimals): about 2,460 shapes, 30 MB. Re-runs only fetch new ones; a shape not cached yet is fetched
 live by the map. To check the rebuild against TaxonWorks for some OTUs:
 `node scripts/compare-map-distribution.mjs <otuId> … [--synonym]`.

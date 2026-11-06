@@ -23,7 +23,7 @@ async function get(path, params = []) {
 
   if (!response.ok) throw new Error(`${response.status} ${path}`)
 
-  return { data: await response.json() }
+  return { data: await response.json(), headers: response.headers }
 }
 
 let liveShapes = 0
@@ -43,7 +43,11 @@ async function loadShape(type, id) {
     ['extend[]', 'geo_json']
   ])
 
-  return data[0]?.asserted_distribution_shape?.geo_json?.geometry ?? null
+  // Same as the map's lib/shapeCache.js: no distribution with this shape
+  // means it can't be loaded, which makes the fast path decline.
+  if (!data[0]) throw new Error(`No distribution with ${type} ${id}`)
+
+  return data[0].asserted_distribution_shape?.geo_json?.geometry ?? null
 }
 
 const key = (f) => `${f.properties.base.type}:${f.properties.base.id}`
@@ -56,6 +60,7 @@ const describe = (f) => ({
     ? `${f.properties.shape.type}:${f.properties.shape.id}`
     : 'Georeference',
   target: f.properties.target?.id,
+  targetLabel: f.properties.target?.label,
   absent: Boolean(f.properties.is_absent)
 })
 

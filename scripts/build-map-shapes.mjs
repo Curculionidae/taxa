@@ -1,6 +1,8 @@
 // Builds public/map-shapes/: one file per shape (GeographicArea or Gazetteer)
-// that any asserted distribution of the project uses, as a plain GeoJSON
-// geometry, simplified for display. PanelMapV2 reads these instead of waiting
+// the species map can need, as a plain GeoJSON geometry, simplified for
+// display: every shape an asserted distribution of the project uses, plus the
+// area of every collecting event of a determined collection object without a
+// georeference (the map draws such a specimen as that area). PanelMapV2 reads these instead of waiting
 // for TaxonWorks to serialise every shape of a page's map on each visit, which
 // takes about 93 ms per area plus 54 µs per point (Canada alone: about 4 s).
 // See panels/PanelMapV2/lib/fastDistribution.js.
@@ -120,50 +122,136 @@ function simplify(geometry) {
   }
 }
 
-// Every shape the project's asserted distributions use.
-const first = await get('/asserted_distributions', [['per', PER], ['page', 1]])
-const pages = Number(first.headers.get('pagination-total-pages')) || 1
-const shapes = new Set()
-const collect = (list) =>
-  list.forEach((ad) =>
-    shapes.add(`${ad.asserted_distribution_shape_type}/${ad.asserted_distribution_shape_id}`)
+// Every page of an index request.
+async function getAll(path, params = []) {
+  const first = await get(path, [...params, ['per', PER], ['page', 1]])
+  const pages = Number(first.headers.get('pagination-total-pages')) || 1
+  const all = [...first.data]
+  const rest = Array.from({ length: pages - 1 }, (_, i) => i + 2)
+
+  await forEachLimited(rest, PARALLEL, async (page) => {
+    all.push(...(await get(path, [...params, ['per', PER], ['page', page]])).data)
+  })
+
+  return all
+}
+
+async function getByIds(path, param, ids, extra = []) {
+  const batches = []
+
+  for (let i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100))
+
+  const all = []
+
+  await forEachLimited(batches, PARALLEL, async (batch) => {
+    all.push(...(await getAll(path, [...batch.map((id) => [param, id]), ...extra])))
+  })
+
+  return all
+}
+
+// 1. Every shape the project's asserted distributions use.
+const shapes = new Set(
+  (await getAll('/asserted_distributions')).map(
+    (ad) => `${ad.asserted_distribution_shape_type}/${ad.asserted_distribution_shape_id}`
   )
+)
 
-collect(first.data)
+console.log(`${shapes.size} shapes used by distributions`)
 
-const pageNumbers = Array.from({ length: pages - 1 }, (_, i) => i + 2)
+// 2. Areas of collecting events of determined collection objects without a
+// georeference. No distribution may use such an area, and TaxonWorks returns
+// an area's shape only with a distribution or inside an OTU's
+// distribution.geojson: so for each area not covered yet, Map<key, otuId> of
+// an OTU whose map has it.
+const unplacedIds = (await getAll('/dwc_occurrences', [['dwc_occurrence_object_type', 'CollectionObject']]))
+  .filter((row) => !row.footprintWKT && (row.decimalLatitude == null || row.decimalLatitude === ''))
+  .map((row) => row.dwc_occurrence_object_id)
+const objects = await getByIds('/collection_objects', 'collection_object_id[]', unplacedIds, [
+  ['extend[]', 'taxon_determinations']
+])
+const otuByEvent = new Map()
 
-await forEachLimited(pageNumbers, PARALLEL, async (page) => {
-  collect((await get('/asserted_distributions', [['per', PER], ['page', page]])).data)
-})
+for (const co of objects) {
+  const determination = (co.taxon_determinations || []).find((td) => td.otu_id)
+
+  if (co.collecting_event_id && determination) otuByEvent.set(co.collecting_event_id, determination.otu_id)
+}
+
+const events = await getByIds('/collecting_events', 'collecting_event_id[]', [...otuByEvent.keys()])
+const specimenAreas = new Map()
+
+for (const ce of events) {
+  const key = `GeographicArea/${ce.geographic_area_id}`
+
+  if (ce.geographic_area_id && !shapes.has(key)) specimenAreas.set(key, otuByEvent.get(ce.id))
+}
+
+console.log(
+  `${unplacedIds.length} collection objects without a georeference, ` +
+    `${otuByEvent.size} collecting events of determined ones; ` +
+    `${specimenAreas.size} of their areas used by no distribution`
+)
 
 const knownWithoutShape = new Set(
   !REFRESH && existsSync(WITHOUT_SHAPE_FILE) ? JSON.parse(readFileSync(WITHOUT_SHAPE_FILE, 'utf8')) : []
 )
-const todo = [...shapes].filter(
+const todo = [...shapes, ...specimenAreas.keys()].filter(
   (key) => REFRESH || (!existsSync(`${OUT_DIR}${key}.json`) && !knownWithoutShape.has(key))
 )
 
-console.log(`${shapes.size} shapes in use, ${todo.length} to fetch`)
+console.log(`${shapes.size + specimenAreas.size} shapes in use, ${todo.length} to fetch`)
 
 let done = 0
+let written = 0
 const failed = []
-const withoutShape = new Set([...knownWithoutShape].filter((key) => shapes.has(key)))
+const withoutShape = new Set(
+  [...knownWithoutShape].filter((key) => shapes.has(key) || specimenAreas.has(key))
+)
+const otuMaps = new Map() // otuId -> Promise<features>
 
-await forEachLimited(todo, PARALLEL, async (key) => {
-  const [type, id] = key.split('/')
-
-  try {
-    // One distribution with this shape, its geometry included.
+// The geometry of a shape: from one distribution with it, or, for an area
+// only specimens use, from the distribution.geojson of an OTU that has it
+// (slow, 1 to 15 s, but only once per area). Undefined: not found at all.
+async function fetchGeometry(type, id, key) {
+  if (!specimenAreas.has(key)) {
     const { data } = await get('/asserted_distributions', [
       ['geo_shape_id[]', id],
       ['geo_shape_type[]', type],
       ['per', 1],
       ['extend[]', 'geo_json']
     ])
-    const geometry = data[0]?.asserted_distribution_shape?.geo_json?.geometry
 
-    if (!data[0]) throw new Error('no distribution with this shape')
+    if (!data[0]) return undefined
+
+    return data[0].asserted_distribution_shape?.geo_json?.geometry ?? null
+  }
+
+  const otuId = specimenAreas.get(key)
+
+  if (!otuMaps.has(otuId)) {
+    otuMaps.set(
+      otuId,
+      get(`/otus/${otuId}/inventory/distribution.geojson`).then(({ data }) => data.features || [])
+    )
+  }
+
+  const feature = (await otuMaps.get(otuId)).find(
+    (f) => f.properties?.shape?.type === type && String(f.properties.shape.id) === String(id)
+  )
+
+  // Not on the map of an OTU with a specimen there: TaxonWorks has no shape
+  // to draw it with, and leaves the specimen out, as the map then does too.
+  return feature?.geometry ?? null
+}
+
+await forEachLimited(todo, PARALLEL, async (key) => {
+  const [type, id] = key.split('/')
+
+  try {
+    const geometry = await fetchGeometry(type, id, key)
+
+    if (geometry === undefined) throw new Error('not found')
 
     if (!geometry) {
       withoutShape.add(key)
@@ -173,6 +261,7 @@ await forEachLimited(todo, PARALLEL, async (key) => {
 
     mkdirSync(`${OUT_DIR}${type}`, { recursive: true })
     writeFileSync(`${OUT_DIR}${key}.json`, JSON.stringify(simplify(geometry)))
+    written++
   } catch (error) {
     failed.push(`${key} (${error.message})`)
   }
@@ -183,7 +272,7 @@ await forEachLimited(todo, PARALLEL, async (key) => {
 writeFileSync(WITHOUT_SHAPE_FILE, JSON.stringify([...withoutShape].sort()) + '\n')
 
 console.log(
-  `${todo.length - failed.length - withoutShape.size + knownWithoutShape.size} shapes written to ` +
-    `public/map-shapes/, ${withoutShape.size} areas without a shape listed in without-shape.json`
+  `${written} shapes written to public/map-shapes/, ` +
+    `${withoutShape.size} areas without a shape listed in without-shape.json`
 )
 if (failed.length) console.log(`failed (fetched live by the map): ${failed.join(', ')}`)

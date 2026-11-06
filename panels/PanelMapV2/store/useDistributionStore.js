@@ -113,12 +113,11 @@ function specimenRefs(features) {
 // /otus/:id/inventory/dwc.json takes no CO-id filter. PanelSpecimenOccurrences
 // and PanelBiologicalAssociationsV2 fetch the same endpoint; a shared cross-panel
 // cache would be the real fix and is left for later.
-async function fetchTypeStatusByCoId(otuId, signal) {
+// `request`: the same request already made (the fast map path fetches it).
+async function fetchTypeStatusByCoId(otuId, signal, request = null) {
   try {
-    const { data } = await makeAPIRequest.get(
-      `/otus/${otuId}/inventory/dwc.json`,
-      { signal }
-    )
+    const { data } = await (request ||
+      makeAPIRequest.get(`/otus/${otuId}/inventory/dwc.json`, { signal }))
     const rows = Array.isArray(data) ? data : []
     const byId = new Map()
     for (const r of rows) {
@@ -176,6 +175,9 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       typeStatusByCoId: new Map(),
       // features for type specimens the geojson lacks (see addMissingTypeSpecimens)
       typeSpecimenFeatures: [],
+      // the page OTU's dwc.json request, when the fast map path made it, so
+      // the type-status step does not ask again
+      pageDwcRequest: null,
       controller: null
     }
   },
@@ -237,6 +239,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       this.adventiveSpecimenKeys = new Set()
       this.typeStatusByCoId = new Map()
       this.typeSpecimenFeatures = []
+      this.pageDwcRequest = null
       const isSpeciesGroup =
         rankString &&
         (isRankGroup('SpeciesGroup', rankString) ||
@@ -251,7 +254,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
           taxonNameId,
           validTaxonNameId,
           isSynonym,
-          get: this.fastDistributionRequest(signal),
+          get: this.fastDistributionRequest(otuId, signal),
           loadShape
         })
 
@@ -313,8 +316,9 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
 
     // The `get` lib/fastDistribution.js asks TaxonWorks with. Its first
     // distributions request stands for the panel's data in the panel menu,
-    // as distribution.geojson did.
-    fastDistributionRequest(signal) {
+    // as distribution.geojson did; its dwc.json request for the page's OTU is
+    // kept for the type-status step.
+    fastDistributionRequest(otuId, signal) {
       let registered = false
 
       return (path, params) => {
@@ -326,6 +330,11 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
         query.set('project_token', makeAPIRequest.defaults.params.project_token)
 
         const request = () => makeAPIRequest.get(path, { params: query, signal })
+
+        if (path === `/otus/${otuId}/inventory/dwc.json`) {
+          this.pageDwcRequest = request()
+          return this.pageDwcRequest
+        }
 
         if (path === '/asserted_distributions' && !registered) {
           registered = true
@@ -346,7 +355,7 @@ export const useDistributionStore = defineStore('distributionStoreMapV2', {
       const [tagsByAd, adventiveSpecimens, allTypesByCo, ownTypeCoIds] = await Promise.all([
         fetchAssertedDistributionTags(assertedDistributionIds(features), { signal }),
         fetchAdventiveSpecimenKeys(specimenRefs(features), { signal }),
-        fetchTypeStatusByCoId(otuId, signal),
+        fetchTypeStatusByCoId(otuId, signal, this.pageDwcRequest),
         fetchTypeSpecimenIdsOfName(taxonNameId)
       ])
       if (signal?.aborted) return

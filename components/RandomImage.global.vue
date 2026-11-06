@@ -3,24 +3,25 @@
   hero photos next to it (3:2, rounded corners) and linking to its taxon
   page. Used in pages/home.md as <RandomImage />.
 
-  Picks a random image from the whole project. An image counts when it
-  depicts an OTU or a specimen (CollectionObject / FieldOccurrence) whose DwC
-  record names an OTU. Skipped, and another one drawn:
-  - data depictions (label photos and the like), read from /depictions,
-    since the image list does not carry the flag;
-  - specimens without an OTU, e.g. undetermined type specimens: nothing in
-    the API links those to a taxon page.
+  Draws from public/random-images.json, built ahead of time by
+  scripts/build-random-images.mjs (`npm run random-images`), which keeps only
+  roughly 3:2 images that link to an OTU and are no data depiction. So picking
+  one costs no TaxonWorks lookups.
+
+  TaxonWorks' ready-made `medium` copy (300 px wide) shows at once; a sharp
+  copy is scaled on request, which takes the server about 2 s, and replaces
+  it once loaded.
 -->
 <template>
   <ClientOnly>
     <RouterLink
       v-if="picked"
-      class="random-image"
+      class="random-image bg-base-muted"
       :to="{ name: 'otus-id', params: { id: picked.otuId } }"
       :title="picked.name"
     >
       <img
-        :src="picked.src"
+        :src="src"
         :alt="picked.name"
       />
     </RouterLink>
@@ -36,30 +37,17 @@
 import { onMounted, ref } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 
-// The hero photos are 500 × 333. The image is fetched at 1.5× that, so it
-// stays sharp on high-density screens.
+// The hero photos are 500 × 333. The sharp copy is 1.5× that, so it stays
+// crisp on high-density screens.
 const BOX_WIDTH = 750
 const BOX_HEIGHT = 500
 
-const MAX_TRIES = 6
-
 const picked = ref(null)
+const src = ref('')
 const failed = ref(false)
 
-function randomInt(max) {
-  return Math.floor(Math.random() * max)
-}
-
-function stripTags(html = '') {
-  const div = document.createElement('div')
-
-  div.innerHTML = html
-
-  return div.textContent.trim()
-}
-
-// A scaled copy just large enough to cover the 3:2 box, so the crop is sharp.
-function scaledImageUrl({ id, width, height }) {
+// A scaled copy just large enough to cover the 3:2 box.
+function sharpImageUrl({ id, width, height }) {
   const scale = Math.min(1, Math.max(BOX_WIDTH / width, BOX_HEIGHT / height))
   const w = Math.round(width * scale)
   const h = Math.round(height * scale)
@@ -68,70 +56,27 @@ function scaledImageUrl({ id, width, height }) {
   return `${baseURL}/images/${id}/scale_to_box/0/0/${width}/${height}/${w}/${h}?project_token=${params.project_token}`
 }
 
-async function otuIdOf(depictions) {
-  const otu = depictions.find((d) => d.depiction_object_type === 'Otu')
-
-  if (otu) return otu.depiction_object_id
-
-  const specimen = depictions.find((d) =>
-    ['CollectionObject', 'FieldOccurrence'].includes(d.depiction_object_type)
-  )
-
-  if (!specimen) return null
-
-  const path =
-    specimen.depiction_object_type === 'CollectionObject'
-      ? 'collection_objects'
-      : 'field_occurrences'
-  const { data } = await makeAPIRequest.get(
-    `/${path}/${specimen.depiction_object_id}/dwc`
-  )
-
-  return data.otu_id ?? null
-}
-
-async function tryOnce(total) {
-  const { data: images } = await makeAPIRequest.get('/images', {
-    params: { per: 1, page: randomInt(total) + 1 }
-  })
-  const image = images[0]
-
-  if (!image?.width || !image?.height) return null
-
-  const { data: depictions } = await makeAPIRequest.get('/depictions', {
-    params: { 'image_id[]': image.id }
-  })
-
-  if (depictions.some((d) => d.is_metadata_depiction)) return null
-
-  const otuId = await otuIdOf(depictions)
-
-  if (!otuId) return null
-
-  const { data: otu } = await makeAPIRequest.get(`/otus/${otuId}`)
-
-  return {
-    otuId,
-    name: stripTags(otu.object_tag) || otu.name || '',
-    src: scaledImageUrl(image)
-  }
-}
-
 onMounted(async () => {
   try {
-    const { headers } = await makeAPIRequest.get('/images', {
-      params: { per: 1 }
-    })
-    const total = Number(headers['pagination-total'])
+    const response = await fetch('/random-images.json')
+    const pool = await response.json()
 
-    if (!total) throw new Error('No images')
+    if (!pool.length) throw new Error('Empty pool')
 
-    for (let i = 0; i < MAX_TRIES && !picked.value; i++) {
-      picked.value = await tryOnce(total).catch(() => null)
+    const image = pool[Math.floor(Math.random() * pool.length)]
+
+    picked.value = image
+    src.value = image.medium
+
+    const sharp = new Image()
+
+    sharp.onload = () => {
+      src.value = sharp.src
     }
-  } catch {}
-
-  if (!picked.value) failed.value = true
+    sharp.src = sharpImageUrl(image)
+  } catch {
+    failed.value = true
+  }
 })
 </script>
 

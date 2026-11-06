@@ -129,7 +129,12 @@ pages.
   The Field Assistant view is unaffected: it groups by TaxonName and already
   shows and links the taxon.
 - Associations stored under nomenclatural synonyms and combinations are included
-  through TaxonWorks' `coordinatify` OTU expansion. The Field Assistant groups them under
+  through TaxonWorks' `coordinatify` OTU expansion. Only on the valid name's page:
+  on a synonym's page (`taxon.is_valid === false`) every query leaves
+  `coordinatify` off (`coordinatify` computed in the panel, the `{ coordinatify }`
+  option of `loadSummaryIndexes` / `loadOtuScopeMembership`), so the panel shows
+  only the name's own associations, the rule the package panels follow since
+  taxonpages PR 380. The Field Assistant groups them under
   `cached_valid_taxon_name_id`, displays the accepted name and links its accepted
   OTU page. Raw data view retains each association's originally recorded name and
   its link to the OTU the association was recorded against, and prints the

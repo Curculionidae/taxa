@@ -231,12 +231,15 @@ export async function loadDirectionalStandardSummary(
  * about every participant instead took nine requests and two seconds for an
  * answer the index was already holding.
  */
+// `coordinatify: false` (a synonym's page) keeps the valid name's and the
+// other synonyms' OTUs out: only the name's own associations.
 export async function loadSummaryIndexes(
   taxonNameId,
   api,
   isCurrent = () => true,
   pageSize = STANDARD_SUMMARY_PAGE_SIZE,
-  onIssue = () => {}
+  onIssue = () => {},
+  { coordinatify = true } = {}
 ) {
   const loadDirection = directionalIndexLoader(taxonNameId, api, isCurrent, pageSize, onIssue)
   const [rows, asSubject, asObject] = await Promise.all([
@@ -248,7 +251,7 @@ export async function loadSummaryIndexes(
         const query = new URLSearchParams()
         query.set('otu_query[taxon_name_id][]', String(taxonNameId))
         query.set('otu_query[descendants]', 'true')
-        query.set('otu_query[coordinatify]', 'true')
+        if (coordinatify) query.set('otu_query[coordinatify]', 'true')
         query.set('per', String(per))
         query.set('page', String(page))
         return api.get('/biological_associations/basic?' + query)
@@ -290,7 +293,7 @@ export async function loadSummaryIndexes(
  * coordinates nobody asked about either, so the result names requested ids only.
  */
 export async function loadOtuScopeMembership(otuIds, taxonNameId, api, isCurrent = () => true,
-  anchorOtuIds = []) {
+  anchorOtuIds = [], { coordinatify = true } = {}) {
   const ids = [...new Set(otuIds.map(String))]
   if (!ids.length) return new Set()
   const anchors = [...new Set(anchorOtuIds.map(String))].filter(id => !ids.includes(id))
@@ -301,7 +304,7 @@ export async function loadOtuScopeMembership(otuIds, taxonNameId, api, isCurrent
       params: {
         'taxon_name_id[]': taxonNameId,
         descendants: true,
-        coordinatify: true,
+        ...(coordinatify ? { coordinatify: true } : {}),
         page,
         per
       }

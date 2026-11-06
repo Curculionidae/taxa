@@ -593,6 +593,11 @@ const RANK_ORDER = [
 // Inclusive of collapseAboveRank itself: 'GenusGroup' means genus and
 // everything narrower (species, infraspecies) is flat-eligible; only
 // FamilyGroup/HigherClassificationGroup collapse unconditionally.
+// On a synonym's page only the name's own associations: TaxonWorks'
+// coordinatify would add the valid name's and every other synonym's OTU. Same
+// rule as the package panels since taxonpages PR 380; the valid page stays merged.
+const coordinatify = computed(() => props.taxon?.is_valid !== false)
+
 const isFlatRank = computed(() => {
   const cutoffIndex = RANK_ORDER.indexOf(props.collapseAboveRank)
   const rankIndex = RANK_ORDER.findIndex((group) => props.taxon?.rank_string?.includes(group))
@@ -770,7 +775,7 @@ async function fetchOtuScopeMembership(otuIds, taxonNameId, isCurrent) {
     // This page's own OTU rides along as the anchor the coordinate expansion
     // needs; it is the same for every batch, so the cache key stays the taxon.
     const inScope = await loadOtuScopeMembership(unknown, taxonNameId, makeAPIRequest, isCurrent,
-      props.otuId ? [props.otuId] : [])
+      props.otuId ? [props.otuId] : [], { coordinatify: coordinatify.value })
     if (!inScope) return null
     unknown.forEach(id => otuScopeMembership.set(key(id), inScope.has(id)))
   }
@@ -932,7 +937,8 @@ async function ensureSummary(requestId) {
     STANDARD_SUMMARY_PAGE_SIZE,
     // Surface a degraded index instead of dropping the whole summary: the rows
     // that were read are still shown, with the warning line and its Retry.
-    issue => { if (isCurrent()) standardIndexError.value = issue }
+    issue => { if (isCurrent()) standardIndexError.value = issue },
+    { coordinatify: coordinatify.value }
   )
   if (!indexes || !isCurrent()) return null
   const { rows, subjectIds, objectIds } = indexes
@@ -1121,10 +1127,11 @@ async function loadAdvancedRows() {
   // rows on a real change.
   loadError.value = ''
   try {
+    const expand = coordinatify.value ? { 'otu_query[coordinatify]': true } : {}
     const scope = isFlatRank.value
-      ? { 'otu_query[coordinatify]': true, 'otu_query[otu_id][]': props.otuId }
+      ? { ...expand, 'otu_query[otu_id][]': props.otuId }
       : {
-          'otu_query[coordinatify]': true,
+          ...expand,
           'otu_query[taxon_name_id][]': props.taxonId,
           'otu_query[descendants]': true
         }
@@ -1502,7 +1509,7 @@ function scopeQueryString(relationshipIds = null) {
   if (selectedGroup.value) {
     selectedGroup.value.ids.forEach((id) => params.append('biological_association_id[]', id))
   } else {
-    params.append('otu_query[coordinatify]', 'true')
+    if (coordinatify.value) params.append('otu_query[coordinatify]', 'true')
     params.append('otu_query[taxon_name_id][]', props.taxonId)
     params.append('otu_query[descendants]', 'true')
   }

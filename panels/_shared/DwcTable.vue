@@ -32,8 +32,9 @@
   their own copy anymore.
 
   Layout: a "specimen label" reading order — identity (name, type status,
-  collector/date/locality at a glance) and media up top, full Location /
-  Coordinates always visible below, everything else (catalog provenance,
+  collector/date/locality at a glance) and media up top, the full collecting event (incl.
+  elevation, then method etc. last; verbatim date/coordinates in brackets),
+  coordinates and biological associations always visible below, then the verbatim label, everything else (catalog provenance,
   identification paperwork, georeference protocol, morphology) folded into
   a single "More details" disclosure. Every DwC field TaxonWorks returns is
   still reachable, just not all competing for attention at once.
@@ -194,9 +195,9 @@
 
         <!-- ── Primary details: always visible ── -->
         <dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-0.5 pt-4">
-          <template v-if="hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','habitat','locationRemarks')">
+          <template v-if="hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','habitat','locationRemarks','verbatimEventDate','samplingProtocol','samplingEffort','eventTime','fieldNumber','fieldNotes','eventRemarks','minimumElevationInMeters','verbatimElevation','minimumDepthInMeters','verbatimDepth')">
             <div class="col-span-2 mb-1">
-              <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Location</h4>
+              <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Collecting event</h4>
             </div>
             <template v-if="dwc.recordedBy">
               <dt class="opacity-50 whitespace-nowrap">Recorded by</dt>
@@ -205,9 +206,9 @@
                 <template v-else>{{ dwc.recordedBy }}</template>
               </dd>
             </template>
-            <template v-if="metaDate">
-              <dt class="opacity-50 whitespace-nowrap">Date</dt>
-              <dd>{{ metaDate }}</dd>
+            <template v-if="dateDisplay">
+              <dt class="opacity-50 whitespace-nowrap">{{ rowLabel.date }}</dt>
+              <dd>{{ dateDisplay }}</dd>
             </template>
             <template v-if="dwc.higherGeography">
               <dt class="opacity-50 whitespace-nowrap">Higher geography</dt>
@@ -245,13 +246,9 @@
               <dt class="opacity-50 whitespace-nowrap">Municipality</dt>
               <dd>{{ dwc.municipality }}</dd>
             </template>
-            <template v-if="dwc.locality">
-              <dt class="opacity-50 whitespace-nowrap">Locality</dt>
-              <dd>{{ dwc.locality }}</dd>
-            </template>
-            <template v-if="dwc.verbatimLocality && dwc.verbatimLocality !== dwc.locality">
-              <dt class="opacity-50 whitespace-nowrap">Verbatim locality</dt>
-              <dd>{{ dwc.verbatimLocality }}</dd>
+            <template v-if="localityDisplay">
+              <dt class="opacity-50 whitespace-nowrap">{{ rowLabel.locality }}</dt>
+              <dd>{{ localityDisplay }}</dd>
             </template>
             <template v-if="dwc.habitat">
               <dt class="opacity-50 whitespace-nowrap">Habitat</dt>
@@ -263,43 +260,59 @@
             </template>
           </template>
 
-          <template v-if="hasAny('minimumElevationInMeters','verbatimElevation','minimumDepthInMeters')">
-            <div class="col-span-2 mt-3 mb-1">
-              <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Elevation</h4>
-            </div>
-            <template v-if="dwc.minimumElevationInMeters">
-              <dt class="opacity-50 whitespace-nowrap">Elevation</dt>
-              <dd>
-                {{ dwc.minimumElevationInMeters }}<template v-if="dwc.maximumElevationInMeters && dwc.maximumElevationInMeters !== dwc.minimumElevationInMeters"> – {{ dwc.maximumElevationInMeters }}</template> m
-              </dd>
-            </template>
-            <template v-else-if="dwc.verbatimElevation">
-              <dt class="opacity-50 whitespace-nowrap">Elevation</dt>
-              <dd>{{ dwc.verbatimElevation }}</dd>
-            </template>
-            <template v-if="dwc.minimumDepthInMeters">
-              <dt class="opacity-50 whitespace-nowrap">Depth</dt>
-              <dd>
-                {{ dwc.minimumDepthInMeters }}<template v-if="dwc.maximumDepthInMeters && dwc.maximumDepthInMeters !== dwc.minimumDepthInMeters"> – {{ dwc.maximumDepthInMeters }}</template> m
-              </dd>
-            </template>
+          <!-- Elevation / depth: no heading of their own, they continue the collecting event -->
+          <template v-if="elevationDisplay">
+            <dt class="opacity-50 whitespace-nowrap">{{ rowLabel.elevation }}</dt>
+            <dd>{{ elevationDisplay }}</dd>
+          </template>
+          <template v-if="depthDisplay">
+            <dt class="opacity-50 whitespace-nowrap">{{ rowLabel.depth }}</dt>
+            <dd>{{ depthDisplay }}</dd>
           </template>
 
-          <template v-if="dwc.decimalLatitude">
+          <!-- Method and other event fields: last rows of the collecting event -->
+          <!-- TaxonWorks fills samplingProtocol only from the collecting event's
+               verbatim_method (Shared::Dwc::CollectingEventExtensions#dwc_sampling_protocol) -->
+          <template v-if="dwc.samplingProtocol">
+            <dt class="opacity-50 whitespace-nowrap">Verbatim method</dt>
+            <dd>{{ dwc.samplingProtocol }}</dd>
+          </template>
+          <template v-if="dwc.samplingEffort">
+            <dt class="opacity-50 whitespace-nowrap">Sampling effort</dt>
+            <dd>{{ dwc.samplingEffort }}</dd>
+          </template>
+          <template v-if="dwc.eventTime">
+            <dt class="opacity-50 whitespace-nowrap">Time</dt>
+            <dd>{{ dwc.eventTime }}</dd>
+          </template>
+          <template v-if="dwc.fieldNumber">
+            <dt class="opacity-50 whitespace-nowrap">Field no.</dt>
+            <dd>{{ dwc.fieldNumber }}</dd>
+          </template>
+          <template v-if="dwc.fieldNotes">
+            <dt class="opacity-50 whitespace-nowrap">Field notes</dt>
+            <dd>{{ dwc.fieldNotes }}</dd>
+          </template>
+          <template v-if="dwc.eventRemarks">
+            <dt class="opacity-50 whitespace-nowrap">Event remarks</dt>
+            <dd>{{ dwc.eventRemarks }}</dd>
+          </template>
+
+          <template v-if="dwc.decimalLatitude || dwc.verbatimCoordinates">
             <div class="col-span-2 mt-3 mb-1">
               <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Coordinates</h4>
             </div>
-            <template v-if="dwc.decimalLatitude">
-              <dt class="opacity-50 whitespace-nowrap">Lat / Lon</dt>
-              <dd>{{ dwc.decimalLatitude }}, {{ dwc.decimalLongitude }}</dd>
+            <template v-if="coordinatesDisplay">
+              <dt class="opacity-50 whitespace-nowrap">{{ rowLabel.coordinates }}</dt>
+              <dd>{{ coordinatesDisplay }}</dd>
             </template>
             <template v-if="dwc.coordinateUncertaintyInMeters">
               <dt class="opacity-50 whitespace-nowrap">Uncertainty</dt>
               <dd>{{ dwc.coordinateUncertaintyInMeters }} m</dd>
             </template>
-            <template v-if="dwc.geodeticDatum">
-              <dt class="opacity-50 whitespace-nowrap">Datum</dt>
-              <dd>{{ dwc.geodeticDatum }}</dd>
+            <template v-if="datumDisplay">
+              <dt class="opacity-50 whitespace-nowrap">{{ rowLabel.datum }}</dt>
+              <dd>{{ datumDisplay }}</dd>
             </template>
             <template v-if="dwc.decimalLatitude && dwc.decimalLongitude">
               <dt class="opacity-50 whitespace-nowrap">Map</dt>
@@ -316,7 +329,7 @@
         </dl>
 
         <p
-          v-if="!hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','habitat','locationRemarks','minimumElevationInMeters','verbatimElevation','minimumDepthInMeters','decimalLatitude')"
+          v-if="!hasAny('recordedBy','eventDate','year','higherGeography','continent','waterBody','islandGroup','island','country','stateProvince','county','municipality','locality','verbatimLocality','habitat','locationRemarks','verbatimEventDate','samplingProtocol','samplingEffort','eventTime','fieldNumber','fieldNotes','eventRemarks','minimumElevationInMeters','verbatimElevation','minimumDepthInMeters','verbatimDepth','decimalLatitude','verbatimCoordinates')"
           class="pt-4 text-xs opacity-50"
         >No location or collection event data recorded.</p>
 
@@ -351,6 +364,15 @@
         >
           <VSpinner class="h-3 w-3" />
           <span>Loading biological associations…</span>
+        </div>
+
+        <!-- ── Verbatim label: always visible, the label text as written ── -->
+        <div
+          v-if="dwc.verbatimLabel"
+          class="pt-4"
+        >
+          <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40 mb-1">Verbatim label</h4>
+          <p class="whitespace-pre-line rounded border border-base-muted bg-base-foreground px-3 py-2">{{ dwc.verbatimLabel }}</p>
         </div>
 
         <!-- ── Everything else: catalog provenance, ID paperwork, georeference, morphology ── -->
@@ -414,53 +436,6 @@
               <template v-if="dwc.identificationRemarks">
                 <dt class="opacity-50 whitespace-nowrap">ID remarks</dt>
                 <dd>{{ dwc.identificationRemarks }}</dd>
-              </template>
-            </template>
-
-            <!-- ── Label ── -->
-            <template v-if="dwc.verbatimLabel">
-              <div class="col-span-2 mt-3 mb-1">
-                <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Verbatim label</h4>
-              </div>
-              <dd class="col-span-2 whitespace-pre-line">{{ dwc.verbatimLabel }}</dd>
-            </template>
-
-            <!-- ── Collection event (detail) ── -->
-            <template v-if="hasAny('verbatimEventDate','verbatimCoordinates','eventTime','fieldNumber','samplingProtocol','samplingEffort','fieldNotes','eventRemarks')">
-              <div class="col-span-2 mt-3 mb-1">
-                <h4 class="text-xs font-semibold uppercase tracking-wide opacity-40">Collection event</h4>
-              </div>
-              <template v-if="dwc.verbatimEventDate && dwc.verbatimEventDate !== dwc.eventDate">
-                <dt class="opacity-50 whitespace-nowrap">Verbatim date</dt>
-                <dd>{{ dwc.verbatimEventDate }}</dd>
-              </template>
-              <template v-if="dwc.verbatimCoordinates">
-                <dt class="opacity-50 whitespace-nowrap">Verbatim coordinates</dt>
-                <dd>{{ dwc.verbatimCoordinates }}</dd>
-              </template>
-              <template v-if="dwc.eventTime">
-                <dt class="opacity-50 whitespace-nowrap">Time</dt>
-                <dd>{{ dwc.eventTime }}</dd>
-              </template>
-              <template v-if="dwc.fieldNumber">
-                <dt class="opacity-50 whitespace-nowrap">Field no.</dt>
-                <dd>{{ dwc.fieldNumber }}</dd>
-              </template>
-              <template v-if="dwc.samplingProtocol">
-                <dt class="opacity-50 whitespace-nowrap">Method</dt>
-                <dd>{{ dwc.samplingProtocol }}</dd>
-              </template>
-              <template v-if="dwc.samplingEffort">
-                <dt class="opacity-50 whitespace-nowrap">Sampling effort</dt>
-                <dd>{{ dwc.samplingEffort }}</dd>
-              </template>
-              <template v-if="dwc.fieldNotes">
-                <dt class="opacity-50 whitespace-nowrap">Field notes</dt>
-                <dd>{{ dwc.fieldNotes }}</dd>
-              </template>
-              <template v-if="dwc.eventRemarks">
-                <dt class="opacity-50 whitespace-nowrap">Event remarks</dt>
-                <dd>{{ dwc.eventRemarks }}</dd>
               </template>
             </template>
 
@@ -725,6 +700,83 @@ const hasMoreDetails = computed(() => !!dwc.value)
 
 // Date shown next to the collector's name
 const metaDate = computed(() => formatEventDate(dwc.value || {}))
+
+// Verbatim value in brackets after the interpreted one, only when it adds
+// something: "1957-09-16 [verbatim: 16.IX.57]". One string, so Vue's
+// whitespace condensing can't eat the space before the bracket.
+function withVerbatim(value, verbatim, isSame = (a, b) => a === b) {
+  const v = String(verbatim ?? '').trim()
+  if (!v || (value && isSame(String(value).trim(), v))) return value || ''
+  return value ? `${value} [verbatim: ${v}]` : v
+}
+
+// "800 – 900 m" from the interpreted min/max in metres
+function metresRange(min, max) {
+  if (!min && min !== 0) return ''
+  return max && max !== min ? `${min} – ${max} m` : `${min} m`
+}
+
+// A verbatim elevation/depth like "800 m", "800-900m" or "800" says nothing the
+// metres value doesn't: same numbers, and nothing but a metre unit around them.
+// "2600 ft" or "ca. 800 m" is different and gets shown.
+function sameMetres(min, max) {
+  return (_, verbatim) => {
+    if (verbatim.replace(/[\d.,\s\-–]|m(eters?|etres?)?\.?/gi, '') !== '') return false
+    const nums = (verbatim.match(/\d+(?:[.,]\d+)?/g) || []).map((n) => Number(n.replace(',', '.')))
+    const want = [min, max && max !== min ? max : null].filter((n) => n || n === 0).map(Number)
+    return nums.length === want.length && nums.every((n, i) => n === want[i])
+  }
+}
+
+const dateDisplay = computed(() => {
+  const d = dwc.value || {}
+  const verbatim = d.verbatimEventDate === d.eventDate ? null : d.verbatimEventDate
+  return withVerbatim(metaDate.value, verbatim)
+})
+
+const localityDisplay = computed(() =>
+  withVerbatim(dwc.value?.locality, dwc.value?.verbatimLocality)
+)
+
+const elevationDisplay = computed(() => {
+  const d = dwc.value || {}
+  const min = d.minimumElevationInMeters
+  const max = d.maximumElevationInMeters
+  return withVerbatim(metresRange(min, max), d.verbatimElevation, sameMetres(min, max))
+})
+
+const depthDisplay = computed(() => {
+  const d = dwc.value || {}
+  const min = d.minimumDepthInMeters
+  const max = d.maximumDepthInMeters
+  return withVerbatim(metresRange(min, max), d.verbatimDepth, sameMetres(min, max))
+})
+
+const datumDisplay = computed(() =>
+  withVerbatim(dwc.value?.geodeticDatum, dwc.value?.verbatimSRS)
+)
+
+// Row labels: when only the verbatim value exists, the row says so
+// ("Verbatim locality") instead of passing it off as the interpreted one.
+const rowLabel = computed(() => {
+  const d = dwc.value || {}
+  const pick = (interpreted, verbatim, label, verbatimLabel) =>
+    !interpreted && verbatim ? verbatimLabel : label
+  return {
+    date: pick(metaDate.value, d.verbatimEventDate, 'Date', 'Verbatim date'),
+    locality: pick(d.locality, d.verbatimLocality, 'Locality', 'Verbatim locality'),
+    elevation: pick(d.minimumElevationInMeters, d.verbatimElevation, 'Elevation', 'Verbatim elevation'),
+    depth: pick(d.minimumDepthInMeters, d.verbatimDepth, 'Depth', 'Verbatim depth'),
+    datum: pick(d.geodeticDatum, d.verbatimSRS, 'Datum', 'Verbatim datum'),
+    coordinates: pick(d.decimalLatitude, d.verbatimCoordinates, 'Lat / Lon', 'Verbatim coordinates')
+  }
+})
+
+const coordinatesDisplay = computed(() => {
+  const d = dwc.value || {}
+  const decimal = d.decimalLatitude ? `${d.decimalLatitude}, ${d.decimalLongitude}` : ''
+  return withVerbatim(decimal, d.verbatimCoordinates)
+})
 
 const scientificNameParts = computed(() =>
   dwc.value?.scientificName

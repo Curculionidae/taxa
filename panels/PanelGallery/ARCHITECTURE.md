@@ -84,8 +84,11 @@ flowchart TD
     D -- no --> K[keep]
     D -- yes --> E{"...and at least one\nof those is on an Otu ?"}
     E -- yes --> K
-    E -- no --> X[add id to dataDepictionDropIds]
-    X --> F["twImages = store.images\n.map(normalizeImage)\n.filter(img ⇒ !dropIds.has(img.id))"]
+    E -- no --> X[drop set]
+    X --> S{"all kept images show\none same specimen S ?"}
+    S -- yes --> R[un-drop data depictions of S]
+    S -- no --> F
+    R --> F["twImages = store.images\n.map(normalizeImage)\n.filter(img ⇒ !dropIds.has(img.id))"]
 ```
 
 An image counts as a data depiction if **any** of its depictions carries the
@@ -93,6 +96,17 @@ flag — an unflagged `Otu` depiction on the same image does not rescue it (that
 happens routinely: a label photo gets attached to both the CollectionObject *and*
 the OTU, but only the CO depiction is ticked). It's shown only when the flag is
 on an `Otu` depiction.
+
+**Single-specimen exception.** If every image that stays after the rule above
+depicts one and the same specimen (CollectionObject / FieldOccurrence, matched by
+type + id across all of the image's depictions, an extra Otu depiction doesn't
+matter), the data depictions of that specimen are shown as well: the gallery is
+then about that one specimen anyway, and its label belongs with it. Data
+depictions of any other specimen stay hidden. If no image stays at all, the
+hidden ones come back only when they all belong to a single specimen. Because the
+check needs the gallery's image ids, `fetchDataDepictionFilter()` only stores the
+raw rows (`depictionRows`); `twDirectImages` calls
+`dropIdsFromDepictions(rows, imageIds)` itself.
 
 `otu_scope` matches what `useImageStore` sends, so the depiction rows cover the
 same image-id universe as the inventory endpoint. On a synonym's page

@@ -120,6 +120,7 @@ import GalleryMainImage from '@/components/Gallery/GalleryMainImage.vue'
 import ImageLightbox from '../_shared/ImageLightbox.vue'
 import { imageIdFromOriginalPng } from '../_shared/imageCitations.js'
 import { isSynonymPage } from '../_shared/synonymPage.js'
+import { isSpecimenType } from '../_shared/specimenRef.js'
 import inatMark from '../PaneliNaturalist/inat-mark.svg'
 import gbifMark from '../_gbifShared/gbif-mark.svg'
 import { CHECKLIST_KEY, deriveScientificName } from '../_gbifShared/useGbifMatch'
@@ -206,13 +207,18 @@ const store = useImageStore()
 // handwritten notes, …) on a CollectionObject/FieldOccurrence. A data depiction
 // attached directly to the OTU is kept. The /otus/:id/inventory/images endpoint
 // doesn't serialize is_metadata_depiction, so the flag comes from /depictions.
-const dataDepictionDropIds = ref(new Set())
+// One exception: when every image left in the gallery shows the same specimen,
+// that specimen's data depictions are shown too (see dropIdsFromDepictions).
+const depictionRows = ref([])
 
-const twDirectImages = computed(() =>
-  (store.images || [])
-    .map(normalizeImage)
-    .filter((img) => !dataDepictionDropIds.value.has(img.id))
-)
+const twDirectImages = computed(() => {
+  const all = (store.images || []).map(normalizeImage)
+  const drop = dropIdsFromDepictions(
+    depictionRows.value,
+    all.map((img) => img.id)
+  )
+  return all.filter((img) => !drop.has(img.id))
+})
 
 // Per-source image containers (loaded lazily, then kept for the panel's life).
 const subImages = ref([])
@@ -396,7 +402,7 @@ onMounted(() => {
       coordinateOtus: coordinateOtus.value
     })
   }
-  // Client-only on purpose: dataDepictionDropIds isn't part of the SSR payload,
+  // Client-only on purpose: depictionRows isn't part of the SSR payload,
   // so filtering during onServerPrefetch would make the server markup disagree
   // with the first client render (Set still empty) — a hydration mismatch.
   fetchDataDepictionFilter()
@@ -412,15 +418,58 @@ onBeforeUnmount(() => {
 
 // ── TaxonWorks data-depiction filter ─────────────────────────────────────────
 
-function dropIdsFromDepictions(rows) {
+// Image ids to hide out of `imageIds` (the images the gallery would show).
+// Hidden: an image with a data depiction on a non-Otu object and none on an Otu.
+// Exception: if all the images that stay show one and the same specimen
+// (CollectionObject / FieldOccurrence), that specimen's data depictions stay
+// too, so a taxon known from a single photographed specimen also shows its
+// label. If nothing stays, the hidden images come back only when they all
+// belong to a single specimen.
+function dropIdsFromDepictions(rows, imageIds) {
   const otuMeta = new Set() // image has a data depiction ON an Otu
-  const foreignMeta = new Set() // image has a data depiction on a non-Otu object
+  const foreignMeta = new Map() // image id → specimen keys of its data depictions
+  const specimensOf = new Map() // image id → specimen keys of all its depictions
   for (const d of rows || []) {
+    const key = isSpecimenType(d.depiction_object_type)
+      ? `${d.depiction_object_type}:${d.depiction_object_id}`
+      : null
+    if (key) {
+      if (!specimensOf.has(d.image_id)) specimensOf.set(d.image_id, new Set())
+      specimensOf.get(d.image_id).add(key)
+    }
     if (!d.is_metadata_depiction) continue
-    if (d.depiction_object_type === 'Otu') otuMeta.add(d.image_id)
-    else foreignMeta.add(d.image_id)
+    if (d.depiction_object_type === 'Otu') {
+      otuMeta.add(d.image_id)
+    } else {
+      if (!foreignMeta.has(d.image_id)) foreignMeta.set(d.image_id, new Set())
+      if (key) foreignMeta.get(d.image_id).add(key)
+    }
   }
-  return new Set([...foreignMeta].filter((id) => !otuMeta.has(id)))
+
+  const ids = [...new Set(imageIds)]
+  const drop = new Set(ids.filter((id) => foreignMeta.has(id) && !otuMeta.has(id)))
+  if (!drop.size) return drop
+
+  const kept = ids.filter((id) => !drop.has(id))
+  let specimens
+  if (kept.length) {
+    // Specimens every kept image depicts.
+    specimens = new Set(specimensOf.get(kept[0]) || [])
+    for (const id of kept.slice(1)) {
+      const own = specimensOf.get(id) || new Set()
+      for (const k of specimens) if (!own.has(k)) specimens.delete(k)
+    }
+  } else {
+    specimens = new Set()
+    for (const id of drop) for (const k of foreignMeta.get(id)) specimens.add(k)
+  }
+  if (specimens.size !== 1) return drop
+
+  const [only] = specimens
+  for (const id of [...drop]) {
+    if (foreignMeta.get(id).has(only)) drop.delete(id)
+  }
+  return drop
 }
 
 async function fetchDataDepictionFilter() {
@@ -432,9 +481,9 @@ async function fetchDataDepictionFilter() {
         per: 500
       }
     })
-    dataDepictionDropIds.value = dropIdsFromDepictions(data)
+    depictionRows.value = data || []
   } catch {
-    // Leave the set empty — show everything, as before.
+    // Leave the rows empty: show everything, as before.
   }
 }
 
@@ -638,7 +687,7 @@ async function fetchSubordinateSample() {
           }),
           SUB_IMAGE_TIMEOUT_MS
         )
-        drop = dropIdsFromDepictions(data)
+        drop = dropIdsFromDepictions(data, raw.map((i) => i.id))
       } catch {
         // keep everything on failure
       }

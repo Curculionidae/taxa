@@ -2,7 +2,7 @@
 
 Image gallery panel for OTU pages. Falls back to subordinate-taxa images, then iNaturalist, when no direct TaxonWorks images exist.
 
-**Data depictions** (`is_metadata_depiction` — label photos, ledger pages, etc.) attached to a CollectionObject / FieldOccurrence are excluded from this OTU-scoped gallery; they remain visible in the specimen detail modal. A data depiction attached directly to the OTU is shown. See [ARCHITECTURE.md](./ARCHITECTURE.md#data-depiction-exclusion).
+**Data depictions** (`is_metadata_depiction` — label photos, ledger pages, etc.) attached to a CollectionObject / FieldOccurrence are excluded from this OTU-scoped gallery; they remain visible in the specimen detail modal. A data depiction attached directly to the OTU is shown. Exception: when every other image in the gallery shows the same specimen, that specimen's data depictions are shown too (a taxon known from one photographed specimen also gets its label). See [ARCHITECTURE.md](./ARCHITECTURE.md#data-depiction-exclusion).
 
 ## Shared dependencies
 

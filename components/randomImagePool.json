@@ -1,5 +1,32 @@
 [
  {
+  "file": "/images/random/1214440.webp",
+  "width": 698,
+  "height": 500,
+  "otuId": 1474347,
+  "name": "Aulobaris ibis (LeConte, 1868)",
+  "credit": "©2005 President and Fellows of Harvard College. Created by Whit Farnum. Owned by President and Fellows of Harvard College. License: CC BY-NC-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0"
+ },
+ {
+  "file": "/images/random/1214435.webp",
+  "width": 758,
+  "height": 500,
+  "otuId": 1409369,
+  "name": "Aulobaris pusilla (LeConte, 1868)",
+  "credit": "©2005 President and Fellows of Harvard College. Created by Whit Farnum. Owned by President and Fellows of Harvard College. License: CC BY-NC-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0"
+ },
+ {
+  "file": "/images/random/1214428.webp",
+  "width": 750,
+  "height": 500,
+  "otuId": 1474343,
+  "name": "Entymetopus (Hemeurysternus) bakvaensis (Voss, 1960)",
+  "credit": "©Lund University: Entomology Biological Museum. License: CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0"
+ },
+ {
   "file": "/images/random/1213820.webp",
   "width": 667,
   "height": 500,
@@ -184,7 +211,7 @@
   "width": 750,
   "height": 500,
   "otuId": 730490,
-  "name": "Pandeleteinus submetallicus Schaffer, 1908",
+  "name": "Pandeleteinus submetallicus (Schaffer, 1908)",
   "credit": "©2025 Jakob Jilg. License: CC BY-NC 4.0",
   "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0"
  },

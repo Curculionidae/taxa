@@ -404,7 +404,7 @@ onMounted(() => {
   }
   // Client-only on purpose: depictionRows isn't part of the SSR payload,
   // so filtering during onServerPrefetch would make the server markup disagree
-  // with the first client render (Set still empty) — a hydration mismatch.
+  // with the first client render (no rows yet), a hydration mismatch.
   fetchDataDepictionFilter()
   orchestrate()
 })
@@ -424,8 +424,9 @@ onBeforeUnmount(() => {
 // (CollectionObject / FieldOccurrence), that specimen's data depictions stay
 // too, so a taxon known from a single photographed specimen also shows its
 // label. If nothing stays, the hidden images come back only when they all
-// belong to a single specimen.
-function dropIdsFromDepictions(rows, imageIds) {
+// belong to a single specimen. `singleSpecimen: false` turns the exception off
+// (the subordinate-taxa sample, which is never about one specimen).
+function dropIdsFromDepictions(rows, imageIds, { singleSpecimen = true } = {}) {
   const otuMeta = new Set() // image has a data depiction ON an Otu
   const foreignMeta = new Map() // image id → specimen keys of its data depictions
   const specimensOf = new Map() // image id → specimen keys of all its depictions
@@ -448,7 +449,7 @@ function dropIdsFromDepictions(rows, imageIds) {
 
   const ids = [...new Set(imageIds)]
   const drop = new Set(ids.filter((id) => foreignMeta.has(id) && !otuMeta.has(id)))
-  if (!drop.size) return drop
+  if (!drop.size || !singleSpecimen) return drop
 
   const kept = ids.filter((id) => !drop.has(id))
   let specimens
@@ -677,7 +678,7 @@ async function fetchSubordinateSample() {
     const raw = results.flatMap((r) => r.data || [])
 
     // Same rule as the direct gallery: drop images tied only to data depictions
-    // (is_metadata_depiction) not on an Otu.
+    // (is_metadata_depiction) not on an Otu, with no single-specimen exception.
     let drop = new Set()
     if (raw.length) {
       try {
@@ -687,7 +688,9 @@ async function fetchSubordinateSample() {
           }),
           SUB_IMAGE_TIMEOUT_MS
         )
-        drop = dropIdsFromDepictions(data, raw.map((i) => i.id))
+        drop = dropIdsFromDepictions(data, raw.map((i) => i.id), {
+          singleSpecimen: false
+        })
       } catch {
         // keep everything on failure
       }

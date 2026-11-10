@@ -118,7 +118,7 @@ tabs need no switch: the iNaturalist lookup only accepts a taxon of exactly the
 page's name, and the GBIF tab keeps only records identified under it (TW's Depiction and Image otu
 scope facets share code). On any failure the drop set stays empty → no filtering,
 same as before. The same `dropIdsFromDepictions()` is applied to the
-subordinate-taxa fallback (keyed by `image_id[]` of the sampled images).
+subordinate-taxa fallback (keyed by `image_id[]` of the sampled images), but without the single-specimen exception: a random sample from many taxa is never about one specimen.
 
 ---
 

@@ -423,8 +423,9 @@ onBeforeUnmount(() => {
 // Exception: if all the images that stay show one and the same specimen
 // (CollectionObject / FieldOccurrence), that specimen's data depictions stay
 // too, so a taxon known from a single photographed specimen also shows its
-// label. If nothing stays, the hidden images come back only when they all
-// belong to a single specimen. `singleSpecimen: false` turns the exception off
+// label. If nothing stays, the hidden images on specimens come back when they
+// are all on one specimen (ones on other objects, e.g. a CollectingEvent, are
+// ignored and stay hidden). `singleSpecimen: false` turns the exception off
 // (the subordinate-taxa sample, which is never about one specimen).
 function dropIdsFromDepictions(rows, imageIds, { singleSpecimen = true } = {}) {
   const otuMeta = new Set() // image has a data depiction ON an Otu

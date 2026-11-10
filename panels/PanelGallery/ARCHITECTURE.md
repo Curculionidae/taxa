@@ -103,7 +103,9 @@ type + id across all of the image's depictions, an extra Otu depiction doesn't
 matter), the data depictions of that specimen are shown as well: the gallery is
 then about that one specimen anyway, and its label belongs with it. Data
 depictions of any other specimen stay hidden. If no image stays at all, the
-hidden ones come back only when they all belong to a single specimen. Because the
+hidden ones on specimens are counted: if they are all on one specimen, those come
+back (a data depiction on a non-specimen object, e.g. a CollectingEvent, doesn't
+count and stays hidden). Because the
 check needs the gallery's image ids, `fetchDataDepictionFilter()` only stores the
 raw rows (`depictionRows`); `twDirectImages` calls
 `dropIdsFromDepictions(rows, imageIds)` itself.

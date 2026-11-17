@@ -34,6 +34,27 @@
           </select>
         </div>
 
+        <p
+          class="box-border flex items-center gap-2 rounded-md border border-warning bg-base-foreground px-3 py-2 text-sm text-base-content"
+          role="note"
+        >
+          <svg
+            class="h-5 w-5 shrink-0 text-warning"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+          </svg>
+          Distribution data is incomplete for most countries
+        </p>
+
         <div v-if="subdivisionOptions.length" class="min-w-[14rem] flex-1 sm:max-w-sm">
           <label class="block text-sm font-semibold" for="distribution-region">
             {{ regionLabel }}

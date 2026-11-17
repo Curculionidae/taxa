@@ -831,7 +831,12 @@ function withoutExcludedParts(geometry, boxes) {
   return { ...geometry, coordinates: geometry.coordinates.filter((polygon) => !inBox(polygon)) }
 }
 
+let shapesRequestId = 0
+
 async function loadCountryShapes() {
+  // A Retry can start a second load while the first still runs; only the
+  // newest may set the map.
+  const requestId = ++shapesRequestId
   try {
     await indexReady
     const features = []
@@ -863,10 +868,11 @@ async function loadCountryShapes() {
       if (!isoByName.has(feature.properties.name) || drawn.has(feature.properties.name)) continue
       features.push({ ...feature, properties: { name: feature.properties.name, 'ISO3166-1-Alpha-2': isoByName.get(feature.properties.name) } })
     }
+    if (requestId !== shapesRequestId) return
     if (!features.length) throw new Error('No country outlines.')
     countryGeoJson.value = prepareCountryMapData({ type: 'FeatureCollection', features })
   } catch {
-    mapError.value = 'The world map could not be loaded. Use the country list to browse records.'
+    if (requestId === shapesRequestId) mapError.value = 'The world map could not be loaded. Use the country list to browse records.'
   }
 }
 
@@ -1193,24 +1199,29 @@ const countryParts = computed(() => (
 ))
 const partFeatures = ref(new Map()) // country key -> features
 
+// Outlines for the map only: the part list comes from index.json, so a part
+// without outline (or whose outline failed to load) stays selectable.
 async function loadPartFeatures(key, parts) {
   if (partFeatures.value.has(key)) return
   const features = []
+  let failed = false
   for (const part of parts) {
     if (!part.shape) continue
     try {
       const geometry = await fetchJson(`${base_url}map-shapes/${part.shape}.json`)
       features.push({ type: 'Feature', properties: { name: part.name, country: key }, geometry })
     } catch {
-      // A part without outline stays selectable from the list.
+      failed = true
     }
   }
-  partFeatures.value = new Map(partFeatures.value).set(key, features)
+  // Kept only when complete, so a network hiccup is retried next time.
+  if (!failed) partFeatures.value = new Map(partFeatures.value).set(key, features)
+  else if (features.length) partFeatures.value = new Map(partFeatures.value).set(`${key}:partial`, features)
 }
 
 const countrySubdivisions = computed(() => {
   const key = countryKey(selectedCountry.value)
-  if (countryParts.value) return partFeatures.value.get(key) || []
+  if (countryParts.value) return partFeatures.value.get(key) || partFeatures.value.get(`${key}:partial`) || []
   if (!REGION_LABELS[key] || !subdivisionGeoJson.value) return []
   return subdivisionGeoJson.value.features.filter((feature) => countryKey(feature.properties.country) === key)
 })
@@ -1246,11 +1257,17 @@ const regionCounts = computed(() => {
   return new Map([...speciesByRegion.entries()].map(([region, set]) => [region, set.size]))
 })
 
-const subdivisionOptions = computed(() => countrySubdivisions.value
-  .map((feature) => ({
-    key: `subdivision-${feature.properties.name}`,
-    name: feature.properties.name,
-    count: isAssociatedAreaSelection.value ? null : regionCounts.value.get(feature.properties.name) || 0
+const subdivisionNames = computed(() => (
+  countryParts.value
+    ? countryParts.value.map((part) => part.name)
+    : countrySubdivisions.value.map((feature) => feature.properties.name)
+))
+
+const subdivisionOptions = computed(() => subdivisionNames.value
+  .map((name) => ({
+    key: `subdivision-${name}`,
+    name,
+    count: isAssociatedAreaSelection.value ? null : regionCounts.value.get(name) || 0
   }))
   .filter((region) => isAssociatedAreaSelection.value || region.count || region.name === selectedRegion.value))
 

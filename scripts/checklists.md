@@ -38,6 +38,20 @@ script for how records are placed in countries. In short:
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
   about 5% of the rows. The script uses `/dwc_occurrences.csv` (one request).
 
+## Status (reassessed, adventive, endemic)
+
+Following the project's conventions for asserted distributions
+(https://curculionidae.github.io/docs/TutorialAssertedDistributions/):
+
+- A distribution with a "Reassessment" data attribute, or with an "is absent"
+  distribution for the same taxon and area, is `reassessed`: it does not
+  count. A taxon with only such records stays in its place in the list, red,
+  "Reassessed, not counted", with the note and the refuting source; in the
+  downloads "[reassessed, not counted]" and a "Reassessed:" line.
+- Tags "Adventive" (on distributions and specimens) and "Endemic" mark the
+  taxon with a chip (the site's purple adventive chip) and "[adventive]" /
+  "[endemic]" in the downloads; the CSV has a `status` column.
+
 ## Overview of what each checklist contains
 
 The build also writes `public/checklists/overview.html`, open it locally in a

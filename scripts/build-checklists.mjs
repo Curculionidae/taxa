@@ -124,6 +124,60 @@ const expected = Number(first.headers.get('pagination-total'))
 if (distributions.size !== expected) throw new Error(`got ${distributions.size} of ${expected} distributions`)
 console.log(`${distributions.size} asserted distributions`)
 
+// Status, following the project's conventions for asserted distributions
+// (curculionidae.github.io/docs/TutorialAssertedDistributions/):
+// - refuted or doubted: the distribution carries a "Reassessment" data
+//   attribute, or an "is absent" distribution exists for the same taxon and
+//   area. It is kept in TaxonWorks so nobody adds it again; here it no longer
+//   counts and is shown as reassessed, with the note and the refuting source.
+// - the keywords "Adventive" and "Endemic", as tags on a distribution (and
+//   "Adventive" also on a specimen).
+// These lists are small (hundreds); each comes in one page, checked.
+async function getOnePage(path, params) {
+  const response = await request(path, [...params, ['per', 5000]])
+  const total = Number(response.headers.get('pagination-total'))
+  const list = await response.json()
+  if (Number.isFinite(total) && total > list.length) throw new Error(`${path}: ${total} rows, only ${list.length} in one page`)
+  return list
+}
+const tagsByObject = new Map() // "AssertedDistribution:12" -> Set of lowercase keywords
+function addTags(list) {
+  for (const tag of list) {
+    const key = `${tag.tag_object_type}:${tag.tag_object_id}`
+    if (!tagsByObject.has(key)) tagsByObject.set(key, new Set())
+    tagsByObject.get(key).add(normalize(tag.keyword?.name))
+  }
+}
+const distributionTags = await getOnePage('/tags', [['tag_object_type', 'AssertedDistribution']])
+addTags(distributionTags)
+const adventiveKeywordIds = [...new Set(distributionTags.filter((tag) => normalize(tag.keyword?.name) === 'adventive').map((tag) => tag.keyword_id))]
+if (adventiveKeywordIds.length) addTags(await getOnePage('/tags', adventiveKeywordIds.map((id) => ['keyword_id[]', id])))
+
+const reassessmentsByDistribution = new Map() // AD id -> [{ note, sources }]
+const reassessmentAttributes = (await getOnePage('/data_attributes', [['attribute_subject_type', 'AssertedDistribution']]))
+  .filter((attribute) => normalize(attribute.predicate_name || attribute.import_predicate) === 'reassessment')
+const attributeSources = new Map() // data attribute id -> [source label]
+if (reassessmentAttributes.length) {
+  const citations = await getOnePage('/citations', [
+    ['citation_object_type', 'DataAttribute'],
+    ...reassessmentAttributes.map((attribute) => ['citation_object_id[]', attribute.id]),
+    ['extend[]', 'source']
+  ])
+  for (const citation of citations) {
+    const label = citation.source?.cached || citation.citation_source_body || ''
+    if (!label) continue
+    const id = String(citation.citation_object_id)
+    if (!attributeSources.has(id)) attributeSources.set(id, [])
+    attributeSources.get(id).push(label.replace(/<[^>]+>/g, ''))
+  }
+}
+for (const attribute of reassessmentAttributes) {
+  const id = String(attribute.attribute_subject_id)
+  if (!reassessmentsByDistribution.has(id)) reassessmentsByDistribution.set(id, [])
+  reassessmentsByDistribution.get(id).push({ note: attribute.value || '', sources: attributeSources.get(String(attribute.id)) || [] })
+}
+console.log(`${distributionTags.length} distribution tags, ${reassessmentAttributes.length} reassessments`)
+
 // 3. Countries: id -> name, plus lookups by ISO code and by name.
 const countries = new Map() // level0 id -> { id, name, iso2 }
 const countryByIso = new Map()
@@ -521,6 +575,22 @@ function countryOf(row) {
   return id ? { id, region: '', rule: 'DwC country' } : {}
 }
 
+// "is absent" distributions, by taxon and area: they refute a present
+// distribution of the same taxon and area.
+const shapeKeyOf = (ad) => `${ad.asserted_distribution_shape_type}/${ad.asserted_distribution_shape_id}`
+const absentPairs = new Map() // "taxon|GeographicArea/12" -> [{ note, sources }]
+for (const row of rows) {
+  if (row.dwc_occurrence_object_type !== 'AssertedDistribution') continue
+  const ad = distributions.get(String(row.dwc_occurrence_object_id))
+  if (!ad?.is_absent) continue
+  const key = `${taxonKey(row)}|${shapeKeyOf(ad)}`
+  if (!absentPairs.has(key)) absentPairs.set(key, [])
+  absentPairs.get(key).push({
+    note: `Recorded as absent from ${ad.asserted_distribution_shape?.name || 'this area'}`,
+    sources: (ad.citations || []).map((citation) => citation.source?.name || '').filter(Boolean)
+  })
+}
+
 for (const row of rows) {
   if (!RANKS.has(row.taxonRank) || !row.otu_id) continue
   if (normalize(row.occurrenceStatus) === 'absent') continue
@@ -561,8 +631,17 @@ for (const row of rows) {
   if (region) record.region = region
   const part = partOf(checklist, row, ad)
   if (part) record.part = part
+  const reassessed = ad && [
+    ...(reassessmentsByDistribution.get(String(ad.id)) || []),
+    ...(absentPairs.get(`${taxonKey(row)}|${shapeKeyOf(ad)}`) || [])
+  ]
+  if (reassessed?.length) record.reassessed = reassessed
+  const tags = tagsByObject.get(`${row.dwc_occurrence_object_type}:${row.dwc_occurrence_object_id}`)
+  if (tags?.has('adventive')) record.adventive = true
+  if (tags?.has('endemic')) record.endemic = true
+  const status = [record.reassessed && 'reassessed', record.adventive && 'adventive', record.endemic && 'endemic'].filter(Boolean)
   if (!contributions.has(checklist.id)) contributions.set(checklist.id, new Map())
-  tally(contributions.get(checklist.id), source, PARTS[checklist.name] ? `${rule}; ${part || 'no part'}` : rule, row)
+  tally(contributions.get(checklist.id), source, [PARTS[checklist.name] ? `${rule}; ${part || 'no part'}` : rule, ...status].join('; '), row)
   if (ad) {
     record.place = ad.asserted_distribution_shape?.name || ''
     record.citations = (ad.citations || [])
@@ -599,7 +678,11 @@ for (const [id, records] of byCountry) {
         return { name: part.name, shape: partShape ? `GeographicArea/${partShape}` : null }
       })
     } : {}),
-    taxa: new Set(records.map(taxonKey)).size, records: records.length })
+    // Reassessed records do not count; a taxon known only from them is shown
+    // on the page (as reassessed) but not in the count.
+    taxa: new Set(records.filter((record) => !record.reassessed).map(taxonKey)).size,
+    records: records.length
+  })
 }
 index.sort((a, b) => a.name.localeCompare(b.name))
 writeFileSync(`${OUT_DIR}index.json`, JSON.stringify({
@@ -699,6 +782,7 @@ details.rec[open] summary { border:0 }
 <li><b>coordinates</b>: a specimen whose collecting event has no area, by the one country outline (cached TaxonWorks shape) that contains its coordinates; <b>coordinates, nearest coast</b>: the point lies just outside every outline (coasts are simplified to about 0.5 km), and one country is within about 5 km.</li>
 <li><b>gazetteer name</b>: a gazetteer named after its territory ("TAAF: Île Saint-Paul"), which can differ from its ISO code.</li>
 <li><b>overseas GF, GP, MQ, RE, YT</b>: an overseas department TaxonWorks files under France, by its areas, ISO code, name or coordinates; it has a checklist of its own.</li>
+<li><b>; reassessed</b>: the distribution has a Reassessment data attribute or an "is absent" record for the same taxon and area; it does not count. <b>; adventive</b>, <b>; endemic</b>: tagged with that keyword.</li>
 <li><b>; part</b>: for a country with selectable parts, the part the record counts for (by area, name, or coordinates in the part's outline), or "no part".</li>
 </ul>
 <p class="soft">Only Curculionoidea at species and subspecies rank, present records. Several TaxonWorks country areas of one country are merged into one checklist.</p>

@@ -353,7 +353,7 @@
                     </span>
                   </div>
                   <p class="mt-2 text-xs text-base-content/55">
-                    {{ filteredSpecies.length }} of {{ species.length }} listed taxa
+                    {{ filteredSpecies.filter((taxon) => !taxon.reassessed).length }} of {{ species.filter((taxon) => !taxon.reassessed).length }} listed taxa<template v-if="species.some((taxon) => taxon.reassessed)">, plus reassessed ones, not counted</template>
                   </p>
                   <ul class="mt-2 max-h-[28rem] divide-y divide-base-border/50 overflow-y-auto border-y border-base-border/50 xl:max-h-[calc(100vh-27rem)] xl:min-h-[12rem]">
                     <template
@@ -381,6 +381,7 @@
                       v-for="taxon in [row.item]"
                       :key="taxon.key"
                       class="py-2.5 pl-7 pr-2 text-sm"
+                      :class="{ 'border-l-4 border-danger bg-danger/10 pl-6': taxon.reassessed }"
                     >
                       <RouterLink
                         v-if="taxon.otuId"
@@ -389,6 +390,24 @@
                       >{{ taxon.name }}</RouterLink>
                       <span v-else class="font-medium italic">{{ taxon.name }}</span>
                       <span v-if="taxon.authorship" class="ml-1 text-base-content/75">{{ taxon.authorship }}</span>
+                      <span
+                        v-if="taxon.adventive"
+                        class="ml-1.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium"
+                        :style="ADVENTIVE_CHIP_STYLE"
+                        title="Tagged as adventive (introduced) in TaxonWorks"
+                      >Adventive</span>
+                      <span
+                        v-if="taxon.endemic"
+                        class="ml-1.5 inline-block rounded-full border border-base-border px-2 py-0.5 text-xs font-medium"
+                        title="Tagged as endemic in TaxonWorks: known only from here"
+                      >Endemic</span>
+                      <div v-if="taxon.reassessments.length" class="mt-1 text-xs">
+                        <span class="font-semibold" :class="taxon.reassessed ? 'text-danger' : 'text-base-content/75'">{{ taxon.reassessed ? 'Reassessed, not counted:' : 'Reassessed record:' }}</span>
+                        <template v-for="(reassessment, index) in taxon.reassessments" :key="reassessment.text">
+                          <span v-if="index" aria-hidden="true">; </span>
+                          {{ reassessment.text }}<span v-if="reassessment.sources.length" class="text-base-content/75"> ({{ reassessment.sources.join('; ') }})</span>
+                        </template>
+                      </div>
                       <button
                         :id="`record-count-${taxon.key}`"
                         class="ml-1 text-xs text-secondary hover:underline"
@@ -557,6 +576,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
+import { ADVENTIVE_CHIP_STYLE } from '../panels/_shared/adventive.js'
+import '../panels/_shared/panel-tokens.css'
 import './data/checklist-tokens.css'
 
 const {
@@ -1201,7 +1222,9 @@ const pageTitle = computed(() => selectionLabel.value)
 const recommendedCitation = computed(() => {
   if (!selectedCountry.value || !checklistCitationUrl.value || !citationAccessDate.value) return ''
   const authors = projectAuthors || projectName
-  return `${authors} (${new Date().getFullYear()}). ${projectName}: ${exportLabel.value} checklist. Accessed ${citationAccessDate.value}. ${checklistCitationUrl.value}`
+  // The configured author list may already end with the year ("… (2026).").
+  const year = /\(\d{4}\)\.?\s*$/.test(authors) ? '' : ` (${new Date().getFullYear()}).`
+  return `${authors.replace(/\s+$/, '')}${year} ${projectName}: ${exportLabel.value} checklist. Accessed ${citationAccessDate.value}. ${checklistCitationUrl.value}`
 })
 
 const regionLabel = computed(() => REGION_LABELS[countryKey(selectedCountry.value)] || 'Region')
@@ -1262,7 +1285,7 @@ const scopedRows = computed(() => (
 const regionCounts = computed(() => {
   const speciesByRegion = new Map()
   for (const record of countryRows.value) {
-    if (!isSpeciesRecord(record)) continue
+    if (!isSpeciesRecord(record) || record.reassessed) continue
     const region = recordRegion(record)
     if (!region) continue
     if (!speciesByRegion.has(region)) speciesByRegion.set(region, new Set())
@@ -1451,10 +1474,32 @@ const species = computed(() => {
         authorship: String(record.scientificNameAuthorship || '').trim(),
         rank: String(record.taxonRank || '').trim(),
         ...Object.fromEntries(CLASSIFICATION_RANKS.map((rank) => [rank, String(record[rank] || '').trim()])),
-        otuId: Number(record.otu_id) || null
+        otuId: Number(record.otu_id) || null,
+        counted: 0,
+        reassessments: [],
+        adventive: false,
+        endemic: false
       })
     }
+    // Status from the build (project conventions for asserted distributions):
+    // a reassessed record (Reassessment or "is absent") does not count; a
+    // taxon with only such records stays in its place, marked, uncounted.
+    const taxon = byTaxon.get(key)
+    if (record.reassessed) {
+      for (const reassessment of record.reassessed) {
+        const place = plainText(record.place)
+        const text = `${place && place !== record.country ? `${place}: ` : ''}${plainText(reassessment.note)}`
+        if (!taxon.reassessments.some((item) => item.text === text)) {
+          taxon.reassessments.push({ text, sources: reassessment.sources.map((source) => compactCitation('', plainText(source))) })
+        }
+      }
+    } else {
+      taxon.counted++
+      if (record.adventive) taxon.adventive = true
+      if (record.endemic) taxon.endemic = true
+    }
   }
+  for (const taxon of byTaxon.values()) taxon.reassessed = !taxon.counted
   // In taxonomic order: family, subfamily, tribe, subtribe, genus, then name
   // (taxa without a family last). The list is grouped by family.
   return [...byTaxon.values()].sort((a, b) => (
@@ -1560,7 +1605,7 @@ function checklistOutline(items, taxonOf = (item) => item) {
       open[rank] = name ? { type: 'heading', rank, name, depth, count: 0, key: `${rank}:${name}:${rows.length}` } : null
       if (open[rank]) rows.push(open[rank])
     })
-    for (const rank of HEADING_RANKS) if (open[rank]) open[rank].count++
+    if (!taxon.reassessed) for (const rank of HEADING_RANKS) if (open[rank]) open[rank].count++
     rows.push({ type: 'taxon', item, key: taxon.key })
   }
   return rows
@@ -1686,6 +1731,7 @@ function countryExportRows() {
         fullReference: citation.full || '',
         otuId: record.otu_id || '',
         occurrenceId: record.occurrenceID || record.dwc_occurrence_object_id || '',
+        status: [record.reassessed && 'reassessed (not counted)', record.adventive && 'adventive', record.endemic && 'endemic'].filter(Boolean).join('; '),
         recommendedCitation: recommendedCitation.value
       })
     }
@@ -1717,7 +1763,7 @@ function downloadCountryCSV() {
   const columns = [
     'family', 'scientificName', 'scientificNameAuthorship', 'taxonRank', 'country', 'stateProvince',
     'county', 'municipality', 'verbatimLocality', 'evidenceType', 'institutionCode',
-    'catalogNumber', 'recordedBy', 'eventDate', 'citation', 'fullReference', 'otuId', 'occurrenceId', 'recommendedCitation'
+    'catalogNumber', 'recordedBy', 'eventDate', 'citation', 'fullReference', 'otuId', 'occurrenceId', 'status', 'recommendedCitation'
   ]
   const rows = countryExportRows()
   const csv = [columns, ...rows.map((row) => columns.map((column) => row[column]))]
@@ -1753,7 +1799,7 @@ function downloadCountryText() {
     `${projectName}: ${exportLabel.value} checklist`,
     `Generated ${new Date().toISOString().slice(0, 10)}.`,
     `Recommended citation: ${recommendedCitation.value}`,
-    `${taxa.length} species and subspecies with indexed records.`,
+    `${taxa.filter((entry) => !entry.taxon.reassessed).length} species and subspecies with indexed records.`,
     '',
     'CHECKLIST',
     ''
@@ -1766,7 +1812,10 @@ function downloadCountryText() {
     }
     const entry = row.item
     const { taxon } = entry
-    lines.push(`${taxon.name}${taxon.authorship ? ` ${taxon.authorship}` : ''}`)
+    lines.push(`${taxon.name}${taxon.authorship ? ` ${taxon.authorship}` : ''}${statusLabels(taxon)}`)
+    for (const reassessment of taxon.reassessments) {
+      lines.push(`  Reassessed: ${reassessment.text}${reassessment.sources.length ? ` (${reassessment.sources.join('; ')})` : ''}`)
+    }
     for (const distribution of entry.distributions) {
       lines.push(`  Distribution: ${distribution.place}${distribution.citations.length ? ` (${distribution.citations.join('; ')})` : ''}`)
     }
@@ -1777,6 +1826,12 @@ function downloadCountryText() {
   lines.push('REFERENCES', '', ...references)
   const date = new Date().toISOString().slice(0, 10)
   downloadFile(`${exportPrefix}_${exportSlug(exportLabel.value)}_checklist_${date}.txt`, lines.join('\r\n'), 'text/plain;charset=utf-8')
+}
+
+// " [adventive]", " [endemic]", " [reassessed, not counted]" after a name in the downloads.
+function statusLabels(taxon) {
+  const labels = [taxon.reassessed && 'reassessed, not counted', taxon.adventive && 'adventive', taxon.endemic && 'endemic'].filter(Boolean)
+  return labels.map((label) => ` [${label}]`).join('')
 }
 
 function escapeRtf(value) {
@@ -1807,7 +1862,7 @@ function downloadCountryRtf() {
   const lines = [
     '{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss\\fcharset0 Arial;}}\\viewkind4\\uc1',
     `\\pard\\qc\\sa240\\fs32\\b ${escapeRtf(`${projectName}: ${exportLabel.value} checklist`)}\\b0\\fs24\\par`,
-    `\\pard\\qc\\sa200\\fs20         Generated ${date}. ${taxa.length} species and subspecies with indexed records.\\fs24\\par`,
+    `\\pard\\qc\\sa200\\fs20         Generated ${date}. ${taxa.filter((entry) => !entry.taxon.reassessed).length} species and subspecies with indexed records.\\fs24\\par`,
         `\\pard\\qc\\sa120\\fs18 Recommended citation: ${escapeRtf(recommendedCitation.value)}\\fs20\\par`,
         '\\pard\\sb240\\sa100\\b CHECKLIST\\b0\\par'
       ]
@@ -1827,7 +1882,11 @@ function downloadCountryRtf() {
     }
     const entry = row.item
     const { taxon } = entry
-    lines.push(`\\pard\\li480\\sa60\\i ${escapeRtf(taxon.name)}\\i0${taxon.authorship ? `\\~${escapeRtf(taxon.authorship)}` : ''}\\par`)
+    lines.push(`\\pard\\li480\\sa60\\i ${escapeRtf(taxon.name)}\\i0${taxon.authorship ? `\\~${escapeRtf(taxon.authorship)}` : ''}${escapeRtf(statusLabels(taxon))}\\par`)
+    for (const reassessment of taxon.reassessments) {
+      const sources = reassessment.sources.length ? ` (${reassessment.sources.join('; ')})` : ''
+      lines.push(`\\pard\\li720\\sa40 Reassessed: ${escapeRtf(reassessment.text + sources)}\\par`)
+    }
     for (const distribution of entry.distributions) {
       const citations = distribution.citations.length ? ` (${distribution.citations.join('; ')})` : ''
       lines.push(`\\pard\\li720\\sa40 Distribution: ${escapeRtf(distribution.place + citations)}\\par`)

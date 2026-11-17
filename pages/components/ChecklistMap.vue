@@ -60,6 +60,12 @@ onMounted(async () => {
     maxZoom: 18
   })
   mapObject.attributionControl.setPrefix(false)
+  // Links on the checklists page open in a new tab, the map credit too (its
+  // HTML comes from the map configuration, so the target is set on click).
+  L.DomEvent.on(mapObject.attributionControl.getContainer(), 'click', (event) => {
+    const link = event.target.closest?.('a[href]')
+    if (link) Object.assign(link, { target: '_blank', rel: 'noopener' })
+  })
 
   const tiles = makeTileFromConfiguration(L, {
     maxZoom: 18,

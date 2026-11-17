@@ -386,6 +386,8 @@
                       <RouterLink
                         v-if="taxon.otuId"
                         :to="{ name: 'otus-id-overview', params: { id: taxon.otuId } }"
+                        target="_blank"
+                        rel="noopener"
                         class="font-medium italic text-secondary hover:underline"
                       >{{ taxon.name }}</RouterLink>
                       <span v-else class="font-medium italic">{{ taxon.name }}</span>
@@ -491,14 +493,14 @@
                 aria-labelledby="country-tab-references"
               >
                 <p
-                  v-if="topReferences.length"
+                  v-if="checklistReferences.length"
                   class="text-xs text-base-content/55"
                 >
-                  Top cited references, ranked by distinct taxa.
+                  {{ checklistReferences.length }} {{ checklistReferences.length === 1 ? 'reference' : 'references' }}<template v-if="higherTaxonFilter || speciesFilter.trim()"> for the taxa shown by the filter</template>, alphabetical. Each shows the taxa it is cited for.
                 </p>
-                <ol v-if="topReferences.length" class="mt-2 max-h-[28rem] space-y-3 overflow-y-auto pr-2 xl:max-h-[calc(100vh-27rem)] xl:min-h-[12rem]">
+                <ol v-if="checklistReferences.length" class="mt-2 max-h-[28rem] space-y-3 overflow-y-auto pr-2 xl:max-h-[calc(100vh-27rem)] xl:min-h-[12rem]">
                   <li
-                    v-for="reference in topReferences"
+                    v-for="reference in checklistReferences"
                     :key="reference.full"
                     class="border-l-2 border-secondary/60 pl-3 text-sm"
                   >
@@ -524,6 +526,8 @@
                         <RouterLink
                           v-if="taxon.otuId"
                           :to="{ name: 'otus-id-overview', params: { id: taxon.otuId } }"
+                          target="_blank"
+                          rel="noopener"
                           class="italic text-secondary hover:underline"
                         >{{ taxon.name }}</RouterLink>
                         <span v-else class="italic">{{ taxon.name }}</span>
@@ -652,7 +656,9 @@ const citationsByOccurrence = ref(new Map())
 const distributionPlacesByOccurrence = ref(new Map())
 const speciesFilter = ref('')
 const CLASSIFICATION_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
-const TAXONOMIC_ORDER = CLASSIFICATION_RANKS
+// Sorted by the ranks that get headings: sorting by subtribe too (it has no
+// heading) put genera out of order and could split one genus in two.
+const TAXONOMIC_ORDER = ['family', 'subfamily', 'tribe', 'genus']
 // Suggested from the lowest rank up, so a genus comes before a tribe.
 const SUGGESTION_RANKS = ['genus', 'subtribe', 'tribe', 'subfamily', 'family']
 const expandedTaxonKey = ref('')
@@ -1223,8 +1229,9 @@ const recommendedCitation = computed(() => {
   if (!selectedCountry.value || !checklistCitationUrl.value || !citationAccessDate.value) return ''
   const authors = projectAuthors || projectName
   // The configured author list may already end with the year ("… (2026).").
-  const year = /\(\d{4}\)\.?\s*$/.test(authors) ? '' : ` (${new Date().getFullYear()}).`
-  return `${authors.replace(/\s+$/, '')}${year} ${projectName}: ${exportLabel.value} checklist. Accessed ${citationAccessDate.value}. ${checklistCitationUrl.value}`
+  const trimmed = authors.replace(/\s+$/, '')
+  const year = /\(\d{4}\)\.$/.test(trimmed) ? '' : /\(\d{4}\)$/.test(trimmed) ? '.' : ` (${new Date().getFullYear()}).`
+  return `${trimmed}${year} ${projectName}: ${exportLabel.value} checklist. Accessed ${citationAccessDate.value}. ${checklistCitationUrl.value}`
 })
 
 const regionLabel = computed(() => REGION_LABELS[countryKey(selectedCountry.value)] || 'Region')
@@ -1525,6 +1532,7 @@ const taxonScopedSpecies = computed(() => species.value.filter(inHigherTaxon))
 const higherTaxa = computed(() => {
   const taxa = new Map()
   for (const taxon of species.value) {
+    if (taxon.reassessed) continue
     for (const rank of SUGGESTION_RANKS) {
       const name = taxon[rank]
       if (!name) continue
@@ -1664,6 +1672,10 @@ function distributionPlace(record) {
   const country = String(record.country || mapSelectionName.value).trim()
   const assertedDistributionId = String(record.dwc_occurrence_object_id || '')
   const shapeName = plainText(distributionPlacesByOccurrence.value.get(assertedDistributionId) || '')
+  // A distribution asserted for a biological association names it, in the
+  // label only (the place stays the lookup key for the region):
+  // "Greece (egg: Lixus bidens collected from stem: Opopanax)".
+  if (record.association) return `${shapeName || country} (${plainText(record.association)})`
   if (shapeName && countryKey(shapeName) !== countryKey(country)) return shapeName
 
   const details = [...new Set(
@@ -1918,7 +1930,8 @@ function downloadCountryRtf() {
 const sourcesByTaxon = computed(() => {
   const groups = new Map()
   for (const record of scopedRows.value) {
-    if (!isSpeciesRecord(record)) continue
+    // A reassessed record is not evidence: shown as "Reassessed" instead.
+    if (!isSpeciesRecord(record) || record.reassessed) continue
     const taxonKey = speciesKey(record)
     if (!groups.has(taxonKey)) groups.set(taxonKey, { references: new Map(), specimens: [] })
     const group = groups.get(taxonKey)
@@ -1979,7 +1992,8 @@ const sourcesByTaxon = computed(() => {
 const recordEvidenceByTaxon = computed(() => {
   const evidence = new Map()
   for (const record of scopedRows.value) {
-    if (!isSpeciesRecord(record)) continue
+    // A reassessed record is not evidence: shown as "Reassessed" instead.
+    if (!isSpeciesRecord(record) || record.reassessed) continue
     const taxonKey = speciesKey(record)
     if (!evidence.has(taxonKey)) evidence.set(taxonKey, { citations: new Set(), specimens: new Set() })
     const taxonEvidence = evidence.get(taxonKey)
@@ -2010,12 +2024,16 @@ const recordEvidenceByTaxon = computed(() => {
   }]))
 })
 
-const topReferences = computed(() => {
+// Every reference cited for the taxa the list currently shows (all of them,
+// alphabetical, as in the downloads; following the higher-taxon and name
+// filters), each with those of its taxa.
+const checklistReferences = computed(() => {
   const references = new Map()
+  const shown = new Set(filteredSpecies.value.map((taxon) => taxon.key))
   for (const record of scopedRows.value) {
     const isDistribution = record.dwc_occurrence_object_type === 'AssertedDistribution'
-    const isSpecimen = record.dwc_occurrence_object_type === 'CollectionObject' || record.basisOfRecord === 'PreservedSpecimen'
-    if (!isDistribution && !isSpecimen) continue
+    if (!isDistribution && !isOccurrenceRecord(record)) continue
+    if (!shown.has(speciesKey(record)) || record.reassessed) continue
 
     const citationRefs = isDistribution
       ? citationsByOccurrence.value.get(String(record.dwc_occurrence_object_id))
@@ -2045,8 +2063,7 @@ const topReferences = computed(() => {
         .sort((a, b) => a.name.localeCompare(b.name))
       return { ...reference, key: `reference-${index}`, taxa }
     })
-    .sort((a, b) => b.taxa.length - a.taxa.length || a.full.localeCompare(b.full))
-    .slice(0, 10)
+    .sort((a, b) => a.full.localeCompare(b.full))
 })
 
 async function loadCountry(name) {
@@ -2077,10 +2094,7 @@ async function loadCountry(name) {
     for (const record of records) {
       if (record.dwc_occurrence_object_type !== 'AssertedDistribution') continue
       const id = String(record.dwc_occurrence_object_id)
-      // A distribution asserted for a biological association names it:
-      // "Greece (egg: Lixus bidens collected from stem: Opopanax)".
-      const place = record.association ? `${record.place || record.country} (${plainText(record.association)})` : record.place
-      if (place) places.set(id, place)
+      if (record.place) places.set(id, record.place)
       if (record.citations?.length) {
         citations.set(id, record.citations.map((citation) => {
           const short = compactCitation('', citation.full)

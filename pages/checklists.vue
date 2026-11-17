@@ -162,16 +162,6 @@
           </span>
           <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China, Russia and the United Kingdom, click a state, province or constituent country to narrow it.</span>
         </div>
-        <div
-          v-if="recommendedCitation"
-          class="mt-4 border-t border-base-border/50 pt-3"
-        >
-          <p class="text-xs font-semibold text-base-content/65">Recommended citation</p>
-          <div class="mt-1 flex items-start justify-between gap-3">
-            <p class="min-w-0 text-xs leading-relaxed text-base-content/70">{{ recommendedCitation }}</p>
-            <VClipboard :text="recommendedCitation" />
-          </div>
-        </div>
       </section>
 
       <aside class="min-w-0">
@@ -1063,6 +1053,8 @@ const selectionLabel = computed(() => {
 
 const pageTitle = computed(() => selectionLabel.value)
 
+// Not shown on the page (the site footer carries the citation), only
+// written into the CSV / text / RTF exports, which leave the page.
 const recommendedCitation = computed(() => {
   if (!selectedCountry.value || !checklistCitationUrl.value || !citationAccessDate.value) return ''
   const authors = projectAuthors || projectName

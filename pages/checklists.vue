@@ -1867,13 +1867,14 @@ function downloadCountryRtf() {
         '\\pard\\sb240\\sa100\\b CHECKLIST\\b0\\par'
       ]
 
-  // Family 14 pt bold, subfamily 12 pt bold, tribe bold, genus bold italic,
-  // each indented one step further.
+  // Family 14 pt bold, subfamily and tribe bold, genus bold italic, each
+  // indented one step further. Bold and italic go in {groups}: after a
+  // control word like \\b0 RTF swallows the next space ("Bagous(0)").
   const RTF_HEADING = {
-    family: (name) => `\\pard\\sb240\\sa80\\fs28\\b ${escapeRtf(name.toUpperCase())}\\b0\\fs24`,
-    subfamily: (name) => `\\pard\\li120\\sb160\\sa60\\b Subfamily ${escapeRtf(name)}\\b0`,
-    tribe: (name) => `\\pard\\li240\\sb120\\sa60\\b Tribe ${escapeRtf(name)}\\b0`,
-    genus: (name) => `\\pard\\li360\\sb100\\sa60\\b Genus \\i ${escapeRtf(name)}\\i0\\b0`
+    family: (name) => `\\pard\\sb240\\sa80{\\fs28\\b ${escapeRtf(name.toUpperCase())}}`,
+    subfamily: (name) => `\\pard\\li120\\sb160\\sa60{\\b Subfamily ${escapeRtf(name)}}`,
+    tribe: (name) => `\\pard\\li240\\sb120\\sa60{\\b Tribe ${escapeRtf(name)}}`,
+    genus: (name) => `\\pard\\li360\\sb100\\sa60{\\b Genus {\\i ${escapeRtf(name)}}}`
   }
   for (const row of checklistOutline(taxa, (entry) => entry.taxon)) {
     if (row.type === 'heading') {
@@ -1882,7 +1883,9 @@ function downloadCountryRtf() {
     }
     const entry = row.item
     const { taxon } = entry
-    lines.push(`\\pard\\li480\\sa60\\i ${escapeRtf(taxon.name)}\\i0${taxon.authorship ? `\\~${escapeRtf(taxon.authorship)}` : ''}${escapeRtf(statusLabels(taxon))}\\par`)
+    // A plain space before the authorship: a non-breaking one (\\~) shows as a
+    // grey field in LibreOffice.
+    lines.push(`\\pard\\li480\\sa60{\\i ${escapeRtf(taxon.name)}}${taxon.authorship ? ` ${escapeRtf(taxon.authorship)}` : ''}${escapeRtf(statusLabels(taxon))}\\par`)
     for (const reassessment of taxon.reassessments) {
       const sources = reassessment.sources.length ? ` (${reassessment.sources.join('; ')})` : ''
       lines.push(`\\pard\\li720\\sa40 Reassessed: ${escapeRtf(reassessment.text + sources)}\\par`)

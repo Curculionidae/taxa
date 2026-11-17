@@ -1594,14 +1594,18 @@ const HEADING_INDENT = { subfamily: 'pl-1 pt-3', tribe: 'pl-3 pt-2.5', genus: 'p
 
 function checklistOutline(items, taxonOf = (item) => item) {
   const rows = []
-  const open = {}
+  const open = {} // rank -> heading row (null when the rank is empty)
+  const last = {} // rank -> name at that rank of the previous taxon ('' when empty)
   for (const item of items) {
     const taxon = taxonOf(item)
     let changed = false
     HEADING_RANKS.forEach((rank, depth) => {
-      const name = rank === 'family' ? taxon.family || 'Family not recorded' : taxon[rank]
-      changed ||= name !== open[rank]?.name
+      const name = rank === 'family' ? taxon.family || 'Family not recorded' : taxon[rank] || ''
+      // Compared as names, so an empty rank equals an empty rank: Sitoninae
+      // has no tribes, and every Sitona used to start a new genus heading.
+      changed ||= !(rank in last) || name !== last[rank]
       if (!changed) return
+      last[rank] = name
       open[rank] = name ? { type: 'heading', rank, name, depth, count: 0, key: `${rank}:${name}:${rows.length}` } : null
       if (open[rank]) rows.push(open[rank])
     })

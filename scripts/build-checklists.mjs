@@ -785,6 +785,37 @@ for (const [id, records] of byCountry) {
   })
 }
 index.sort((a, b) => a.name.localeCompare(b.name))
+
+// taxa.json: for every higher taxon (family, subfamily, tribe, subtribe,
+// genus) the number of taxa it has in each checklist, counted as the page
+// counts (by name, reassessed records left out), plus its count over all
+// checklists. The page loads it only when someone filters by taxon, to colour
+// the world map and the country list for that taxon.
+const HIGHER_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
+const higherTaxa = new Map() // "rank:name" -> { index, rank, name, all: Set(taxon keys) }
+const countsByChecklist = {}
+for (const [id, records] of byCountry) {
+  const perTaxon = new Map() // taxon index -> Set(taxon keys)
+  for (const record of records) {
+    if (record.reassessed) continue
+    for (const rank of HIGHER_RANKS) {
+      const name = record[rank]
+      if (!name) continue
+      const key = `${rank}:${name}`
+      if (!higherTaxa.has(key)) higherTaxa.set(key, { index: higherTaxa.size, rank, name, all: new Set() })
+      const taxon = higherTaxa.get(key)
+      taxon.all.add(taxonKey(record))
+      if (!perTaxon.has(taxon.index)) perTaxon.set(taxon.index, new Set())
+      perTaxon.get(taxon.index).add(taxonKey(record))
+    }
+  }
+  countsByChecklist[id] = Object.fromEntries([...perTaxon].map(([index, keys]) => [index, keys.size]))
+}
+writeFileSync(`${OUT_DIR}taxa.json`, JSON.stringify({
+  taxa: [...higherTaxa.values()].map(({ rank, name, all }) => [rank, name, all.size]),
+  counts: countsByChecklist
+}))
+console.log(`taxa.json: ${higherTaxa.size} higher taxa`)
 writeFileSync(`${OUT_DIR}index.json`, JSON.stringify({
   updated: new Date().toISOString().slice(0, 10),
   countries: index,

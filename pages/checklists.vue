@@ -472,7 +472,7 @@
 // Ported from Fleas of the World (https://github.com/jrpletch/fleasoftheworld,
 // pages/checklists.vue at 2afe35c), used with permission. Changes: weevil
 // wording, project-name exports, legend bins for larger counts, map colours
-// as --pp-checklist-* tokens (pages/data/checklist-tokens.css).
+// in the site's blue as --pp-checklist-* tokens (pages/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
@@ -869,18 +869,18 @@ function colorForCount(count) {
 function countryStyle(feature) {
   const name = feature.properties?.name || ''
   if (NON_SELECTABLE_AREAS.has(countryKey(name))) {
-    return { fill: true, fillColor: cssVar('--pp-checklist-disabled'), fillOpacity: 0.35, color: cssVar('--pp-checklist-outline'), weight: 0.6, opacity: 1, interactive: false }
+    return { fill: true, fillColor: cssVar('--tp-base-muted'), fillOpacity: 0.35, color: cssVar('--tp-base-foreground'), weight: 0.6, opacity: 1, interactive: false }
   }
   const count = countryCounts.value.get(countryKey(name)) || 0
   const selected = countryKey(name) === countryKey(mapSelectionName.value)
   if (selected && subdivisionsShown.value) {
     if (selectedRegion.value && !isAssociatedAreaSelection.value) return { weight: 0, opacity: 0, fill: false }
-    return { color: cssVar('--pp-checklist-selected'), weight: 3.5, opacity: 1, fill: false }
+    return { color: cssVar('--tp-base-content'), weight: 3.5, opacity: 1, fill: false }
   }
   return {
     fill: true,
     opacity: 1,
-    color: selected ? cssVar('--pp-checklist-selected') : cssVar('--pp-checklist-outline'),
+    color: selected ? cssVar('--tp-base-content') : cssVar('--tp-base-foreground'),
     weight: selected ? 3.5 : 0.6,
     fillColor: colorForCount(count),
     fillOpacity: count ? 0.88 : 0.48
@@ -1143,7 +1143,7 @@ function subdivisionStyle(feature) {
   const count = regionCounts.value.get(name) || 0
   const selected = name === selectedRegion.value
   return {
-    color: selected ? cssVar('--pp-checklist-selected') : cssVar('--pp-checklist-outline'),
+    color: selected ? cssVar('--tp-base-content') : cssVar('--tp-base-foreground'),
     weight: selected ? 3.5 : 0.8,
     fillColor: colorForCount(count),
     fillOpacity: count ? 0.9 : 0.5
@@ -1811,7 +1811,15 @@ async function loadCountry(name) {
   }
 }
 
+// Leaflet holds literal colours, so restyle when the dark-mode class flips.
+let themeObserver = null
+
 onMounted(() => {
+  themeObserver = new MutationObserver(() => {
+    refreshMapStyles()
+    restyleSubdivisions()
+  })
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
   window.addEventListener('hashchange', syncCountryFromHash)
   syncCountryFromHash()
   loadCountryShapes()
@@ -1819,6 +1827,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  themeObserver?.disconnect()
   window.removeEventListener('hashchange', syncCountryFromHash)
   mapSelectionRequestId += 1
   subdivisionLayerRequestId += 1

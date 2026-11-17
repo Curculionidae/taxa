@@ -38,8 +38,8 @@ script for how records are placed in countries. In short:
 
 ## Overview of what each checklist contains
 
-The build also writes `public/checklists/overview.html` (served at
-`/taxa/checklists/overview.html` on the fork): for every checklist its
+The build also writes `public/checklists/overview.html`, open it locally in a
+browser (it is gitignored, so it is not deployed). For every checklist its
 TaxonWorks country areas, map outline, split-off parts, and every place its
 records come from with the rule that placed them; then everything left out,
 by reason. It is a debugging page like curator mode: areas, gazetteers,

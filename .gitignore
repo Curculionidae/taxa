@@ -8,3 +8,6 @@ config/**/*.development.yml
 *.kate-swp
 .ipynb_checkpoints/
 docs/
+
+# Checklist debugging overview: built locally by npm run checklists, not committed (10 MB, changes every run)
+public/checklists/overview.html

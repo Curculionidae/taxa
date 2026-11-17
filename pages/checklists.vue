@@ -234,7 +234,7 @@
                 @mousedown.prevent="chooseHigherTaxon(taxon)"
               >
                 <span :class="{ italic: taxon.rank === 'genus' }">{{ taxon.name }}</span>
-                <span class="shrink-0 text-xs text-base-soft">{{ taxon.rank }}, {{ taxon.count }} {{ selectedCountry ? 'here' : 'taxa' }}</span>
+                <span class="shrink-0 text-xs text-base-soft">{{ taxon.rank }}, {{ taxon.count }} {{ suggestionsAreLocal ? 'here' : 'taxa' }}</span>
               </li>
             </ul>
           </div>
@@ -249,8 +249,14 @@
                 @click="setHigherTaxonFilter(null)"
               >×</button>
             </span>
-            <span v-if="!selectedCountry" class="text-xs text-base-soft">The map and the country list count this taxon.</span>
+            <span v-if="!selectedCountry && !taxaIndexFailed" class="text-xs text-base-soft">The map and the country list count this taxon.</span>
           </div>
+          <p v-if="higherTaxonFilter && taxaIndexFailed" class="mt-2 text-xs text-danger" role="status">
+            The counts for this taxon could not be loaded, so the map and the country list show all taxa.
+          </p>
+          <p v-if="taxonNotFound" class="mt-2 text-xs text-danger" role="status">
+            The taxon “{{ taxonNotFound }}” in the link was not found; all taxa are shown.
+          </p>
         </div>
         <div
           v-if="selectedCountry"
@@ -589,6 +595,7 @@
 // wording, project-name exports, colour steps scaled to the counts, map colours
 // as --pp-checklist-* tokens in the aggregate-map green (pages/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
@@ -980,7 +987,6 @@ async function loadCountryCounts() {
     countriesByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), [country.name]]))
     checklistIdByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), country.id]))
     totalCounts.value = new Map(index.countries.map((country) => [countryKey(country.name), country.taxa]))
-    refreshMapStyles()
   } catch {
     countsError.value = 'Could not load the checklists. Please try again.'
   } finally {
@@ -1001,8 +1007,8 @@ const countries = computed(() => {
   }
   for (const [key, aliases] of countriesByKey.value) {
     const count = countryCounts.value.get(key) || 0
-    // Countries without the filtered taxon (or with no counted taxa) are left out.
-    if (!options.has(key) && (count || key === countryKey(selectedCountry.value))) {
+    // Under a taxon filter, countries without the taxon are left out.
+    if (!options.has(key) && (count || !higherTaxonFilter.value || key === countryKey(selectedCountry.value))) {
       const name = [...aliases].sort((a, b) => a.localeCompare(b))[0]
       options.set(key, { key, name, count })
     }
@@ -1057,7 +1063,13 @@ const mapSelectionName = computed(() => (
   isAssociatedAreaSelection.value ? selectedRegion.value : selectedCountry.value
 ))
 
-const selectedCountryCount = computed(() => countryCounts.value.get(countryKey(selectedCountry.value)) || 0)
+// Under a taxon filter, once the country's records are in, from the list
+// itself (so it stays right even when taxa.json did not load).
+const selectedCountryCount = computed(() => (
+  higherTaxonFilter.value && countryRows.value.length && !countryLoading.value
+    ? taxonScopedSpecies.value.filter((taxon) => !taxon.reassessed).length
+    : countryCounts.value.get(countryKey(selectedCountry.value)) || 0
+))
 
 function colorForCount(count) {
   const steps = legend.value
@@ -1210,7 +1222,8 @@ function selectCountry(name, region = '') {
   const params = new URLSearchParams()
   if (name) params.set('country', name)
   if (name && region) params.set('region', region)
-  if (higherTaxonFilter.value) params.set('taxon', higherTaxonFilter.value.name)
+  const taxon = higherTaxonFilter.value ? taxonParam(higherTaxonFilter.value) : taxonNotFound.value ? '' : appliedTaxonParam
+  if (taxon) params.set('taxon', taxon)
   const query = params.toString() ? `?${params.toString().replace(/\+/g, '%20')}` : ''
   pendingCountryScrollY = window.scrollY
   window.location.hash = `/checklists${query}`
@@ -1234,12 +1247,21 @@ function syncCountryFromHash() {
   selectedCountry.value = country
   selectedRegion.value = region
   speciesFilter.value = ''
-  const taxonName = params.get('taxon') || ''
-  if (taxonName !== (higherTaxonFilter.value?.name || '')) {
-    higherTaxonFilter.value = null
-    higherTaxonFromName(taxonName).then((filter) => {
-      if ((new URLSearchParams(window.location.hash.split('?')[1] || '')).get('taxon') === taxonName) higherTaxonFilter.value = filter
-    })
+  const taxonValue = params.get('taxon') || ''
+  if (taxonValue !== appliedTaxonParam) {
+    appliedTaxonParam = taxonValue
+    taxonNotFound.value = ''
+    const direct = parseTaxonParam(taxonValue)
+    higherTaxonFilter.value = direct
+    if (taxonValue && !direct) {
+      // An older name-only link: resolved once; a name that is not found is
+      // reported next to the Taxon field instead of being dropped silently.
+      higherTaxonFromName(taxonValue).then((filter) => {
+        if (appliedTaxonParam !== taxonValue) return
+        if (filter) setHigherTaxonFilter(filter)
+        else taxonNotFound.value = taxonValue
+      })
+    }
   }
   expandedTaxonKey.value = ''
   expandedReferenceKey.value = ''
@@ -1573,11 +1595,18 @@ const taxonQuery = ref('')
 // taxa.json (build): every higher taxon with its count per checklist, loaded
 // once on first use of the filter.
 const taxaIndex = ref(null)
+const taxaIndexFailed = ref(false)
 let taxaIndexRequest = null
 function loadTaxaIndex() {
   taxaIndexRequest ??= fetchJson(`${base_url}checklists/taxa.json`)
-    .then((data) => { taxaIndex.value = data })
-    .catch(() => { taxaIndexRequest = null })
+    .then((data) => {
+      taxaIndex.value = data
+      taxaIndexFailed.value = false
+    })
+    .catch(() => {
+      taxaIndexFailed.value = true
+      taxaIndexRequest = null
+    })
   return taxaIndexRequest
 }
 const taxaIndexByKey = computed(() => new Map((taxaIndex.value?.taxa || []).map(([rank, name], index) => [`${rank}:${name}`, index])))
@@ -1593,24 +1622,33 @@ const countryCounts = computed(() => {
   ]))
 })
 watch(higherTaxonFilter, (filter) => { if (filter) loadTaxaIndex() })
-watch(countryCounts, () => {
-  refreshMapStyles()
-  restyleSubdivisions()
-})
 
-// The filter is set through the link, so it survives picking a country and
-// can be shared; replaceState, as it is not a new page.
-function setHigherTaxonFilter(filter) {
+// In the link as ?taxon=tribe:Lixini: rank and name, so a shared link needs
+// no lookup. Older links with the name only (?taxon=Lixini) are still read.
+const taxonParam = (filter) => (filter ? `${filter.rank}:${filter.name}` : '')
+function parseTaxonParam(value) {
+  const match = String(value || '').match(/^(\w+):(.+)$/)
+  return match && SUGGESTION_RANKS.includes(match[1]) ? { rank: match[1], name: match[2] } : null
+}
+let appliedTaxonParam = '' // the ?taxon= value the filter was last set from
+const taxonNotFound = ref('')
+
+// The filter changes the link through the router (a replace: not a new page),
+// so it survives picking a country, can be shared, and the router and the
+// citation in the downloads see the same address.
+const router = useRouter()
+async function setHigherTaxonFilter(filter) {
   higherTaxonFilter.value = filter
-  const [path, query = ''] = window.location.hash.slice(1).split('?')
-  const params = new URLSearchParams(query)
-  if (filter) params.set('taxon', filter.name)
+  taxonNotFound.value = ''
+  appliedTaxonParam = taxonParam(filter)
+  const params = new URLSearchParams(window.location.hash.split('?')[1] || '')
+  if (filter) params.set('taxon', appliedTaxonParam)
   else params.delete('taxon')
-  const next = params.toString() ? `?${params.toString().replace(/\+/g, '%20')}` : ''
-  history.replaceState(history.state, '', `#${path || '/checklists'}${next}`)
+  await router.replace({ path: '/checklists', query: Object.fromEntries(params) })
+  checklistCitationUrl.value = window.location.href
 }
 
-// ?taxon=Lixini: the rank comes from the country's taxa or taxa.json.
+// Older ?taxon=Lixini links: the rank from the country's taxa or taxa.json.
 async function higherTaxonFromName(name) {
   if (!name) return null
   const local = higherTaxa.value.find((taxon) => taxon.name === name)
@@ -1644,9 +1682,10 @@ const higherTaxa = computed(() => {
   return [...taxa.values()]
 })
 
-// The country's own taxa once a country is open, else all of them (taxa.json).
+// The country's own taxa once its records are in, else all of them (taxa.json).
+const suggestionsAreLocal = computed(() => Boolean(selectedCountry.value && countryRows.value.length && !countryLoading.value))
 const suggestionPool = computed(() => (
-  selectedCountry.value && countryRows.value.length
+  suggestionsAreLocal.value
     ? higherTaxa.value
     : (taxaIndex.value?.taxa || []).map(([rank, name, count]) => ({ key: `${rank}:${name}`, rank, name, count }))
 ))
@@ -2244,5 +2283,9 @@ onBeforeUnmount(() => {
 watch([selectedCountry, selectedRegion], syncMapSelection, { flush: 'post' })
 
 watch([countryCounts, countsLoading, countsError], refreshCountryTooltips)
-watch(regionCounts, restyleSubdivisions)
+// One restyle per change (a taxon pick changes both counts in one tick).
+watch([countryCounts, regionCounts], () => {
+  refreshMapStyles()
+  restyleSubdivisions()
+})
 </script>

@@ -7,18 +7,19 @@
    getComputedStyle() at style time (cssVar() in checklists.vue). */
 :root {
   --pp-checklist-0: #e2e8f0;  /* slate-200, same as --tp-base-muted */
-  --pp-checklist-1: #c5dcc8;
-  --pp-checklist-2: #8cc095;
-  --pp-checklist-3: #47985a;
+  --pp-checklist-1: #e3f1e5;
+  --pp-checklist-2: #a8d5b0;
+  --pp-checklist-3: #4fa463;
   --pp-checklist-4: #037316;  /* --tp-map-aggregate */
 }
 
 .dark {
   --pp-checklist-0: #303030;  /* --tp-base-muted */
-  --pp-checklist-1: #33473a;
-  --pp-checklist-2: #2f6b3c;
-  --pp-checklist-3: #2f9a4a;
-  --pp-checklist-4: #66cf7e;
+  /* Same direction as light: few species greenish white, many dark green. */
+  --pp-checklist-1: #e3f1e5;
+  --pp-checklist-2: #a8d5b0;
+  --pp-checklist-3: #4fa463;
+  --pp-checklist-4: #0f7a26;
 }
 
 /* Clicking a country should not leave a browser focus box on the SVG path. */

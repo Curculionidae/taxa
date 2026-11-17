@@ -45,12 +45,20 @@ const apiConfig = readFileSync(new URL('../config/api.yml', import.meta.url), 'u
 const BASE = apiConfig.match(/^\s*url:\s*['"]?([^'"\s]+)/m)[1]
 const TOKEN = apiConfig.match(/^\s*project_token:\s*['"]?([^'"\s]+)/m)[1]
 
+// Retries HTTP errors and network failures; after the last try it throws,
+// which stops the build: a half-built cache must never be written.
 async function request(path, params = []) {
   const query = new URLSearchParams([['project_token', TOKEN], ...params])
   for (let attempt = 1; ; attempt++) {
-    const response = await fetch(`${BASE}${path}?${query}`)
-    if (response.ok) return response
-    if (attempt === 3) throw new Error(`${response.status} ${path}`)
+    let failure
+    try {
+      const response = await fetch(`${BASE}${path}?${query}`)
+      if (response.ok) return response
+      failure = new Error(`${response.status} ${path}`)
+    } catch (error) {
+      failure = new Error(`${error.message} ${path}`)
+    }
+    if (attempt === 4) throw failure
     await new Promise((resolve) => setTimeout(resolve, 2000 * attempt))
   }
 }
@@ -231,17 +239,14 @@ const missing = [...new Set(rows
   .map((row) => row.otu_id))]
 const parentClassification = new Map()
 await forEachLimited(missing, PARALLEL, async (otuId) => {
-  try {
-    const { parents } = await (await request(`/otus/${otuId}`, [['extend[]', 'parents']])).json()
-    const names = Object.keys(parents || {})
-    const classification = {}
-    for (const name of names) {
-      for (const [rank, ending] of RANK_ENDINGS) if (ending.test(name)) classification[rank] = name
-    }
-    parentClassification.set(otuId, classification)
-  } catch {
-    parentClassification.set(otuId, {})
+  // No catch: a failed lookup would silently drop every record of the OTU.
+  const { parents } = await (await request(`/otus/${otuId}`, [['extend[]', 'parents']])).json()
+  const names = Object.keys(parents || {})
+  const classification = {}
+  for (const name of names) {
+    for (const [rank, ending] of RANK_ENDINGS) if (ending.test(name)) classification[rank] = name
   }
+  parentClassification.set(otuId, classification)
 })
 console.log(`${missing.length} OTUs classified from their parents`)
 

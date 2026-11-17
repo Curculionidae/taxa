@@ -254,6 +254,8 @@ const KEEP = [
   'associatedReferences', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus'
 ]
 const byCountry = new Map()
+// A taxon is its name: several OTUs of one name count once (as on the page).
+const taxonKey = (record) => `${record.scientificName || ''} ${record.scientificNameAuthorship || ''}`.trim().toLocaleLowerCase() || String(record.otu_id)
 const unplaced = { records: 0, taxa: new Set() }
 
 function countryOf(row) {
@@ -281,7 +283,7 @@ for (const row of rows) {
   if (ad?.is_absent) continue
   if (!id) {
     unplaced.records++
-    unplaced.taxa.add(row.otu_id)
+    unplaced.taxa.add(taxonKey(row))
     continue
   }
 
@@ -304,8 +306,11 @@ for (const row of rows) {
   byCountry.get(checklist.id).push(record)
 }
 
-rmSync(COUNTRY_DIR, { recursive: true, force: true })
+// Files are overwritten in place and only stale ones removed (recreating the
+// folder makes a running dev server lose track of them).
 mkdirSync(COUNTRY_DIR, { recursive: true })
+const written = new Set([...byCountry.keys()].map((id) => `${id}.json`))
+for (const file of readdirSync(COUNTRY_DIR)) if (!written.has(file)) rmSync(`${COUNTRY_DIR}${file}`)
 const index = []
 for (const [id, records] of byCountry) {
   const { name, iso2, ids } = checklistOf.get(id)
@@ -319,7 +324,7 @@ for (const [id, records] of byCountry) {
     id, name, iso2: iso2 || EXTRA_ISO[name] || '', areas: ids,
     shape: shapeId ? `GeographicArea/${shapeId}` : null,
     ...(exclude.length ? { exclude } : {}),
-    taxa: new Set(records.map((record) => record.otu_id)).size, records: records.length })
+    taxa: new Set(records.map(taxonKey)).size, records: records.length })
 }
 index.sort((a, b) => a.name.localeCompare(b.name))
 writeFileSync(`${OUT_DIR}index.json`, JSON.stringify({

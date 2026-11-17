@@ -300,13 +300,58 @@
                   <label class="block text-sm font-medium" for="species-filter">
                     Species and subspecies checklist
                   </label>
-                  <input
-                    id="species-filter"
-                    v-model="speciesFilter"
-                    class="mt-1.5 box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    type="search"
-                    placeholder="Filter by species name"
-                  />
+                  <div class="relative mt-1.5">
+                    <input
+                      id="species-filter"
+                      v-model="speciesFilter"
+                      class="box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      type="search"
+                      placeholder="Filter by species name or pick a higher taxon"
+                      autocomplete="off"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-controls="higher-taxon-suggestions"
+                      :aria-expanded="suggestionsOpen && higherTaxonSuggestions.length > 0"
+                      :aria-activedescendant="activeSuggestion >= 0 ? `higher-taxon-${activeSuggestion}` : undefined"
+                      @input="suggestionsOpen = true"
+                      @focus="suggestionsOpen = true"
+                      @blur="suggestionsOpen = false"
+                      @keydown="onSpeciesFilterKeydown"
+                    />
+                    <ul
+                      v-if="suggestionsOpen && higherTaxonSuggestions.length"
+                      id="higher-taxon-suggestions"
+                      class="absolute left-0 right-0 z-[1000] mt-1 max-h-72 overflow-y-auto rounded-md border border-base-border bg-base-foreground py-1 text-sm shadow-lg"
+                      role="listbox"
+                      aria-label="Higher taxa"
+                    >
+                      <li
+                        v-for="(taxon, index) in higherTaxonSuggestions"
+                        :id="`higher-taxon-${index}`"
+                        :key="taxon.key"
+                        role="option"
+                        :aria-selected="index === activeSuggestion"
+                        class="flex cursor-pointer items-baseline justify-between gap-3 px-3 py-1.5 hover:bg-base-muted"
+                        :class="{ 'bg-base-muted': index === activeSuggestion }"
+                        @mousedown.prevent="chooseHigherTaxon(taxon)"
+                      >
+                        <span :class="{ italic: taxon.rank === 'genus' }">{{ taxon.name }}</span>
+                        <span class="shrink-0 text-xs text-base-soft">{{ taxon.rank }}, {{ taxon.count }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div v-if="higherTaxonFilter" class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                    <span class="text-base-soft">Only</span>
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-base-border bg-base-muted py-0.5 pl-3 pr-1">
+                      <span>{{ higherTaxonFilter.rank }} <span :class="{ italic: higherTaxonFilter.rank === 'genus' }">{{ higherTaxonFilter.name }}</span></span>
+                      <button
+                        type="button"
+                        class="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-base-border"
+                        :aria-label="`Remove the ${higherTaxonFilter.name} filter`"
+                        @click="higherTaxonFilter = null"
+                      >×</button>
+                    </span>
+                  </div>
                   <p class="mt-2 text-xs text-base-content/55">
                     {{ filteredSpecies.length }} of {{ species.length }} listed taxa
                   </p>
@@ -356,7 +401,7 @@
                             aria-hidden="true"
                           > · </span>
                           <span v-if="recordEvidenceByTaxon.get(taxon.key).specimens">
-                            {{ recordEvidenceByTaxon.get(taxon.key).specimens }} {{ recordEvidenceByTaxon.get(taxon.key).specimens === 1 ? 'specimen' : 'specimens' }}
+                            {{ recordEvidenceByTaxon.get(taxon.key).specimens }} {{ recordEvidenceByTaxon.get(taxon.key).specimens === 1 ? 'occurrence' : 'occurrences' }}
                           </span>
                         </p>
                         <ul
@@ -569,6 +614,10 @@ const countryRows = ref([])
 const citationsByOccurrence = ref(new Map())
 const distributionPlacesByOccurrence = ref(new Map())
 const speciesFilter = ref('')
+const CLASSIFICATION_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
+const TAXONOMIC_ORDER = CLASSIFICATION_RANKS
+// Suggested from the lowest rank up, so a genus comes before a tribe.
+const SUGGESTION_RANKS = ['genus', 'subtribe', 'tribe', 'subfamily', 'family']
 const expandedTaxonKey = ref('')
 const activeCountryTab = ref('species')
 const expandedReferenceKey = ref('')
@@ -733,9 +782,20 @@ function isSpeciesRecord(record) {
     && String(record.nomenclaturalCode || '').toLowerCase() !== 'icn'
 }
 
+// One entry per name: TaxonWorks can have several OTUs of one taxon name
+// (Larinus obtusus twice in Germany), which would list the species twice.
 function speciesKey(record) {
-  if (record.otu_id != null && record.otu_id !== '') return String(record.otu_id)
-  return `${String(record.scientificName || '').trim()} ${String(record.scientificNameAuthorship || '').trim()}`.trim().toLocaleLowerCase()
+  const name = `${String(record.scientificName || '').trim()} ${String(record.scientificNameAuthorship || '').trim()}`.trim().toLocaleLowerCase()
+  if (name) return name
+  return record.otu_id != null && record.otu_id !== '' ? String(record.otu_id) : ''
+}
+
+// Specimens and field occurrences (observations): the records that are not
+// literature (asserted distributions).
+function isOccurrenceRecord(record) {
+  return record.dwc_occurrence_object_type === 'CollectionObject'
+    || record.dwc_occurrence_object_type === 'FieldOccurrence'
+    || record.basisOfRecord === 'PreservedSpecimen'
 }
 
 // Country outlines are the TaxonWorks areas themselves, from the species map's
@@ -1064,6 +1124,7 @@ function syncCountryFromHash() {
   selectedCountry.value = country
   selectedRegion.value = region
   speciesFilter.value = ''
+  higherTaxonFilter.value = null
   expandedTaxonKey.value = ''
   expandedReferenceKey.value = ''
   checklistCitationUrl.value = window.location.href
@@ -1097,7 +1158,7 @@ const pageTitle = computed(() => selectionLabel.value)
 const recommendedCitation = computed(() => {
   if (!selectedCountry.value || !checklistCitationUrl.value || !citationAccessDate.value) return ''
   const authors = projectAuthors || projectName
-  return `${authors} (${new Date().getFullYear()}). ${projectName}: ${selectionLabel.value} checklist. Accessed ${citationAccessDate.value}. ${checklistCitationUrl.value}`
+  return `${authors} (${new Date().getFullYear()}). ${projectName}: ${exportLabel.value} checklist. Accessed ${citationAccessDate.value}. ${checklistCitationUrl.value}`
 })
 
 const regionLabel = computed(() => REGION_LABELS[countryKey(selectedCountry.value)] || 'Region')
@@ -1310,26 +1371,92 @@ const species = computed(() => {
         name: bareName(record),
         authorship: String(record.scientificNameAuthorship || '').trim(),
         rank: String(record.taxonRank || '').trim(),
-        family: String(record.family || '').trim(),
+        ...Object.fromEntries(CLASSIFICATION_RANKS.map((rank) => [rank, String(record[rank] || '').trim()])),
         otuId: Number(record.otu_id) || null
       })
-    } else if (!byTaxon.get(key).family && record.family) {
-      // A FieldOccurrence row comes without family; any other row of the taxon has it.
-      byTaxon.get(key).family = String(record.family).trim()
     }
   }
-  // Grouped by family (unplaced taxa last), alphabetical within each family.
+  // In taxonomic order: family, subfamily, tribe, subtribe, genus, then name
+  // (taxa without a family last). The list is grouped by family.
   return [...byTaxon.values()].sort((a, b) => (
     (a.family ? 0 : 1) - (b.family ? 0 : 1)
-    || a.family.localeCompare(b.family)
+    || TAXONOMIC_ORDER.reduce((order, rank) => order || a[rank].localeCompare(b[rank]), 0)
     || a.name.localeCompare(b.name)
   ))
 })
 
+// Higher-taxon filter: a genus, subtribe, tribe, subfamily or family of the
+// country's checklist, picked from the suggestions under the name filter.
+// Unlike the free-text filter it keeps exactly the members of that taxon,
+// and the downloads follow it (a checklist of the Lixini of Germany).
+const higherTaxonFilter = ref(null) // { rank, name }
+
+function inHigherTaxon(item) {
+  const filter = higherTaxonFilter.value
+  return !filter || String(item[filter.rank] || '').trim() === filter.name
+}
+
+const taxonScopedSpecies = computed(() => species.value.filter(inHigherTaxon))
+
+const higherTaxa = computed(() => {
+  const taxa = new Map()
+  for (const taxon of species.value) {
+    for (const rank of SUGGESTION_RANKS) {
+      const name = taxon[rank]
+      if (!name) continue
+      const key = `${rank}:${name}`
+      if (!taxa.has(key)) taxa.set(key, { key, rank, name, count: 0 })
+      taxa.get(key).count++
+    }
+  }
+  return [...taxa.values()]
+})
+
+const higherTaxonSuggestions = computed(() => {
+  const query = speciesFilter.value.trim().toLocaleLowerCase()
+  if (!query) return []
+  return higherTaxa.value
+    .filter((taxon) => taxon.name.toLocaleLowerCase().startsWith(query))
+    .sort((a, b) => SUGGESTION_RANKS.indexOf(a.rank) - SUGGESTION_RANKS.indexOf(b.rank) || a.name.localeCompare(b.name))
+    .slice(0, 8)
+})
+
+const suggestionsOpen = ref(false)
+const activeSuggestion = ref(-1)
+watch(higherTaxonSuggestions, () => { activeSuggestion.value = -1 })
+
+function chooseHigherTaxon(taxon) {
+  higherTaxonFilter.value = { rank: taxon.rank, name: taxon.name }
+  speciesFilter.value = ''
+  suggestionsOpen.value = false
+}
+
+function onSpeciesFilterKeydown(event) {
+  const count = higherTaxonSuggestions.value.length
+  if (event.key === 'Escape') {
+    suggestionsOpen.value = false
+    return
+  }
+  if (!count) return
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    suggestionsOpen.value = true
+    const step = event.key === 'ArrowDown' ? 1 : -1
+    activeSuggestion.value = (activeSuggestion.value + step + count) % count
+  } else if (event.key === 'Enter' && suggestionsOpen.value && activeSuggestion.value >= 0) {
+    event.preventDefault()
+    chooseHigherTaxon(higherTaxonSuggestions.value[activeSuggestion.value])
+  }
+}
+
+const exportLabel = computed(() => (
+  higherTaxonFilter.value ? `${selectionLabel.value}, ${higherTaxonFilter.value.name}` : selectionLabel.value
+))
+
 const filteredSpecies = computed(() => {
   const query = speciesFilter.value.trim().toLocaleLowerCase()
-  if (!query) return species.value
-  return species.value.filter((taxon) => `${taxon.name} ${taxon.authorship}`.toLocaleLowerCase().includes(query))
+  if (!query) return taxonScopedSpecies.value
+  return taxonScopedSpecies.value.filter((taxon) => `${taxon.name} ${taxon.authorship}`.toLocaleLowerCase().includes(query))
 })
 
 const filteredSpeciesGroups = computed(() => {
@@ -1433,9 +1560,9 @@ function citationsForRecord(record) {
 function countryExportRows() {
   const rows = []
   for (const record of scopedRows.value) {
-    if (!isSpeciesRecord(record)) continue
+    if (!isSpeciesRecord(record) || !inHigherTaxon(record)) continue
     const isDistribution = record.dwc_occurrence_object_type === 'AssertedDistribution'
-    const isSpecimen = record.dwc_occurrence_object_type === 'CollectionObject' || record.basisOfRecord === 'PreservedSpecimen'
+    const isSpecimen = isOccurrenceRecord(record)
     if (!isDistribution && !isSpecimen) continue
 
     const citations = citationsForRecord(record)
@@ -1451,7 +1578,7 @@ function countryExportRows() {
         county: record.county || '',
         municipality: record.municipality || '',
         verbatimLocality: record.verbatimLocality || '',
-        evidenceType: isDistribution ? 'Asserted distribution' : 'Specimen',
+        evidenceType: isDistribution ? 'Asserted distribution' : record.dwc_occurrence_object_type === 'FieldOccurrence' ? 'Observation' : 'Specimen',
         institutionCode: record.institutionCode || '',
         catalogNumber: record.catalogNumber || '',
         recordedBy: record.recordedBy || '',
@@ -1498,13 +1625,13 @@ function downloadCountryCSV() {
     .map((row) => row.map(csvCell).join(','))
     .join('\r\n')
   const date = new Date().toISOString().slice(0, 10)
-  downloadFile(`${exportPrefix}_${exportSlug(selectionLabel.value)}_checklist_${date}.csv`, `\ufeff${csv}`, 'text/csv;charset=utf-8')
+  downloadFile(`${exportPrefix}_${exportSlug(exportLabel.value)}_checklist_${date}.csv`, `\ufeff${csv}`, 'text/csv;charset=utf-8')
 }
 
 function checklistExportContent() {
   const taxa = []
   const references = new Set()
-  for (const taxon of species.value) {
+  for (const taxon of taxonScopedSpecies.value) {
     const distributions = []
     const specimens = []
     for (const source of sourcesByTaxon.value.get(taxon.key) || []) {
@@ -1524,7 +1651,7 @@ function checklistExportContent() {
 function downloadCountryText() {
   const { taxa, references } = checklistExportContent()
   const lines = [
-    `${projectName}: ${selectionLabel.value} checklist`,
+    `${projectName}: ${exportLabel.value} checklist`,
     `Generated ${new Date().toISOString().slice(0, 10)}.`,
     `Recommended citation: ${recommendedCitation.value}`,
     `${taxa.length} species and subspecies with indexed records.`,
@@ -1550,7 +1677,7 @@ function downloadCountryText() {
 
   lines.push('REFERENCES', '', ...references)
   const date = new Date().toISOString().slice(0, 10)
-  downloadFile(`${exportPrefix}_${exportSlug(selectionLabel.value)}_checklist_${date}.txt`, lines.join('\r\n'), 'text/plain;charset=utf-8')
+  downloadFile(`${exportPrefix}_${exportSlug(exportLabel.value)}_checklist_${date}.txt`, lines.join('\r\n'), 'text/plain;charset=utf-8')
 }
 
 function escapeRtf(value) {
@@ -1580,7 +1707,7 @@ function downloadCountryRtf() {
   const date = new Date().toISOString().slice(0, 10)
   const lines = [
     '{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss\\fcharset0 Arial;}}\\viewkind4\\uc1',
-    `\\pard\\qc\\sa240\\fs32\\b ${escapeRtf(`${projectName}: ${selectionLabel.value} checklist`)}\\b0\\fs24\\par`,
+    `\\pard\\qc\\sa240\\fs32\\b ${escapeRtf(`${projectName}: ${exportLabel.value} checklist`)}\\b0\\fs24\\par`,
     `\\pard\\qc\\sa200\\fs20         Generated ${date}. ${taxa.length} species and subspecies with indexed records.\\fs24\\par`,
         `\\pard\\qc\\sa120\\fs18 Recommended citation: ${escapeRtf(recommendedCitation.value)}\\fs20\\par`,
         '\\pard\\sb240\\sa100\\b CHECKLIST\\b0\\par'
@@ -1609,7 +1736,7 @@ function downloadCountryRtf() {
   lines.push('}')
 
   downloadFile(
-    `${exportPrefix}_${exportSlug(selectionLabel.value)}_checklist_${date}.rtf`,
+    `${exportPrefix}_${exportSlug(exportLabel.value)}_checklist_${date}.rtf`,
     lines.join('\r\n'),
     'application/rtf'
   )
@@ -1646,7 +1773,7 @@ const sourcesByTaxon = computed(() => {
         const citation = placeGroup.citations.get(citationKey)
         if (full) citation.fullReferences.add(full)
       }
-    } else if (record.dwc_occurrence_object_type === 'CollectionObject' || record.basisOfRecord === 'PreservedSpecimen') {
+    } else if (isOccurrenceRecord(record)) {
       group.specimens.push({
         type: 'specimen',
         key: `specimen-${record.dwc_occurrence_object_id || record.id || group.specimens.length}`,
@@ -1698,7 +1825,7 @@ const recordEvidenceByTaxon = computed(() => {
           if (citation) taxonEvidence.citations.add(`${occurrenceId}:${citation.toLocaleLowerCase()}`)
         }
       }
-    } else if (record.dwc_occurrence_object_type === 'CollectionObject' || record.basisOfRecord === 'PreservedSpecimen') {
+    } else if (isOccurrenceRecord(record)) {
       const recordId = `${record.dwc_occurrence_object_type || record.basisOfRecord}:${record.dwc_occurrence_object_id || record.id || taxonKey}`
       taxonEvidence.specimens.add(recordId)
     }
@@ -1757,6 +1884,7 @@ async function loadCountry(name) {
   citationsByOccurrence.value = new Map()
   distributionPlacesByOccurrence.value = new Map()
   speciesFilter.value = ''
+  higherTaxonFilter.value = null
   expandedTaxonKey.value = ''
   expandedReferenceKey.value = ''
   activeCountryTab.value = 'species'

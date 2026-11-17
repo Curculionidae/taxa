@@ -148,19 +148,24 @@ function addTags(list) {
     tagsByObject.get(key).add(normalize(tag.keyword?.name))
   }
 }
-const distributionTags = await getOnePage('/tags', [['tag_object_type', 'AssertedDistribution']])
-addTags(distributionTags)
-const adventiveKeywordIds = [...new Set(distributionTags.filter((tag) => normalize(tag.keyword?.name) === 'adventive').map((tag) => tag.keyword_id))]
-if (adventiveKeywordIds.length) addTags(await getOnePage('/tags', adventiveKeywordIds.map((id) => ['keyword_id[]', id])))
+// The keywords by name, then every tag with them, on any kind of record
+// (distributions, collection objects, field occurrences).
+const STATUS_KEYWORDS = ['adventive', 'endemic']
+const statusKeywordIds = (await getOnePage('/controlled_vocabulary_terms', [['type[]', 'Keyword']]))
+  .filter((term) => STATUS_KEYWORDS.includes(normalize(term.name)))
+  .map((term) => term.id)
+const statusTags = statusKeywordIds.length ? await getOnePage('/tags', statusKeywordIds.map((id) => ['keyword_id[]', id])) : []
+addTags(statusTags)
 
 const reassessmentsByDistribution = new Map() // AD id -> [{ note, sources }]
 const reassessmentAttributes = (await getOnePage('/data_attributes', [['attribute_subject_type', 'AssertedDistribution']]))
   .filter((attribute) => normalize(attribute.predicate_name || attribute.import_predicate) === 'reassessment')
 const attributeSources = new Map() // data attribute id -> [source label]
-if (reassessmentAttributes.length) {
+// In batches of 100 ids, to stay under the server's URL length limit.
+for (let i = 0; i < reassessmentAttributes.length; i += 100) {
   const citations = await getOnePage('/citations', [
     ['citation_object_type', 'DataAttribute'],
-    ...reassessmentAttributes.map((attribute) => ['citation_object_id[]', attribute.id]),
+    ...reassessmentAttributes.slice(i, i + 100).map((attribute) => ['citation_object_id[]', attribute.id]),
     ['extend[]', 'source']
   ])
   for (const citation of citations) {
@@ -176,7 +181,7 @@ for (const attribute of reassessmentAttributes) {
   if (!reassessmentsByDistribution.has(id)) reassessmentsByDistribution.set(id, [])
   reassessmentsByDistribution.get(id).push({ note: attribute.value || '', sources: attributeSources.get(String(attribute.id)) || [] })
 }
-console.log(`${distributionTags.length} distribution tags, ${reassessmentAttributes.length} reassessments`)
+console.log(`${statusTags.length} adventive/endemic tags, ${reassessmentAttributes.length} reassessments`)
 
 // Distributions asserted for a biological association ("egg of Lixus bidens
 // collected from stem of Opopanax", in Greece) are never in TaxonWorks' DwC
@@ -197,20 +202,29 @@ for (let i = 0; i < associationIds.length; i += 100) {
 const rowByOtu = new Map()
 for (const row of rows) if (row.otu_id && row.scientificName && !rowByOtu.has(row.otu_id)) rowByOtu.set(row.otu_id, row)
 const TAXON_FIELDS = ['scientificName', 'scientificNameAuthorship', 'taxonRank', 'kingdom', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus', 'nomenclaturalCode']
+const skippedAssociationOtus = []
 async function otuTaxonRow(otuId) {
   if (rowByOtu.has(otuId)) return rowByOtu.get(otuId)
   // Not in the DwC export at all: the OTU's taxon name (classification comes
-  // later from the parents lookup, as for field occurrences).
-  const otu = await (await request(`/otus/${otuId}`)).json()
-  if (!otu.taxon_name_id) return null
-  const name = await (await request(`/taxon_names/${otu.taxon_name_id}`)).json()
-  const row = {
-    otu_id: otuId,
-    scientificName: [name.cached, name.cached_author_year].filter(Boolean).join(' '),
-    scientificNameAuthorship: name.cached_author_year || '',
-    taxonRank: name.rank || ''
+  // later from the parents lookup, as for field occurrences). A stale or
+  // hidden OTU (4xx) is skipped and reported; a server failure stops the build.
+  let row = null
+  try {
+    const otu = await (await request(`/otus/${otuId}`)).json()
+    if (otu.taxon_name_id) {
+      const name = await (await request(`/taxon_names/${otu.taxon_name_id}`)).json()
+      row = {
+        otu_id: otuId,
+        scientificName: [name.cached, name.cached_author_year].filter(Boolean).join(' '),
+        scientificNameAuthorship: name.cached_author_year || '',
+        taxonRank: name.rank || ''
+      }
+    }
+  } catch (error) {
+    if (!/^4\d\d /.test(error.message)) throw error
+    skippedAssociationOtus.push(`${otuId} (${error.message})`)
   }
-  rowByOtu.set(otuId, row)
+  rowByOtu.set(otuId, row) // null too, so it is not asked again
   return row
 }
 let associationRecords = 0
@@ -218,7 +232,11 @@ for (const ad of associationDistributions) {
   const association = associations.get(ad.asserted_distribution_object_id)
   if (!association) continue
   const reading = [association.subject?.label, association.relationship, association.object?.label].filter(Boolean).join(' ')
-  for (const otuId of new Set([association.subject_otu_id, association.object_otu_id].filter(Boolean).map(String))) {
+  // Only the beetle side(s): a plant side would be looked up for nothing.
+  const sides = [[association.subject_otu_id, association.subject], [association.object_otu_id, association.object]]
+    .filter(([otuId, side]) => otuId && (!side?.order || side.order === 'Coleoptera'))
+    .map(([otuId]) => String(otuId))
+  for (const otuId of new Set(sides)) {
     const taxonRow = await otuTaxonRow(otuId)
     if (!taxonRow) continue
     rows.push({
@@ -235,6 +253,7 @@ for (const ad of associationDistributions) {
   }
 }
 console.log(`${associationDistributions.length} association distributions (not in the DwC export): ${associationRecords} records`)
+if (skippedAssociationOtus.length) console.warn(`association OTUs not found in TaxonWorks: ${skippedAssociationOtus.join(', ')}`)
 
 // 3. Countries: id -> name, plus lookups by ISO code and by name.
 const countries = new Map() // level0 id -> { id, name, iso2 }
@@ -341,7 +360,17 @@ const cachedArea = (ids) => [...ids].find((id) => existsSync(`${SHAPE_DIR}Geogra
 const outlineCache = new Map()
 const fallbackShapes = new Map(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).features
   .map((feature) => [feature.properties.name, feature.geometry]))
+// Memoized per ids set (the department, part and country sets never change),
+// so the per-row tests do not probe the disk again.
+const outlineByIds = new Map()
 function outline(ids, fallbackName = '') {
+  const memoKey = ids
+  if (outlineByIds.has(memoKey) && !fallbackName) return outlineByIds.get(memoKey)
+  const shape = outlineFor(ids, fallbackName)
+  if (!fallbackName) outlineByIds.set(memoKey, shape)
+  return shape
+}
+function outlineFor(ids, fallbackName) {
   const id = cachedArea(ids)
   const key = id ? `GeographicArea/${id}` : `fallback/${fallbackName}`
   if (!outlineCache.has(key)) {
@@ -423,7 +452,12 @@ for (const area of SEPARATE) {
 function separateOf(row, ad, placedChecklist) {
   const shape = ad?.asserted_distribution_shape
   const onArea = ad?.asserted_distribution_shape_type === 'GeographicArea' && shape
-  const loose = !placedChecklist || placedChecklist.separate || SEPARATE.some((area) => area.of === placedChecklist.name)
+  // Placed nowhere counts as loose only without a DwC country text: a record
+  // whose country ("Brasil", "Surinam") just matched no checklist belongs to
+  // that country, never to an overseas department.
+  const loose = placedChecklist
+    ? Boolean(placedChecklist.separate) || SEPARATE.some((area) => area.of === placedChecklist.name)
+    : !row.country
   const text = [shape?.name, row.country, row.stateProvince, row.county].filter(Boolean).join(' | ')
   const point = pointOf(row)
   const area = SEPARATE.find((candidate) => (
@@ -544,8 +578,11 @@ await forEachLimited(missing, PARALLEL, async (otuId) => {
     }
     parentClassification.set(otuId, classification)
   } catch (error) {
-    // Not fatal: the OTU's records are listed under Left out in the
-    // overview ("classification lookup failed"), not silently dropped.
+    // A server or network failure (after retries) stops the build: a cache
+    // missing those taxa must not be written. A permanent client error (404,
+    // 403: a stale or hidden OTU) does not; the OTU's records are listed under
+    // Left out in the overview ("classification lookup failed").
+    if (!/^4\d\d /.test(error.message)) throw error
     parentClassification.set(otuId, null)
     failedLookups.push(`${otuId} (${error.message})`)
   }
@@ -671,8 +708,12 @@ for (const row of rows) {
   const { region } = placed
   const source = sourceOf(row, ad)
   if (!id || lookupFailed) {
-    unplaced.records++
-    unplaced.taxa.add(taxonKey(row))
+    // Unclassified records may not be weevils: listed in the overview, but
+    // not counted as left-out weevil records.
+    if (!lookupFailed) {
+      unplaced.records++
+      unplaced.taxa.add(taxonKey(row))
+    }
     const kind = row.dwc_occurrence_object_type === 'FieldOccurrence' ? 'Field occurrence' : 'Collection object'
     const place = ad ? source : { place: row.country || '(no DwC country)', kind }
     tally(unplacedSources, place, lookupFailed ? 'classification lookup failed' : unplacedReason(row, ad, byPoint), row)

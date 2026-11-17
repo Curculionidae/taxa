@@ -357,17 +357,30 @@
                   </p>
                   <ul class="mt-2 max-h-[28rem] divide-y divide-base-border/50 overflow-y-auto border-y border-base-border/50 xl:max-h-[calc(100vh-27rem)] xl:min-h-[12rem]">
                     <template
-                      v-for="group in filteredSpeciesGroups"
-                      :key="group.family"
+                      v-for="row in filteredSpeciesRows"
+                      :key="row.key"
                     >
-                    <li class="sticky top-0 z-10 bg-base-muted px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-base-content/75">
-                      {{ group.family }}
-                      <span class="ml-1 font-normal normal-case text-base-content/55">({{ group.taxa.length }})</span>
+                    <li
+                      v-if="row.type === 'heading' && row.rank === 'family'"
+                      class="sticky top-0 z-10 bg-base-muted px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-base-content/75"
+                    >
+                      {{ row.name }}
+                      <span class="ml-1 font-normal normal-case text-base-content/55">({{ row.count }})</span>
                     </li>
                     <li
-                      v-for="taxon in group.taxa"
+                      v-else-if="row.type === 'heading'"
+                      class="pb-1 pr-2 text-sm"
+                      :class="HEADING_INDENT[row.rank]"
+                    >
+                      <span class="text-xs text-base-soft">{{ HEADING_LABELS[row.rank] }}</span>
+                      <span class="ml-1 font-semibold" :class="{ italic: row.rank === 'genus' }">{{ row.name }}</span>
+                      <span class="ml-1 text-xs text-base-soft">({{ row.count }})</span>
+                    </li>
+                    <template v-else>
+                    <li
+                      v-for="taxon in [row.item]"
                       :key="taxon.key"
-                      class="py-2.5 pr-2 text-sm"
+                      class="py-2.5 pl-7 pr-2 text-sm"
                     >
                       <RouterLink
                         v-if="taxon.otuId"
@@ -442,6 +455,7 @@
                         <p v-else>No citation or specimen details are available for these records.</p>
                       </div>
                     </li>
+                    </template>
                     </template>
                   </ul>
                 </template>
@@ -1524,15 +1538,35 @@ const filteredSpecies = computed(() => {
   return taxonScopedSpecies.value.filter((taxon) => `${taxon.name} ${taxon.authorship}`.toLocaleLowerCase().includes(query))
 })
 
-const filteredSpeciesGroups = computed(() => {
-  const groups = []
-  for (const taxon of filteredSpecies.value) {
-    const label = taxon.family || 'Family not recorded'
-    if (groups.at(-1)?.family !== label) groups.push({ family: label, taxa: [] })
-    groups.at(-1).taxa.push(taxon)
+// Headings of the checklist: family, subfamily, tribe, genus. The taxa are
+// already in that order (species computed); a heading is emitted where a rank
+// changes, with the number of taxa under it. A rank a taxon has no value for
+// gets no heading (no "tribe not recorded" lines), except a missing family.
+// Shared by the list and the plain-text and RTF downloads.
+const HEADING_RANKS = ['family', 'subfamily', 'tribe', 'genus']
+const HEADING_LABELS = { family: 'Family', subfamily: 'Subfamily', tribe: 'Tribe', genus: 'Genus' }
+const HEADING_INDENT = { subfamily: 'pl-1 pt-3', tribe: 'pl-3 pt-2.5', genus: 'pl-5 pt-2' }
+
+function checklistOutline(items, taxonOf = (item) => item) {
+  const rows = []
+  const open = {}
+  for (const item of items) {
+    const taxon = taxonOf(item)
+    let changed = false
+    HEADING_RANKS.forEach((rank, depth) => {
+      const name = rank === 'family' ? taxon.family || 'Family not recorded' : taxon[rank]
+      changed ||= name !== open[rank]?.name
+      if (!changed) return
+      open[rank] = name ? { type: 'heading', rank, name, depth, count: 0, key: `${rank}:${name}:${rows.length}` } : null
+      if (open[rank]) rows.push(open[rank])
+    })
+    for (const rank of HEADING_RANKS) if (open[rank]) open[rank].count++
+    rows.push({ type: 'taxon', item, key: taxon.key })
   }
-  return groups
-})
+  return rows
+}
+
+const filteredSpeciesRows = computed(() => checklistOutline(filteredSpecies.value))
 
 
 function splitReferences(value) {
@@ -1724,14 +1758,14 @@ function downloadCountryText() {
     'CHECKLIST',
     ''
   ]
-  let currentFamily = null
-
-  for (const entry of taxa) {
-    const { taxon } = entry
-    if (taxon.family !== currentFamily) {
-      currentFamily = taxon.family
-      lines.push(`${currentFamily || 'Family not recorded'}`.toUpperCase(), '')
+  for (const row of checklistOutline(taxa, (entry) => entry.taxon)) {
+    if (row.type === 'heading') {
+      const label = row.rank === 'family' ? row.name.toUpperCase() : `${HEADING_LABELS[row.rank]} ${row.name}`
+      lines.push(`${label} (${row.count})`, '')
+      continue
     }
+    const entry = row.item
+    const { taxon } = entry
     lines.push(`${taxon.name}${taxon.authorship ? ` ${taxon.authorship}` : ''}`)
     for (const distribution of entry.distributions) {
       lines.push(`  Distribution: ${distribution.place}${distribution.citations.length ? ` (${distribution.citations.join('; ')})` : ''}`)
@@ -1778,20 +1812,28 @@ function downloadCountryRtf() {
         '\\pard\\sb240\\sa100\\b CHECKLIST\\b0\\par'
       ]
 
-      let currentFamily = null
-      for (const entry of taxa) {
-        const { taxon } = entry
-    if (taxon.family !== currentFamily) {
-      currentFamily = taxon.family
-      lines.push(`\\pard\\sb160\\sa80\\b ${escapeRtf(currentFamily || 'Family not recorded')}\\b0\\par`)
+  // Family 14 pt bold, subfamily 12 pt bold, tribe bold, genus bold italic,
+  // each indented one step further.
+  const RTF_HEADING = {
+    family: (name) => `\\pard\\sb240\\sa80\\fs28\\b ${escapeRtf(name.toUpperCase())}\\b0\\fs24`,
+    subfamily: (name) => `\\pard\\li120\\sb160\\sa60\\b Subfamily ${escapeRtf(name)}\\b0`,
+    tribe: (name) => `\\pard\\li240\\sb120\\sa60\\b Tribe ${escapeRtf(name)}\\b0`,
+    genus: (name) => `\\pard\\li360\\sb100\\sa60\\b Genus \\i ${escapeRtf(name)}\\i0\\b0`
+  }
+  for (const row of checklistOutline(taxa, (entry) => entry.taxon)) {
+    if (row.type === 'heading') {
+      lines.push(`${RTF_HEADING[row.rank](row.name)} (${row.count})\\par`)
+      continue
     }
-    lines.push(`\\pard\\sa60\\i ${escapeRtf(taxon.name)}\\i0${taxon.authorship ? `\\~${escapeRtf(taxon.authorship)}` : ''}\\par`)
+    const entry = row.item
+    const { taxon } = entry
+    lines.push(`\\pard\\li480\\sa60\\i ${escapeRtf(taxon.name)}\\i0${taxon.authorship ? `\\~${escapeRtf(taxon.authorship)}` : ''}\\par`)
     for (const distribution of entry.distributions) {
       const citations = distribution.citations.length ? ` (${distribution.citations.join('; ')})` : ''
-      lines.push(`\\pard\\li360\\sa40 Distribution: ${escapeRtf(distribution.place + citations)}\\par`)
+      lines.push(`\\pard\\li720\\sa40 Distribution: ${escapeRtf(distribution.place + citations)}\\par`)
     }
     for (const specimen of entry.specimens) {
-      lines.push(`\\pard\\li360\\sa40 Specimen: ${escapeRtf(specimen)}\\par`)
+      lines.push(`\\pard\\li720\\sa40 Specimen: ${escapeRtf(specimen)}\\par`)
     }
     lines.push('\\pard\\sa80\\par')
   }

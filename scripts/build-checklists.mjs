@@ -258,18 +258,39 @@ const byCountry = new Map()
 const taxonKey = (record) => `${record.scientificName || ''} ${record.scientificNameAuthorship || ''}`.trim().toLocaleLowerCase() || String(record.otu_id)
 const unplaced = { records: 0, taxa: new Set() }
 
+// For overview.html: what each checklist is made of, by source place.
+const contributions = new Map() // checklist id -> Map(source key -> tally)
+const unplacedSources = new Map()
+
+function sourceOf(row, ad) {
+  if (ad) {
+    const shape = ad.asserted_distribution_shape
+    return { place: shape?.name || `(area ${ad.asserted_distribution_shape_id})`, kind: `${ad.asserted_distribution_shape_type} ${ad.asserted_distribution_shape_id}` }
+  }
+  const kind = row.dwc_occurrence_object_type === 'FieldOccurrence' ? 'Field occurrence' : 'Collection object'
+  return { place: row.country ? `${row.country}${row.stateProvince ? `: ${row.stateProvince}` : ''}` : '(no DwC country)', kind }
+}
+
+function tally(map, source, rule, row) {
+  const key = `${source.kind}|${source.place}|${rule}`
+  if (!map.has(key)) map.set(key, { ...source, rule, records: 0, taxa: new Set() })
+  const entry = map.get(key)
+  entry.records++
+  entry.taxa.add(taxonKey(row))
+}
+
 function countryOf(row) {
   if (row.dwc_occurrence_object_type === 'AssertedDistribution') {
     const ad = distributions.get(String(row.dwc_occurrence_object_id))
     const shape = ad?.asserted_distribution_shape
-    if (shape?.level0_id && countries.has(shape.level0_id)) return { ad, id: shape.level0_id, region: subdivisionNames.get(shape.level1_id) || '' }
+    if (shape?.level0_id && countries.has(shape.level0_id)) return { ad, id: shape.level0_id, region: subdivisionNames.get(shape.level1_id) || '', rule: 'area country' }
     const iso = shape?.iso_3166_a2?.toUpperCase()
-    if (iso && countryByIso.has(iso)) return { ad, id: countryByIso.get(iso), region: '' }
+    if (iso && countryByIso.has(iso)) return { ad, id: countryByIso.get(iso), region: '', rule: 'ISO code' }
     const id = countryByName.get(normalize(row.country))
-    return id ? { ad, id, region: '' } : { ad }
+    return id ? { ad, id, region: '', rule: 'DwC country' } : { ad }
   }
   const id = countryByName.get(normalize(row.country))
-  return id ? { id, region: '' } : {}
+  return id ? { id, region: '', rule: 'DwC country' } : {}
 }
 
 for (const row of rows) {
@@ -279,11 +300,13 @@ for (const row of rows) {
   if (!classification.genus) classification.genus = String(row.scientificName || '').split(' ')[0]
   if (classification.superfamily !== SUPERFAMILY) continue
 
-  const { ad, id, region } = countryOf(row)
+  const { ad, id, region, rule } = countryOf(row)
   if (ad?.is_absent) continue
+  const source = sourceOf(row, ad)
   if (!id) {
     unplaced.records++
     unplaced.taxa.add(taxonKey(row))
+    tally(unplacedSources, source, '', row)
     continue
   }
 
@@ -295,6 +318,8 @@ for (const row of rows) {
   const checklist = separateOf(checklistOf.get(id), row, ad?.asserted_distribution_shape?.name, region)
   record.country = checklist.name
   if (region) record.region = region
+  if (!contributions.has(checklist.id)) contributions.set(checklist.id, new Map())
+  tally(contributions.get(checklist.id), source, checklist === checklistOf.get(id) ? rule : `${rule}, then split from ${checklistOf.get(id).name}`, row)
   if (ad) {
     record.place = ad.asserted_distribution_shape?.name || ''
     record.citations = (ad.citations || [])
@@ -342,3 +367,70 @@ const fallback = new Set(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).feature
 const withoutShape = index.filter((country) => !country.shape && !fallback.has(country.name))
 if (withoutShape.length) console.log(`not on the map (no cached or fallback shape): ${withoutShape.map((country) => country.name).join(', ')}`)
 console.log(`unplaced: ${unplaced.records} records of ${unplaced.taxa.size} taxa`)
+
+writeFileSync(`${OUT_DIR}overview.html`, overviewHtml())
+console.log('overview written to public/checklists/overview.html')
+
+// A static page documenting what every checklist is made of: its TaxonWorks
+// country areas, outline, and every place its records come from with the rule
+// that placed them; then what no rule placed. Rebuilt with the cache.
+function overviewHtml() {
+  const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  const num = (value) => value.toLocaleString('en-US')
+  const rows = (map) => [...map.values()]
+    .sort((a, b) => b.records - a.records || a.place.localeCompare(b.place))
+    .map((entry) => `<tr><td>${esc(entry.place)}</td><td>${esc(entry.kind)}</td><td>${esc(entry.rule)}</td><td class="n">${num(entry.records)}</td><td class="n">${num(entry.taxa.size)}</td></tr>`)
+    .join('')
+  const table = (map, ruleHeader = 'Placed by') => `<div class="scroll"><table><thead><tr><th>Place</th><th>Source</th><th>${ruleHeader}</th><th class="n">Records</th><th class="n">Taxa</th></tr></thead><tbody>${rows(map)}</tbody></table></div>`
+  const areaName = (areaId) => countries.get(areaId)?.name || ''
+  const sections = index.map((country) => {
+    const entry = checklistOf.get(country.id)
+    const areas = country.areas.map((areaId) => `${esc(areaName(areaId) || country.name)} (GeographicArea ${areaId})`).join(', ') || 'none'
+    const outline = country.shape ? `${esc(country.shape)} from the shape cache` : fallback.has(country.name) ? 'Natural Earth fallback' : 'none, not on the map'
+    const split = SEPARATE.filter((area) => area.of === country.name).map((area) => esc(area.name))
+    const splitFrom = entry.separate ? `<li>Split from ${esc(entry.separate.of)} by name or coordinates</li>` : ''
+    return `<details id="c-${esc(country.id)}"><summary><span class="name">${esc(country.name)}</span><span class="meta">${num(country.taxa)} taxa, ${num(country.records)} records</span></summary>
+<ul class="facts"><li>TaxonWorks country areas: ${areas}</li><li>Map outline: ${outline}</li>${split.length ? `<li>Split off into own checklists (cut from the outline): ${split.join(', ')}</li>` : ''}${splitFrom}</ul>
+${table(contributions.get(country.id) || new Map())}</details>`
+  }).join('\n')
+
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checklist Sources</title>
+<style>
+:root { --bg:#f4f6f3; --panel:#fff; --fg:#17201a; --soft:#5b6760; --line:#d3dbd5; --accent:#037316; color-scheme:light }
+@media (prefers-color-scheme: dark) { :root { --bg:#141815; --panel:#1d221e; --fg:#e8ede9; --soft:#9aa69e; --line:#39423b; --accent:#66cf7e; color-scheme:dark } }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif }
+main { max-width:1100px; margin:0 auto; padding:32px max(16px, env(safe-area-inset-left, 0px)) 64px; display:grid; gap:18px }
+h1 { margin:0; font-size:28px } h2 { margin:16px 0 0; font-size:20px }
+p, ul { margin:0; max-width:75ch } .soft { color:var(--soft) }
+code { font:13px ui-monospace, Menlo, monospace }
+details { background:var(--panel); border:1px solid var(--line); border-radius:8px }
+summary { cursor:pointer; padding:10px 14px; display:flex; flex-wrap:wrap; gap:4px 14px; align-items:baseline }
+summary .name { font-weight:600 } summary .meta { color:var(--soft); font-size:13.5px; font-variant-numeric:tabular-nums }
+details[open] summary { border-bottom:1px solid var(--line) }
+.facts { padding:10px 14px 0 32px; display:grid; gap:4px; font-size:14px }
+.scroll { overflow-x:auto; padding:10px 14px 14px }
+table { border-collapse:collapse; width:100%; font-size:13.5px }
+th, td { text-align:left; padding:5px 10px 5px 0; border-bottom:1px solid var(--line); vertical-align:top }
+th { color:var(--soft); font-weight:500 } .n { text-align:right; font-variant-numeric:tabular-nums }
+.rules { display:grid; gap:6px; padding-left:1.2em }
+</style></head><body><main>
+<h1>Checklist sources</h1>
+<p class="soft">Built ${esc(new Date().toISOString().slice(0, 10))} by <code>scripts/build-checklists.mjs</code> together with the cache it documents. ${num(index.length)} checklists, ${num(unplaced.records)} records of ${num(unplaced.taxa.size)} taxa left out.</p>
+<h2>How a record is placed</h2>
+<ul class="rules">
+<li><b>area country</b>: an asserted distribution whose TaxonWorks area carries a country (<code>level0_id</code>; a subdivision carries its country's).</li>
+<li><b>ISO code</b>: an asserted distribution on a gazetteer, by the gazetteer's ISO 3166 code.</li>
+<li><b>DwC country</b>: the DwC <code>country</code> text matched to a country by name; the only rule for collection objects and field occurrences.</li>
+<li><b>then split from</b>: moved from a country to an overseas part's own checklist, by place name or coordinates.</li>
+</ul>
+<p class="soft">Only Curculionoidea at species and subspecies rank, present records. Several TaxonWorks country areas of one country are merged into one checklist.</p>
+<h2>Checklists</h2>
+${sections}
+<h2 id="left-out">Left out</h2>
+<p class="soft">Records no rule places in a country, by place.</p>
+${table(unplacedSources, 'Reason').replace(/<td><\/td><td class="n">/g, '<td>no country found</td><td class="n">')}
+</main></body></html>
+`
+}

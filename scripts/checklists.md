@@ -28,6 +28,13 @@ script for how records are placed in countries. In short:
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
   about 5% of the rows. The script uses `/dwc_occurrences.csv` (one request).
 
+## Overview of what each checklist contains
+
+The build also writes `public/checklists/overview.html` (served at
+`/taxa/checklists/overview.html` on the fork): for every checklist its
+TaxonWorks country areas, map outline, split-off parts, and every place its
+records come from with the rule that placed them; then everything left out.
+
 ## Map
 
 Country outlines come from the species map's shape cache

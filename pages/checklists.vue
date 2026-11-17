@@ -156,12 +156,21 @@
           >
             <span
               class="h-3 w-3 rounded-sm ring-1 ring-black/10"
-              :style="{ backgroundColor: `var(${step.token})` }"
+              :style="{ backgroundColor: `var(${step.token})`, opacity: 'var(--tp-map-shape-opacity, 0.5)' }"
             />
             {{ step.label }}
           </span>
           <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China, Russia and the United Kingdom, click a state, province or constituent country to narrow it.</span>
         </div>
+        <p class="mt-3 text-xs text-base-soft">
+          Adapted from the country checklists of
+          <a
+            href="https://jrpletch.github.io/fleasoftheworld/#/checklists"
+            target="_blank"
+            rel="noopener"
+            class="text-secondary hover:underline"
+          >Fleas of the World Online</a>.
+        </p>
       </section>
 
       <aside class="min-w-0">
@@ -462,7 +471,7 @@
 // Ported from Fleas of the World (https://github.com/jrpletch/fleasoftheworld,
 // pages/checklists.vue at 2afe35c), used with permission. Changes: weevil
 // wording, project-name exports, legend bins for larger counts, map colours
-// in the site's blue as --pp-checklist-* tokens (pages/data/checklist-tokens.css).
+// as --pp-checklist-* tokens in the aggregate-map green (pages/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
@@ -488,6 +497,13 @@ const exportPrefix = projectName.replace(/[^A-Za-z0-9]+/g, '')
 function cssVar(name) {
   if (typeof document === 'undefined') return ''
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
+// Same see-through fill as the taxon pages' map (--tp-map-shape-opacity), so
+// the tiles show through the countries the way they do there.
+function shapeOpacity() {
+  const value = Number.parseFloat(cssVar('--tp-map-shape-opacity'))
+  return Number.isFinite(value) ? value : 0.5
 }
 
 const legend = [
@@ -877,7 +893,7 @@ function countryStyle(feature) {
     color: selected ? cssVar('--tp-base-content') : cssVar('--tp-base-foreground'),
     weight: selected ? 3.5 : 0.6,
     fillColor: colorForCount(count),
-    fillOpacity: count ? 0.88 : 0.48
+    fillOpacity: count ? shapeOpacity() : 0.12
   }
 }
 
@@ -991,7 +1007,7 @@ const geojsonOptions = () => ({
     })
     layer.on('mouseover', (event) => event.target.setStyle({
       weight: countryKey(name) === countryKey(mapSelectionName.value) ? 3.5 : 1.5,
-      fillOpacity: 1
+      fillOpacity: shapeOpacity() + 0.25
     }))
     layer.on('mouseout', () => layer.setStyle(countryStyle(feature)))
   }
@@ -1142,7 +1158,7 @@ function subdivisionStyle(feature) {
     color: selected ? cssVar('--tp-base-content') : cssVar('--tp-base-foreground'),
     weight: selected ? 3.5 : 0.8,
     fillColor: colorForCount(count),
-    fillOpacity: count ? 0.9 : 0.5
+    fillOpacity: count ? shapeOpacity() : 0.12
   }
 }
 
@@ -1181,7 +1197,7 @@ async function updateSubdivisionLayer() {
         })
         layer.on('mouseover', (event) => event.target.setStyle({
           weight: name === selectedRegion.value ? 3.5 : 1.8,
-          fillOpacity: 1
+          fillOpacity: shapeOpacity() + 0.25
         }))
         layer.on('mouseout', () => layer.setStyle(subdivisionStyle(feature)))
       }

@@ -97,6 +97,7 @@ function parseTsv(text) {
 }
 
 const normalize = (name) => String(name || '').trim().toLocaleLowerCase()
+const BUILD_DATE = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD, local time
 
 // TaxonWorks links for overview.html, the same builders curator mode uses on
 // the site (panels/_shared/curatorMode/).
@@ -600,7 +601,9 @@ const KEEP = [
 ]
 const byCountry = new Map()
 // A taxon is its name: several OTUs of one name count once (as on the page).
-const taxonKey = (record) => `${record.scientificName || ''} ${record.scientificNameAuthorship || ''}`.trim().toLocaleLowerCase() || String(record.otu_id)
+// Exactly as the page's speciesKey (each part trimmed), so the cached counts
+// and the page's list always agree.
+const taxonKey = (record) => `${String(record.scientificName || '').trim()} ${String(record.scientificNameAuthorship || '').trim()}`.trim().toLocaleLowerCase() || String(record.otu_id)
 const unplaced = { records: 0, taxa: new Set() }
 
 // For overview.html: what each checklist is made of, by source place.
@@ -758,10 +761,35 @@ for (const row of rows) {
 mkdirSync(COUNTRY_DIR, { recursive: true })
 const written = new Set([...byCountry.keys()].map((id) => `${id}.json`))
 for (const file of readdirSync(COUNTRY_DIR)) if (!written.has(file)) rmSync(`${COUNTRY_DIR}${file}`)
+// taxa.json, counted in the same pass as index.json (one rule for what
+// counts): for every higher taxon (family, subfamily, tribe, subtribe, genus)
+// its number of taxa in each checklist and over all of them. The page loads
+// it only when someone filters by taxon, to colour the map and the country
+// list for that taxon.
+const HIGHER_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
+const higherTaxa = new Map() // "rank:name" -> { index, rank, name, all: Set(taxon keys) }
+const countsByChecklist = {}
 const index = []
 for (const [id, records] of byCountry) {
   const { name, iso2, ids } = checklistOf.get(id)
   writeFileSync(`${COUNTRY_DIR}${id}.json`, JSON.stringify(records))
+  // Reassessed records do not count; a taxon known only from them is shown on
+  // the page (as reassessed) but counted nowhere.
+  const counted = records.filter((record) => !record.reassessed)
+  const perTaxon = new Map() // higher-taxon index -> Set(taxon keys)
+  for (const record of counted) {
+    for (const rank of HIGHER_RANKS) {
+      const taxonName = record[rank]
+      if (!taxonName) continue
+      const key = `${rank}:${taxonName}`
+      if (!higherTaxa.has(key)) higherTaxa.set(key, { index: higherTaxa.size, rank, name: taxonName, all: new Set() })
+      const higher = higherTaxa.get(key)
+      higher.all.add(taxonKey(record))
+      if (!perTaxon.has(higher.index)) perTaxon.set(higher.index, new Set())
+      perTaxon.get(higher.index).add(taxonKey(record))
+    }
+  }
+  countsByChecklist[id] = Object.fromEntries([...perTaxon].map(([taxonIndex, keys]) => [taxonIndex, keys.size]))
   // The map draws the country from the species map's shape cache
   // (public/map-shapes/, npm run map-shapes).
   const entry = checklistOf.get(id)
@@ -778,46 +806,21 @@ for (const [id, records] of byCountry) {
         return { name: part.name, shape: partShape ? `GeographicArea/${partShape}` : null }
       })
     } : {}),
-    // Reassessed records do not count; a taxon known only from them is shown
-    // on the page (as reassessed) but not in the count.
-    taxa: new Set(records.filter((record) => !record.reassessed).map(taxonKey)).size,
+    taxa: new Set(counted.map(taxonKey)).size,
     records: records.length
   })
 }
 index.sort((a, b) => a.name.localeCompare(b.name))
 
-// taxa.json: for every higher taxon (family, subfamily, tribe, subtribe,
-// genus) the number of taxa it has in each checklist, counted as the page
-// counts (by name, reassessed records left out), plus its count over all
-// checklists. The page loads it only when someone filters by taxon, to colour
-// the world map and the country list for that taxon.
-const HIGHER_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
-const higherTaxa = new Map() // "rank:name" -> { index, rank, name, all: Set(taxon keys) }
-const countsByChecklist = {}
-for (const [id, records] of byCountry) {
-  const perTaxon = new Map() // taxon index -> Set(taxon keys)
-  for (const record of records) {
-    if (record.reassessed) continue
-    for (const rank of HIGHER_RANKS) {
-      const name = record[rank]
-      if (!name) continue
-      const key = `${rank}:${name}`
-      if (!higherTaxa.has(key)) higherTaxa.set(key, { index: higherTaxa.size, rank, name, all: new Set() })
-      const taxon = higherTaxa.get(key)
-      taxon.all.add(taxonKey(record))
-      if (!perTaxon.has(taxon.index)) perTaxon.set(taxon.index, new Set())
-      perTaxon.get(taxon.index).add(taxonKey(record))
-    }
-  }
-  countsByChecklist[id] = Object.fromEntries([...perTaxon].map(([index, keys]) => [index, keys.size]))
-}
 writeFileSync(`${OUT_DIR}taxa.json`, JSON.stringify({
   taxa: [...higherTaxa.values()].map(({ rank, name, all }) => [rank, name, all.size]),
   counts: countsByChecklist
 }))
 console.log(`taxa.json: ${higherTaxa.size} higher taxa`)
 writeFileSync(`${OUT_DIR}index.json`, JSON.stringify({
-  updated: new Date().toISOString().slice(0, 10),
+  // The local date of the build (toISOString is UTC: a build after midnight
+  // in Europe was stamped with the day before).
+  updated: BUILD_DATE,
   countries: index,
   unplaced: { records: unplaced.records, taxa: unplaced.taxa.size }
 }, null, 1))
@@ -904,7 +907,7 @@ details.rec ul { text-align:left; margin:6px 0 4px; padding-left:1.1em; min-widt
 details.rec[open] summary { border:0 }
 </style></head><body><main>
 <h1>Checklist sources</h1>
-<p class="soft">Built ${esc(new Date().toISOString().slice(0, 10))} by <code>scripts/build-checklists.mjs</code> together with the cache it documents. ${num(index.length)} checklists, ${num(unplaced.records)} records of ${num(unplaced.taxa.size)} taxa left out.</p>
+<p class="soft">Built ${esc(BUILD_DATE)} by <code>scripts/build-checklists.mjs</code> together with the cache it documents. ${num(index.length)} checklists, ${num(unplaced.records)} records of ${num(unplaced.taxa.size)} taxa left out.</p>
 <h2>How a record is placed</h2>
 <ul class="rules">
 <li><b>area country</b>: an asserted distribution whose TaxonWorks area carries a country (<code>level0_id</code>; a subdivision carries its country's).</li>

@@ -52,7 +52,7 @@
             <path d="M12 9v4" />
             <path d="M12 17h.01" />
           </svg>
-          Distribution data is incomplete for most countries
+          Distribution data is generally incomplete
         </p>
 
         <div v-if="subdivisionOptions.length" class="min-w-[14rem] flex-1 sm:max-w-sm">
@@ -184,9 +184,9 @@
           <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China, Russia and the United Kingdom, click a state, province or constituent country to narrow it.</span>
         </div>
         <p class="mt-3 text-xs text-base-soft">
-          Adapted from the country checklists of
+          This feature was adapted from the country checklists of
           <a
-            href="https://jrpletch.github.io/fleasoftheworld/#/checklists"
+            href="https://jrpletch.github.io/fleasoftheworld/"
             target="_blank"
             rel="noopener"
             class="text-secondary hover:underline"

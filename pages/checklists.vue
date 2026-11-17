@@ -196,6 +196,62 @@
       </section>
 
       <aside class="min-w-0">
+        <div class="mb-4">
+          <label class="block text-sm font-semibold" for="taxon-filter">Taxon</label>
+          <div class="relative mt-1">
+            <input
+              id="taxon-filter"
+              v-model="taxonQuery"
+              class="box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              type="search"
+              placeholder="Genus, tribe, subfamily or family"
+              autocomplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="higher-taxon-suggestions"
+              :aria-expanded="suggestionsOpen && higherTaxonSuggestions.length > 0"
+              :aria-activedescendant="activeSuggestion >= 0 ? `higher-taxon-${activeSuggestion}` : undefined"
+              @input="suggestionsOpen = true"
+              @focus="suggestionsOpen = true; loadTaxaIndex()"
+              @blur="suggestionsOpen = false"
+              @keydown="onTaxonFilterKeydown"
+            />
+            <ul
+              v-if="suggestionsOpen && higherTaxonSuggestions.length"
+              id="higher-taxon-suggestions"
+              class="absolute left-0 right-0 z-[1000] mt-1 max-h-72 overflow-y-auto rounded-md border border-base-border bg-base-foreground py-1 text-sm shadow-lg"
+              role="listbox"
+              aria-label="Higher taxa"
+            >
+              <li
+                v-for="(taxon, index) in higherTaxonSuggestions"
+                :id="`higher-taxon-${index}`"
+                :key="taxon.key"
+                role="option"
+                :aria-selected="index === activeSuggestion"
+                class="flex cursor-pointer items-baseline justify-between gap-3 px-3 py-1.5 hover:bg-base-muted"
+                :class="{ 'bg-base-muted': index === activeSuggestion }"
+                @mousedown.prevent="chooseHigherTaxon(taxon)"
+              >
+                <span :class="{ italic: taxon.rank === 'genus' }">{{ taxon.name }}</span>
+                <span class="shrink-0 text-xs text-base-soft">{{ taxon.rank }}, {{ taxon.count }} {{ selectedCountry ? 'here' : 'taxa' }}</span>
+              </li>
+            </ul>
+          </div>
+          <div v-if="higherTaxonFilter" class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span class="text-base-soft">Only</span>
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-base-border bg-base-muted py-0.5 pl-3 pr-1">
+              <span>{{ higherTaxonFilter.rank }} <span :class="{ italic: higherTaxonFilter.rank === 'genus' }">{{ higherTaxonFilter.name }}</span></span>
+              <button
+                type="button"
+                class="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-base-border"
+                :aria-label="`Remove the ${higherTaxonFilter.name} filter`"
+                @click="setHigherTaxonFilter(null)"
+              >×</button>
+            </span>
+            <span v-if="!selectedCountry" class="text-xs text-base-soft">The map and the country list count this taxon.</span>
+          </div>
+        </div>
         <div
           v-if="selectedCountry"
           class="border-t border-base-border/50 pt-3 xl:border-t-0 xl:pt-0"
@@ -300,58 +356,14 @@
                   <label class="block text-sm font-medium" for="species-filter">
                     Species and subspecies checklist
                   </label>
-                  <div class="relative mt-1.5">
-                    <input
-                      id="species-filter"
-                      v-model="speciesFilter"
-                      class="box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                      type="search"
-                      placeholder="Filter by species name or pick a higher taxon"
-                      autocomplete="off"
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-controls="higher-taxon-suggestions"
-                      :aria-expanded="suggestionsOpen && higherTaxonSuggestions.length > 0"
-                      :aria-activedescendant="activeSuggestion >= 0 ? `higher-taxon-${activeSuggestion}` : undefined"
-                      @input="suggestionsOpen = true"
-                      @focus="suggestionsOpen = true"
-                      @blur="suggestionsOpen = false"
-                      @keydown="onSpeciesFilterKeydown"
-                    />
-                    <ul
-                      v-if="suggestionsOpen && higherTaxonSuggestions.length"
-                      id="higher-taxon-suggestions"
-                      class="absolute left-0 right-0 z-[1000] mt-1 max-h-72 overflow-y-auto rounded-md border border-base-border bg-base-foreground py-1 text-sm shadow-lg"
-                      role="listbox"
-                      aria-label="Higher taxa"
-                    >
-                      <li
-                        v-for="(taxon, index) in higherTaxonSuggestions"
-                        :id="`higher-taxon-${index}`"
-                        :key="taxon.key"
-                        role="option"
-                        :aria-selected="index === activeSuggestion"
-                        class="flex cursor-pointer items-baseline justify-between gap-3 px-3 py-1.5 hover:bg-base-muted"
-                        :class="{ 'bg-base-muted': index === activeSuggestion }"
-                        @mousedown.prevent="chooseHigherTaxon(taxon)"
-                      >
-                        <span :class="{ italic: taxon.rank === 'genus' }">{{ taxon.name }}</span>
-                        <span class="shrink-0 text-xs text-base-soft">{{ taxon.rank }}, {{ taxon.count }}</span>
-                      </li>
-                    </ul>
-                  </div>
-                  <div v-if="higherTaxonFilter" class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                    <span class="text-base-soft">Only</span>
-                    <span class="inline-flex items-center gap-1.5 rounded-full border border-base-border bg-base-muted py-0.5 pl-3 pr-1">
-                      <span>{{ higherTaxonFilter.rank }} <span :class="{ italic: higherTaxonFilter.rank === 'genus' }">{{ higherTaxonFilter.name }}</span></span>
-                      <button
-                        type="button"
-                        class="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-base-border"
-                        :aria-label="`Remove the ${higherTaxonFilter.name} filter`"
-                        @click="higherTaxonFilter = null"
-                      >×</button>
-                    </span>
-                  </div>
+                  <input
+                    id="species-filter"
+                    v-model="speciesFilter"
+                    class="mt-1.5 box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    type="search"
+                    placeholder="Filter by species name"
+                    autocomplete="off"
+                  />
                   <p class="mt-2 text-xs text-base-content/55">
                     {{ filteredSpecies.filter((taxon) => !taxon.reassessed).length }} of {{ species.filter((taxon) => !taxon.reassessed).length }} listed taxa<template v-if="species.some((taxon) => taxon.reassessed)">, plus reassessed ones, not counted</template>
                   </p>
@@ -626,7 +638,7 @@ const checklistCountries = ref([])
 // can look up its file.
 let resolveIndexReady
 const indexReady = new Promise((resolve) => { resolveIndexReady = resolve })
-const countryCounts = ref(new Map())
+const totalCounts = ref(new Map()) // country key -> taxa (index.json)
 const countsLoading = ref(true)
 const countsError = ref('')
 const mapError = ref('')
@@ -943,7 +955,7 @@ async function loadCountryCounts() {
     checklistCountries.value = index.countries
     countriesByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), [country.name]]))
     checklistIdByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), country.id]))
-    countryCounts.value = new Map(index.countries.map((country) => [countryKey(country.name), country.taxa]))
+    totalCounts.value = new Map(index.countries.map((country) => [countryKey(country.name), country.taxa]))
     refreshMapStyles()
   } catch {
     countsError.value = 'Could not load the checklists. Please try again.'
@@ -964,9 +976,11 @@ const countries = computed(() => {
     options.set(key, { key, name, count })
   }
   for (const [key, aliases] of countriesByKey.value) {
-    if (!options.has(key)) {
+    const count = countryCounts.value.get(key) || 0
+    // Countries without the filtered taxon (or with no counted taxa) are left out.
+    if (!options.has(key) && (count || key === countryKey(selectedCountry.value))) {
       const name = [...aliases].sort((a, b) => a.localeCompare(b))[0]
-      options.set(key, { key, name, count: countryCounts.value.get(key) || 0 })
+      options.set(key, { key, name, count })
     }
   }
   if (selectedCountry.value && !options.has(countryKey(selectedCountry.value))) {
@@ -1171,6 +1185,7 @@ function selectCountry(name, region = '') {
   const params = new URLSearchParams()
   if (name) params.set('country', name)
   if (name && region) params.set('region', region)
+  if (higherTaxonFilter.value) params.set('taxon', higherTaxonFilter.value.name)
   const query = params.toString() ? `?${params.toString().replace(/\+/g, '%20')}` : ''
   pendingCountryScrollY = window.scrollY
   window.location.hash = `/checklists${query}`
@@ -1194,7 +1209,13 @@ function syncCountryFromHash() {
   selectedCountry.value = country
   selectedRegion.value = region
   speciesFilter.value = ''
-  higherTaxonFilter.value = null
+  const taxonName = params.get('taxon') || ''
+  if (taxonName !== (higherTaxonFilter.value?.name || '')) {
+    higherTaxonFilter.value = null
+    higherTaxonFromName(taxonName).then((filter) => {
+      if ((new URLSearchParams(window.location.hash.split('?')[1] || '')).get('taxon') === taxonName) higherTaxonFilter.value = filter
+    })
+  }
   expandedTaxonKey.value = ''
   expandedReferenceKey.value = ''
   checklistCitationUrl.value = window.location.href
@@ -1292,7 +1313,7 @@ const scopedRows = computed(() => (
 const regionCounts = computed(() => {
   const speciesByRegion = new Map()
   for (const record of countryRows.value) {
-    if (!isSpeciesRecord(record) || record.reassessed) continue
+    if (!isSpeciesRecord(record) || record.reassessed || !inHigherTaxon(record)) continue
     const region = recordRegion(record)
     if (!region) continue
     if (!speciesByRegion.has(region)) speciesByRegion.set(region, new Set())
@@ -1516,11 +1537,62 @@ const species = computed(() => {
   ))
 })
 
-// Higher-taxon filter: a genus, subtribe, tribe, subfamily or family of the
-// country's checklist, picked from the suggestions under the name filter.
-// Unlike the free-text filter it keeps exactly the members of that taxon,
-// and the downloads follow it (a checklist of the Lixini of Germany).
+// Higher-taxon filter: a genus, subtribe, tribe, subfamily or family, picked
+// in the Taxon field at the top of the right column, before or after a
+// country. Unlike the name filter it keeps exactly the members of that taxon;
+// the map, the country list and the downloads follow it (the Lixini of the
+// world, then the Lixini of Germany). It is kept in the link (?taxon=Lixini).
 const higherTaxonFilter = ref(null) // { rank, name }
+const taxonQuery = ref('')
+
+// taxa.json (build): every higher taxon with its count per checklist, loaded
+// once on first use of the filter.
+const taxaIndex = ref(null)
+let taxaIndexRequest = null
+function loadTaxaIndex() {
+  taxaIndexRequest ??= fetchJson(`${base_url}checklists/taxa.json`)
+    .then((data) => { taxaIndex.value = data })
+    .catch(() => { taxaIndexRequest = null })
+  return taxaIndexRequest
+}
+const taxaIndexByKey = computed(() => new Map((taxaIndex.value?.taxa || []).map(([rank, name], index) => [`${rank}:${name}`, index])))
+
+// What the map and the country list count: all taxa, or the filter's taxon.
+const countryCounts = computed(() => {
+  const filter = higherTaxonFilter.value
+  if (!filter || !taxaIndex.value) return totalCounts.value
+  const index = taxaIndexByKey.value.get(`${filter.rank}:${filter.name}`)
+  return new Map(checklistCountries.value.map((country) => [
+    countryKey(country.name),
+    index === undefined ? 0 : taxaIndex.value.counts[country.id]?.[index] || 0
+  ]))
+})
+watch(higherTaxonFilter, (filter) => { if (filter) loadTaxaIndex() })
+watch(countryCounts, () => refreshMapStyles())
+
+// The filter is set through the link, so it survives picking a country and
+// can be shared; replaceState, as it is not a new page.
+function setHigherTaxonFilter(filter) {
+  higherTaxonFilter.value = filter
+  const [path, query = ''] = window.location.hash.slice(1).split('?')
+  const params = new URLSearchParams(query)
+  if (filter) params.set('taxon', filter.name)
+  else params.delete('taxon')
+  const next = params.toString() ? `?${params.toString().replace(/\+/g, '%20')}` : ''
+  history.replaceState(history.state, '', `#${path || '/checklists'}${next}`)
+}
+
+// ?taxon=Lixini: the rank comes from the country's taxa or taxa.json.
+async function higherTaxonFromName(name) {
+  if (!name) return null
+  const local = higherTaxa.value.find((taxon) => taxon.name === name)
+  if (local) return { rank: local.rank, name }
+  await loadTaxaIndex()
+  const found = (taxaIndex.value?.taxa || [])
+    .filter(([, taxonName]) => taxonName === name)
+    .sort(([a], [b]) => SUGGESTION_RANKS.indexOf(a) - SUGGESTION_RANKS.indexOf(b))[0]
+  return found ? { rank: found[0], name } : null
+}
 
 function inHigherTaxon(item) {
   const filter = higherTaxonFilter.value
@@ -1544,10 +1616,17 @@ const higherTaxa = computed(() => {
   return [...taxa.values()]
 })
 
+// The country's own taxa once a country is open, else all of them (taxa.json).
+const suggestionPool = computed(() => (
+  selectedCountry.value && countryRows.value.length
+    ? higherTaxa.value
+    : (taxaIndex.value?.taxa || []).map(([rank, name, count]) => ({ key: `${rank}:${name}`, rank, name, count }))
+))
+
 const higherTaxonSuggestions = computed(() => {
-  const query = speciesFilter.value.trim().toLocaleLowerCase()
+  const query = taxonQuery.value.trim().toLocaleLowerCase()
   if (!query) return []
-  return higherTaxa.value
+  return suggestionPool.value
     .filter((taxon) => taxon.name.toLocaleLowerCase().startsWith(query))
     .sort((a, b) => SUGGESTION_RANKS.indexOf(a.rank) - SUGGESTION_RANKS.indexOf(b.rank) || a.name.localeCompare(b.name))
     .slice(0, 8)
@@ -1558,12 +1637,12 @@ const activeSuggestion = ref(-1)
 watch(higherTaxonSuggestions, () => { activeSuggestion.value = -1 })
 
 function chooseHigherTaxon(taxon) {
-  higherTaxonFilter.value = { rank: taxon.rank, name: taxon.name }
-  speciesFilter.value = ''
+  setHigherTaxonFilter({ rank: taxon.rank, name: taxon.name })
+  taxonQuery.value = ''
   suggestionsOpen.value = false
 }
 
-function onSpeciesFilterKeydown(event) {
+function onTaxonFilterKeydown(event) {
   const count = higherTaxonSuggestions.value.length
   if (event.key === 'Escape') {
     suggestionsOpen.value = false
@@ -2074,7 +2153,6 @@ async function loadCountry(name) {
   citationsByOccurrence.value = new Map()
   distributionPlacesByOccurrence.value = new Map()
   speciesFilter.value = ''
-  higherTaxonFilter.value = null
   expandedTaxonKey.value = ''
   expandedReferenceKey.value = ''
   activeCountryTab.value = 'species'

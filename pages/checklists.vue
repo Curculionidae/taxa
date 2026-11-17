@@ -7,6 +7,7 @@
         </h1>
         <p class="text-sm text-base-content/70">
           Weevil species reported in each country. Counts are distinct species in the occurrence records.
+          <template v-if="checklistUpdated">Checklists are compiled from cached data, last updated {{ checklistUpdated }}.</template>
         </p>
       </div>
     </header>
@@ -494,7 +495,6 @@
 // wording, project-name exports, legend bins for larger counts, map colours
 // as --pp-checklist-* tokens in the aggregate-map green (pages/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { makeAPIRequest } from '@/utils/request'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
@@ -505,11 +505,6 @@ const {
   project_name: projectName = 'Curculionidae of the World Online',
   project_authors: projectAuthors = ''
 } = __APP_ENV__
-const PAGE_SIZE = 500
-const PAGE_BATCH_SIZE = 8
-const DISTRIBUTION_PLACE_BATCH_SIZE = 100
-const INDEX_CACHE_KEY = 'weevils-country-species-counts-v1'
-const INDEX_CACHE_AGE = 24 * 60 * 60 * 1000
 
 const exportPrefix = projectName.replace(/[^A-Za-z0-9]+/g, '')
 
@@ -540,6 +535,12 @@ const countryMapRef = ref(null)
 const mapReady = ref(false)
 const mapLayers = new Map()
 const countriesByKey = ref(new Map())
+const checklistIdByKey = ref(new Map())
+const checklistUpdated = ref('')
+// Resolves once index.json is in, so a country opened from the URL on load
+// can look up its file.
+let resolveIndexReady
+const indexReady = new Promise((resolve) => { resolveIndexReady = resolve })
 const countryCounts = ref(new Map())
 const countsLoading = ref(true)
 const countsError = ref('')
@@ -736,28 +737,6 @@ function speciesKey(record) {
   return `${String(record.scientificName || '').trim()} ${String(record.scientificNameAuthorship || '').trim()}`.trim().toLocaleLowerCase()
 }
 
-async function forEachOccurrencePage(params, onPage) {
-  const first = await makeAPIRequest.get('/dwc_occurrences', {
-    params: { ...params, per: PAGE_SIZE, page: 1 }
-  })
-  onPage(first.data || [])
-
-  const total = Number(first.headers?.['pagination-total'] || 0)
-  const pageCount = Math.ceil(total / PAGE_SIZE)
-  for (let page = 2; page <= pageCount; page += PAGE_BATCH_SIZE) {
-    const pages = Array.from(
-      { length: Math.min(PAGE_BATCH_SIZE, pageCount - page + 1) },
-      (_, index) => page + index
-    )
-    const responses = await Promise.all(
-      pages.map((currentPage) => makeAPIRequest.get('/dwc_occurrences', {
-        params: { ...params, per: PAGE_SIZE, page: currentPage }
-      }))
-    )
-    responses.forEach((response) => onPage(response.data || []))
-  }
-}
-
 async function loadCountryShapes() {
   try {
     const response = await fetch(`${base_url}data/countries.geojson`, { cache: 'no-cache' })
@@ -769,59 +748,26 @@ async function loadCountryShapes() {
   }
 }
 
-function cacheCountryCounts(namesByKey, countsByKey) {
-  try {
-    localStorage.setItem(INDEX_CACHE_KEY, JSON.stringify({
-      savedAt: Date.now(),
-      countries: [...namesByKey.entries()].map(([key, names]) => [key, [...names]]),
-      counts: [...countsByKey.entries()]
-    }))
-  } catch {
-    // The explorer can still run without browser storage.
-  }
-}
-
+// The checklist data is built ahead of time by scripts/build-checklists.mjs
+// (public/checklists/): index.json lists every country with its taxon count,
+// countries/<id>.json holds one country's records.
 async function loadCountryCounts() {
   countsLoading.value = true
   countsError.value = ''
   try {
-    const cached = JSON.parse(localStorage.getItem(INDEX_CACHE_KEY) || 'null')
-    if (cached?.savedAt && Date.now() - cached.savedAt < INDEX_CACHE_AGE) {
-      countriesByKey.value = new Map(cached.countries || [])
-      countryCounts.value = new Map(cached.counts || [])
-      countsLoading.value = false
-      refreshMapStyles()
-      return
-    }
-  } catch {
-    // Ignore invalid or unavailable browser storage and rebuild the index.
-  }
-
-  const namesByKey = new Map()
-  const speciesByCountry = new Map()
-  try {
-    await forEachOccurrencePage({}, (records) => {
-      for (const record of records) {
-        if (!record.country || !isSpeciesRecord(record)) continue
-        const key = countryKey(record.country)
-        if (!namesByKey.has(key)) namesByKey.set(key, new Set())
-        namesByKey.get(key).add(String(record.country).trim())
-        if (!speciesByCountry.has(key)) speciesByCountry.set(key, new Set())
-        speciesByCountry.get(key).add(speciesKey(record))
-      }
-    })
-    countriesByKey.value = new Map(
-      [...namesByKey.entries()].map(([key, names]) => [key, [...names]])
-    )
-    countryCounts.value = new Map(
-      [...speciesByCountry.entries()].map(([key, species]) => [key, species.size])
-    )
-    cacheCountryCounts(namesByKey, countryCounts.value)
+    const response = await fetch(`${base_url}checklists/index.json`)
+    if (!response.ok) throw new Error('Could not load the checklist index.')
+    const index = await response.json()
+    checklistUpdated.value = index.updated || ''
+    countriesByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), [country.name]]))
+    checklistIdByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), country.id]))
+    countryCounts.value = new Map(index.countries.map((country) => [countryKey(country.name), country.taxa]))
     refreshMapStyles()
   } catch {
-    countsError.value = 'Could not load occurrence counts. Please try again.'
+    countsError.value = 'Could not load the checklists. Please try again.'
   } finally {
     countsLoading.value = false
+    resolveIndexReady()
   }
 }
 
@@ -1300,9 +1246,6 @@ function bareName(record) {
     : name
 }
 
-const familyByOtu = ref(new Map())
-const familyLookups = new Set()
-
 const species = computed(() => {
   const byTaxon = new Map()
   for (const record of scopedRows.value) {
@@ -1323,45 +1266,12 @@ const species = computed(() => {
       byTaxon.get(key).family = String(record.family).trim()
     }
   }
-  for (const taxon of byTaxon.values()) {
-    if (!taxon.family && taxon.otuId) taxon.family = familyByOtu.value.get(taxon.otuId) || ''
-  }
   // Grouped by family (unplaced taxa last), alphabetical within each family.
   return [...byTaxon.values()].sort((a, b) => (
     (a.family ? 0 : 1) - (b.family ? 0 : 1)
     || a.family.localeCompare(b.family)
     || a.name.localeCompare(b.name)
   ))
-})
-
-// TaxonWorks' DwC export leaves the whole classification (family, genus, ...)
-// empty on FieldOccurrence rows, so a taxon known here only from field
-// occurrences has no family. Look those up from the OTU's parents, one
-// request per OTU, only for the taxa still missing one.
-
-function familyFromParents(parents) {
-  const names = Object.keys(parents || {})
-  return names.findLast((name) => /(idae|aceae)$/.test(name)) || ''
-}
-
-async function lookUpMissingFamilies(otuIds) {
-  const pending = otuIds.filter((id) => !familyLookups.has(id))
-  for (const id of pending) familyLookups.add(id)
-  for (let index = 0; index < pending.length; index += 8) {
-    const results = await Promise.all(pending.slice(index, index + 8).map((id) => (
-      makeAPIRequest.get(`/otus/${id}`, { params: { extend: ['parents'] } })
-        .then(({ data }) => [id, familyFromParents(data?.parents)])
-        .catch(() => [id, ''])
-    )))
-    const next = new Map(familyByOtu.value)
-    for (const [id, family] of results) if (family) next.set(id, family)
-    familyByOtu.value = next
-  }
-}
-
-watch(species, (list) => {
-  const missing = list.filter((taxon) => !taxon.family && taxon.otuId).map((taxon) => taxon.otuId)
-  if (missing.length) lookUpMissingFamilies(missing)
 })
 
 const filteredSpecies = computed(() => {
@@ -1748,62 +1658,6 @@ const recordEvidenceByTaxon = computed(() => {
   }]))
 })
 
-async function loadCitations(rows, requestId) {
-  const occurrenceIds = [...new Set(rows
-    .filter((record) => record.dwc_occurrence_object_type === 'AssertedDistribution')
-    .map((record) => record.dwc_occurrence_object_id)
-    .filter(Boolean))]
-  const citations = new Map()
-  for (let index = 0; index < occurrenceIds.length; index += 150) {
-    const params = new URLSearchParams()
-    params.append('citation_object_type', 'AssertedDistribution')
-    params.append('extend[]', 'source')
-    params.append('per', '1000')
-    occurrenceIds.slice(index, index + 150).forEach((id) => params.append('citation_object_id[]', id))
-    try {
-      const { data } = await makeAPIRequest.get(`/citations?${params.toString()}`)
-      for (const citation of data || []) {
-        const full = plainText(citation.source?.cached || citation.citation_source_body || '')
-        const short = compactCitation(citation.citation_source_body, full)
-        if (!full && !short) continue
-        const id = String(citation.citation_object_id)
-        if (!citations.has(id)) citations.set(id, [])
-        citations.get(id).push({ id: String(citation.id || ''), short, full })
-      }
-    } catch {
-      break
-    }
-    if (requestId !== countryRequestId) return citations
-  }
-  return citations
-}
-
-async function loadDistributionPlaces(rows, requestId) {
-  const distributionIds = [...new Set(rows
-    .filter((record) => record.dwc_occurrence_object_type === 'AssertedDistribution')
-    .map((record) => record.dwc_occurrence_object_id)
-    .filter(Boolean))]
-  const places = new Map()
-
-  for (let index = 0; index < distributionIds.length; index += DISTRIBUTION_PLACE_BATCH_SIZE) {
-    const params = new URLSearchParams()
-    params.append('per', '500')
-    distributionIds.slice(index, index + DISTRIBUTION_PLACE_BATCH_SIZE).forEach((id) => params.append('asserted_distribution_id[]', id))
-    try {
-      const { data } = await makeAPIRequest.get(`/asserted_distributions?${params.toString()}`)
-      for (const distribution of data || []) {
-        const place = distribution.asserted_distribution_shape?.name
-        if (place) places.set(String(distribution.id), place)
-      }
-    } catch {
-      break
-    }
-    if (requestId !== countryRequestId) return places
-  }
-
-  return places
-}
-
 const topReferences = computed(() => {
   const references = new Map()
   for (const record of scopedRows.value) {
@@ -1856,24 +1710,29 @@ async function loadCountry(name) {
   activeCountryTab.value = 'species'
   if (!name) return
 
-  const aliases = countriesByKey.value.get(countryKey(name)) || [name]
-  const recordsById = new Map()
   try {
-    for (const alias of aliases) {
-      await forEachOccurrencePage({ country: alias }, (records) => {
-        for (const record of records) {
-          const id = `${record.dwc_occurrence_object_type || ''}:${record.dwc_occurrence_object_id || record.id || speciesKey(record)}`
-          recordsById.set(id, record)
-        }
-      })
-      if (requestId !== countryRequestId) return
-    }
-    countryRows.value = [...recordsById.values()]
-    const [places, citations] = await Promise.all([
-      loadDistributionPlaces(countryRows.value, requestId),
-      loadCitations(countryRows.value, requestId)
-    ])
+    await indexReady
     if (requestId !== countryRequestId) return
+    const id = checklistIdByKey.value.get(countryKey(name))
+    if (!id) throw new Error('No checklist for this country.')
+    const response = await fetch(`${base_url}checklists/countries/${id}.json`)
+    if (!response.ok) throw new Error('Could not load the country checklist.')
+    const records = await response.json()
+    if (requestId !== countryRequestId) return
+    const places = new Map()
+    const citations = new Map()
+    for (const record of records) {
+      if (record.dwc_occurrence_object_type !== 'AssertedDistribution') continue
+      const id = String(record.dwc_occurrence_object_id)
+      if (record.place) places.set(id, record.place)
+      if (record.citations?.length) {
+        citations.set(id, record.citations.map((citation) => {
+          const short = compactCitation('', citation.full)
+          return { id: citation.id, full: citation.full, short: citation.pages ? `${short}:${citation.pages}` : short }
+        }))
+      }
+    }
+    countryRows.value = records
     distributionPlacesByOccurrence.value = places
     citationsByOccurrence.value = citations
   } catch {

@@ -1,0 +1,2246 @@
+{
+ "updated": "2026-11-17",
+ "countries": [
+  {
+   "id": 2,
+   "name": "Afghanistan",
+   "iso2": "AF",
+   "areas": [
+    2
+   ],
+   "taxa": 89,
+   "records": 92
+  },
+  {
+   "id": 4,
+   "name": "Albania",
+   "iso2": "AL",
+   "areas": [
+    4
+   ],
+   "taxa": 283,
+   "records": 291
+  },
+  {
+   "id": 5,
+   "name": "Algeria",
+   "iso2": "DZ",
+   "areas": [
+    5
+   ],
+   "taxa": 427,
+   "records": 429
+  },
+  {
+   "id": 6,
+   "name": "American Samoa",
+   "iso2": "AS",
+   "areas": [
+    6
+   ],
+   "taxa": 46,
+   "records": 49
+  },
+  {
+   "id": 7,
+   "name": "Andorra",
+   "iso2": "AD",
+   "areas": [
+    7
+   ],
+   "taxa": 22,
+   "records": 22
+  },
+  {
+   "id": 8,
+   "name": "Angola",
+   "iso2": "AO",
+   "areas": [
+    8
+   ],
+   "taxa": 105,
+   "records": 105
+  },
+  {
+   "id": 9,
+   "name": "Anguilla",
+   "iso2": "AI",
+   "areas": [
+    9
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 31720,
+   "name": "Antigua and Barbuda",
+   "iso2": "",
+   "areas": [
+    31720
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 12,
+   "name": "Argentina",
+   "iso2": "AR",
+   "areas": [
+    12
+   ],
+   "taxa": 288,
+   "records": 379
+  },
+  {
+   "id": 13,
+   "name": "Armenia",
+   "iso2": "AM",
+   "areas": [
+    13
+   ],
+   "taxa": 238,
+   "records": 247
+  },
+  {
+   "id": 15,
+   "name": "Australia",
+   "iso2": "AU",
+   "areas": [
+    15
+   ],
+   "taxa": 1001,
+   "records": 1236
+  },
+  {
+   "id": 16,
+   "name": "Austria",
+   "iso2": "AT",
+   "areas": [
+    16
+   ],
+   "taxa": 492,
+   "records": 516
+  },
+  {
+   "id": 17,
+   "name": "Azerbaijan",
+   "iso2": "AZ",
+   "areas": [
+    17
+   ],
+   "taxa": 188,
+   "records": 196
+  },
+  {
+   "id": 18,
+   "name": "Bahamas",
+   "iso2": "BS",
+   "areas": [
+    18
+   ],
+   "taxa": 9,
+   "records": 9
+  },
+  {
+   "id": 20,
+   "name": "Bangladesh",
+   "iso2": "BD",
+   "areas": [
+    20
+   ],
+   "taxa": 19,
+   "records": 20
+  },
+  {
+   "id": 21,
+   "name": "Barbados",
+   "iso2": "BB",
+   "areas": [
+    21
+   ],
+   "taxa": 5,
+   "records": 6
+  },
+  {
+   "id": 22,
+   "name": "Belarus",
+   "iso2": "BY",
+   "areas": [
+    22
+   ],
+   "taxa": 161,
+   "records": 168
+  },
+  {
+   "id": 23,
+   "name": "Belgium",
+   "iso2": "BE",
+   "areas": [
+    23
+   ],
+   "taxa": 212,
+   "records": 212
+  },
+  {
+   "id": 24,
+   "name": "Belize",
+   "iso2": "BZ",
+   "areas": [
+    24
+   ],
+   "taxa": 17,
+   "records": 17
+  },
+  {
+   "id": 25,
+   "name": "Benin",
+   "iso2": "BJ",
+   "areas": [
+    25
+   ],
+   "taxa": 7,
+   "records": 7
+  },
+  {
+   "id": 27,
+   "name": "Bhutan",
+   "iso2": "BT",
+   "areas": [
+    27
+   ],
+   "taxa": 6,
+   "records": 6
+  },
+  {
+   "id": 31724,
+   "name": "Bolivia",
+   "iso2": "",
+   "areas": [
+    31724
+   ],
+   "taxa": 193,
+   "records": 197
+  },
+  {
+   "id": 4818,
+   "name": "Bonaire, Saint Eustatius and Saba",
+   "iso2": "",
+   "areas": [
+    4818
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 31721,
+   "name": "Bosnia and Herzegovina",
+   "iso2": "",
+   "areas": [
+    31721,
+    30
+   ],
+   "taxa": 376,
+   "records": 392
+  },
+  {
+   "id": 31,
+   "name": "Botswana",
+   "iso2": "BW",
+   "areas": [
+    31
+   ],
+   "taxa": 18,
+   "records": 20
+  },
+  {
+   "id": 33,
+   "name": "Brazil",
+   "iso2": "BR",
+   "areas": [
+    33
+   ],
+   "taxa": 920,
+   "records": 1231
+  },
+  {
+   "id": 34,
+   "name": "British Indian Ocean Territory",
+   "iso2": "IO",
+   "areas": [
+    34
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 4856,
+   "name": "British Virgin Islands",
+   "iso2": "",
+   "areas": [
+    4856
+   ],
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "id": 4857,
+   "name": "Brunei",
+   "iso2": "",
+   "areas": [
+    4857
+   ],
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "id": 36,
+   "name": "Bulgaria",
+   "iso2": "BG",
+   "areas": [
+    36
+   ],
+   "taxa": 640,
+   "records": 677
+  },
+  {
+   "id": 37,
+   "name": "Burkina Faso",
+   "iso2": "BF",
+   "areas": [
+    37
+   ],
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "id": 38,
+   "name": "Burundi",
+   "iso2": "BI",
+   "areas": [
+    38
+   ],
+   "taxa": 8,
+   "records": 9
+  },
+  {
+   "id": 39,
+   "name": "Cambodia",
+   "iso2": "KH",
+   "areas": [
+    39
+   ],
+   "taxa": 32,
+   "records": 32
+  },
+  {
+   "id": 40,
+   "name": "Cameroon",
+   "iso2": "CM",
+   "areas": [
+    40
+   ],
+   "taxa": 103,
+   "records": 106
+  },
+  {
+   "id": 41,
+   "name": "Canada",
+   "iso2": "CA",
+   "areas": [
+    41
+   ],
+   "taxa": 165,
+   "records": 362
+  },
+  {
+   "id": 42,
+   "name": "Cape Verde",
+   "iso2": "CV",
+   "areas": [
+    42
+   ],
+   "taxa": 16,
+   "records": 16
+  },
+  {
+   "id": 31732,
+   "name": "Cayman Islands",
+   "iso2": "",
+   "areas": [
+    31732,
+    43
+   ],
+   "taxa": 1,
+   "records": 3
+  },
+  {
+   "id": 31727,
+   "name": "Central African Republic",
+   "iso2": "",
+   "areas": [
+    31727
+   ],
+   "taxa": 16,
+   "records": 16
+  },
+  {
+   "id": 45,
+   "name": "Chad",
+   "iso2": "TD",
+   "areas": [
+    45
+   ],
+   "taxa": 21,
+   "records": 21
+  },
+  {
+   "id": 46,
+   "name": "Chile",
+   "iso2": "CL",
+   "areas": [
+    46
+   ],
+   "taxa": 153,
+   "records": 188
+  },
+  {
+   "id": 47,
+   "name": "China",
+   "iso2": "CN",
+   "areas": [
+    47
+   ],
+   "taxa": 897,
+   "records": 1713
+  },
+  {
+   "id": 48,
+   "name": "Christmas Island",
+   "iso2": "CX",
+   "areas": [
+    48
+   ],
+   "taxa": 5,
+   "records": 5
+  },
+  {
+   "id": 6155,
+   "name": "Cocos Islands",
+   "iso2": "",
+   "areas": [
+    6155
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 50,
+   "name": "Colombia",
+   "iso2": "CO",
+   "areas": [
+    50
+   ],
+   "taxa": 293,
+   "records": 338
+  },
+  {
+   "id": 51,
+   "name": "Comoros",
+   "iso2": "KM",
+   "areas": [
+    51
+   ],
+   "taxa": 15,
+   "records": 17
+  },
+  {
+   "id": 52,
+   "name": "Congo",
+   "iso2": "CG",
+   "areas": [
+    52
+   ],
+   "taxa": 45,
+   "records": 45
+  },
+  {
+   "id": 54,
+   "name": "Cook Islands",
+   "iso2": "CK",
+   "areas": [
+    54
+   ],
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "id": 55,
+   "name": "Costa Rica",
+   "iso2": "CR",
+   "areas": [
+    55
+   ],
+   "taxa": 115,
+   "records": 128
+  },
+  {
+   "id": 31725,
+   "name": "Côte d'Ivoire",
+   "iso2": "",
+   "areas": [
+    31725
+   ],
+   "taxa": 32,
+   "records": 32
+  },
+  {
+   "id": 57,
+   "name": "Croatia",
+   "iso2": "HR",
+   "areas": [
+    57
+   ],
+   "taxa": 448,
+   "records": 464
+  },
+  {
+   "id": 58,
+   "name": "Cuba",
+   "iso2": "CU",
+   "areas": [
+    58
+   ],
+   "taxa": 94,
+   "records": 127
+  },
+  {
+   "id": 60,
+   "name": "Cyprus",
+   "iso2": "CY",
+   "areas": [
+    60
+   ],
+   "taxa": 115,
+   "records": 115
+  },
+  {
+   "id": 61,
+   "name": "Czech Republic",
+   "iso2": "CZ",
+   "areas": [
+    31734,
+    61
+   ],
+   "taxa": 356,
+   "records": 405
+  },
+  {
+   "id": 31729,
+   "name": "Democratic Republic of the Congo",
+   "iso2": "",
+   "areas": [
+    31729,
+    32037
+   ],
+   "taxa": 394,
+   "records": 437
+  },
+  {
+   "id": 62,
+   "name": "Denmark",
+   "iso2": "DK",
+   "areas": [
+    62
+   ],
+   "taxa": 320,
+   "records": 320
+  },
+  {
+   "id": 63,
+   "name": "Djibouti",
+   "iso2": "DJ",
+   "areas": [
+    63
+   ],
+   "taxa": 13,
+   "records": 14
+  },
+  {
+   "id": 64,
+   "name": "Dominica",
+   "iso2": "DM",
+   "areas": [
+    64
+   ],
+   "taxa": 9,
+   "records": 9
+  },
+  {
+   "id": 31735,
+   "name": "Dominican Republic",
+   "iso2": "",
+   "areas": [
+    31735,
+    65
+   ],
+   "taxa": 80,
+   "records": 107
+  },
+  {
+   "id": 66,
+   "name": "Ecuador",
+   "iso2": "EC",
+   "areas": [
+    66
+   ],
+   "taxa": 122,
+   "records": 127
+  },
+  {
+   "id": 67,
+   "name": "Egypt",
+   "iso2": "EG",
+   "areas": [
+    67
+   ],
+   "taxa": 58,
+   "records": 58
+  },
+  {
+   "id": 68,
+   "name": "El Salvador",
+   "iso2": "SV",
+   "areas": [
+    68
+   ],
+   "taxa": 14,
+   "records": 15
+  },
+  {
+   "id": 31739,
+   "name": "Equatorial Guinea",
+   "iso2": "",
+   "areas": [
+    31739
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 70,
+   "name": "Eritrea",
+   "iso2": "ER",
+   "areas": [
+    70
+   ],
+   "taxa": 24,
+   "records": 24
+  },
+  {
+   "id": 71,
+   "name": "Estonia",
+   "iso2": "EE",
+   "areas": [
+    71
+   ],
+   "taxa": 162,
+   "records": 164
+  },
+  {
+   "id": 72,
+   "name": "Ethiopia",
+   "iso2": "ET",
+   "areas": [
+    72
+   ],
+   "taxa": 159,
+   "records": 169
+  },
+  {
+   "id": 8733,
+   "name": "Falkland Islands",
+   "iso2": "",
+   "areas": [
+    8733
+   ],
+   "taxa": 6,
+   "records": 7
+  },
+  {
+   "id": 74,
+   "name": "Faroe Islands",
+   "iso2": "FO",
+   "areas": [
+    31738,
+    74
+   ],
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "id": 75,
+   "name": "Fiji",
+   "iso2": "FJ",
+   "areas": [
+    75
+   ],
+   "taxa": 136,
+   "records": 162
+  },
+  {
+   "id": 76,
+   "name": "Finland",
+   "iso2": "FI",
+   "areas": [
+    76
+   ],
+   "taxa": 155,
+   "records": 155
+  },
+  {
+   "id": 77,
+   "name": "France",
+   "iso2": "FR",
+   "areas": [
+    77
+   ],
+   "taxa": 933,
+   "records": 968
+  },
+  {
+   "id": 79,
+   "name": "French Polynesia",
+   "iso2": "PF",
+   "areas": [
+    79
+   ],
+   "taxa": 166,
+   "records": 193
+  },
+  {
+   "id": 80,
+   "name": "French Southern Territories",
+   "iso2": "",
+   "areas": [
+    80
+   ],
+   "taxa": 34,
+   "records": 34
+  },
+  {
+   "id": 81,
+   "name": "Gabon",
+   "iso2": "GA",
+   "areas": [
+    81
+   ],
+   "taxa": 72,
+   "records": 72
+  },
+  {
+   "id": 82,
+   "name": "Gambia",
+   "iso2": "GM",
+   "areas": [
+    82
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 83,
+   "name": "Georgia",
+   "iso2": "GE",
+   "areas": [
+    83
+   ],
+   "taxa": 929,
+   "records": 1076
+  },
+  {
+   "id": 84,
+   "name": "Germany",
+   "iso2": "DE",
+   "areas": [
+    84
+   ],
+   "taxa": 647,
+   "records": 1073
+  },
+  {
+   "id": 85,
+   "name": "Ghana",
+   "iso2": "GH",
+   "areas": [
+    85
+   ],
+   "taxa": 8,
+   "records": 8
+  },
+  {
+   "id": 86,
+   "name": "Gibraltar",
+   "iso2": "GI",
+   "areas": [
+    86
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 87,
+   "name": "Greece",
+   "iso2": "GR",
+   "areas": [
+    87
+   ],
+   "taxa": 797,
+   "records": 927
+  },
+  {
+   "id": 88,
+   "name": "Greenland",
+   "iso2": "GL",
+   "areas": [
+    88
+   ],
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "id": 89,
+   "name": "Grenada",
+   "iso2": "GD",
+   "areas": [
+    89
+   ],
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "id": 90,
+   "name": "Guadeloupe",
+   "iso2": "",
+   "areas": [
+    90
+   ],
+   "taxa": 6,
+   "records": 6
+  },
+  {
+   "id": 91,
+   "name": "Guam",
+   "iso2": "GU",
+   "areas": [
+    91
+   ],
+   "taxa": 50,
+   "records": 50
+  },
+  {
+   "id": 92,
+   "name": "Guatemala",
+   "iso2": "GT",
+   "areas": [
+    92
+   ],
+   "taxa": 184,
+   "records": 204
+  },
+  {
+   "id": 93,
+   "name": "Guernsey",
+   "iso2": "GG",
+   "areas": [
+    93
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 94,
+   "name": "Guinea",
+   "iso2": "GN",
+   "areas": [
+    94
+   ],
+   "taxa": 30,
+   "records": 30
+  },
+  {
+   "id": 9490,
+   "name": "Guinea-Bissau",
+   "iso2": "",
+   "areas": [
+    9490
+   ],
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "id": 96,
+   "name": "Guyana",
+   "iso2": "GY",
+   "areas": [
+    96
+   ],
+   "taxa": 11,
+   "records": 11
+  },
+  {
+   "id": 97,
+   "name": "Haiti",
+   "iso2": "HT",
+   "areas": [
+    97
+   ],
+   "taxa": 44,
+   "records": 51
+  },
+  {
+   "id": 9869,
+   "name": "Heard Island and McDonald Islands",
+   "iso2": "",
+   "areas": [
+    9869
+   ],
+   "taxa": 5,
+   "records": 5
+  },
+  {
+   "id": 100,
+   "name": "Honduras",
+   "iso2": "HN",
+   "areas": [
+    100
+   ],
+   "taxa": 43,
+   "records": 46
+  },
+  {
+   "id": 101,
+   "name": "Hong Kong",
+   "iso2": "HK",
+   "areas": [
+    101
+   ],
+   "taxa": 6,
+   "records": 6
+  },
+  {
+   "id": 102,
+   "name": "Hungary",
+   "iso2": "HU",
+   "areas": [
+    102
+   ],
+   "taxa": 1000,
+   "records": 1094
+  },
+  {
+   "id": 103,
+   "name": "Iceland",
+   "iso2": "IS",
+   "areas": [
+    103
+   ],
+   "taxa": 13,
+   "records": 13
+  },
+  {
+   "id": 104,
+   "name": "India",
+   "iso2": "IN",
+   "areas": [
+    104
+   ],
+   "taxa": 728,
+   "records": 1153
+  },
+  {
+   "id": 105,
+   "name": "Indonesia",
+   "iso2": "ID",
+   "areas": [
+    105
+   ],
+   "taxa": 845,
+   "records": 1139
+  },
+  {
+   "id": 9680,
+   "name": "Iran",
+   "iso2": "",
+   "areas": [
+    9680
+   ],
+   "taxa": 303,
+   "records": 319
+  },
+  {
+   "id": 107,
+   "name": "Iraq",
+   "iso2": "IQ",
+   "areas": [
+    107
+   ],
+   "taxa": 38,
+   "records": 41
+  },
+  {
+   "id": 108,
+   "name": "Ireland",
+   "iso2": "IE",
+   "areas": [
+    108
+   ],
+   "taxa": 75,
+   "records": 75
+  },
+  {
+   "id": 110,
+   "name": "Israel",
+   "iso2": "IL",
+   "areas": [
+    110
+   ],
+   "taxa": 97,
+   "records": 102
+  },
+  {
+   "id": 111,
+   "name": "Italy",
+   "iso2": "IT",
+   "areas": [
+    111
+   ],
+   "taxa": 1090,
+   "records": 1162
+  },
+  {
+   "id": 112,
+   "name": "Jamaica",
+   "iso2": "JM",
+   "areas": [
+    112
+   ],
+   "taxa": 18,
+   "records": 24
+  },
+  {
+   "id": 113,
+   "name": "Japan",
+   "iso2": "JP",
+   "areas": [
+    113
+   ],
+   "taxa": 428,
+   "records": 558
+  },
+  {
+   "id": 115,
+   "name": "Jordan",
+   "iso2": "JO",
+   "areas": [
+    115
+   ],
+   "taxa": 27,
+   "records": 27
+  },
+  {
+   "id": 116,
+   "name": "Kazakhstan",
+   "iso2": "KZ",
+   "areas": [
+    116
+   ],
+   "taxa": 597,
+   "records": 640
+  },
+  {
+   "id": 117,
+   "name": "Kenya",
+   "iso2": "KE",
+   "areas": [
+    117
+   ],
+   "taxa": 294,
+   "records": 414
+  },
+  {
+   "id": 118,
+   "name": "Kiribati",
+   "iso2": "KI",
+   "areas": [
+    118
+   ],
+   "taxa": 2,
+   "records": 3
+  },
+  {
+   "id": 122,
+   "name": "Kyrgyzstan",
+   "iso2": "KG",
+   "areas": [
+    122
+   ],
+   "taxa": 187,
+   "records": 189
+  },
+  {
+   "id": 31747,
+   "name": "Laos",
+   "iso2": "",
+   "areas": [
+    31747,
+    13534
+   ],
+   "taxa": 30,
+   "records": 32
+  },
+  {
+   "id": 124,
+   "name": "Latvia",
+   "iso2": "LV",
+   "areas": [
+    124
+   ],
+   "taxa": 181,
+   "records": 181
+  },
+  {
+   "id": 125,
+   "name": "Lebanon",
+   "iso2": "LB",
+   "areas": [
+    125
+   ],
+   "taxa": 84,
+   "records": 91
+  },
+  {
+   "id": 126,
+   "name": "Lesotho",
+   "iso2": "LS",
+   "areas": [
+    126
+   ],
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "id": 127,
+   "name": "Liberia",
+   "iso2": "LR",
+   "areas": [
+    127
+   ],
+   "taxa": 5,
+   "records": 5
+  },
+  {
+   "id": 128,
+   "name": "Libya",
+   "iso2": "LY",
+   "areas": [
+    128
+   ],
+   "taxa": 39,
+   "records": 39
+  },
+  {
+   "id": 129,
+   "name": "Liechtenstein",
+   "iso2": "LI",
+   "areas": [
+    129
+   ],
+   "taxa": 47,
+   "records": 47
+  },
+  {
+   "id": 130,
+   "name": "Lithuania",
+   "iso2": "LT",
+   "areas": [
+    130
+   ],
+   "taxa": 149,
+   "records": 150
+  },
+  {
+   "id": 131,
+   "name": "Luxembourg",
+   "iso2": "LU",
+   "areas": [
+    131
+   ],
+   "taxa": 147,
+   "records": 147
+  },
+  {
+   "id": 132,
+   "name": "Macao",
+   "iso2": "MO",
+   "areas": [
+    132
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 134,
+   "name": "Madagascar",
+   "iso2": "MG",
+   "areas": [
+    134
+   ],
+   "taxa": 538,
+   "records": 540
+  },
+  {
+   "id": 135,
+   "name": "Malawi",
+   "iso2": "MW",
+   "areas": [
+    135
+   ],
+   "taxa": 30,
+   "records": 50
+  },
+  {
+   "id": 136,
+   "name": "Malaysia",
+   "iso2": "MY",
+   "areas": [
+    136
+   ],
+   "taxa": 207,
+   "records": 223
+  },
+  {
+   "id": 137,
+   "name": "Maldives",
+   "iso2": "MV",
+   "areas": [
+    137
+   ],
+   "taxa": 1,
+   "records": 2
+  },
+  {
+   "id": 138,
+   "name": "Mali",
+   "iso2": "ML",
+   "areas": [
+    138
+   ],
+   "taxa": 7,
+   "records": 7
+  },
+  {
+   "id": 139,
+   "name": "Malta",
+   "iso2": "MT",
+   "areas": [
+    139
+   ],
+   "taxa": 133,
+   "records": 133
+  },
+  {
+   "id": 140,
+   "name": "Marshall Islands",
+   "iso2": "MH",
+   "areas": [
+    140
+   ],
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "id": 142,
+   "name": "Mauritania",
+   "iso2": "MR",
+   "areas": [
+    142
+   ],
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "id": 143,
+   "name": "Mauritius",
+   "iso2": "MU",
+   "areas": [
+    143
+   ],
+   "taxa": 60,
+   "records": 60
+  },
+  {
+   "id": 145,
+   "name": "Mexico",
+   "iso2": "MX",
+   "areas": [
+    145
+   ],
+   "taxa": 440,
+   "records": 691
+  },
+  {
+   "id": 16211,
+   "name": "Micronesia",
+   "iso2": "",
+   "areas": [
+    16211
+   ],
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "id": 16215,
+   "name": "Moldova",
+   "iso2": "",
+   "areas": [
+    16215
+   ],
+   "taxa": 344,
+   "records": 365
+  },
+  {
+   "id": 148,
+   "name": "Monaco",
+   "iso2": "MC",
+   "areas": [
+    148
+   ],
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "id": 149,
+   "name": "Mongolia",
+   "iso2": "MN",
+   "areas": [
+    149
+   ],
+   "taxa": 165,
+   "records": 166
+  },
+  {
+   "id": 150,
+   "name": "Montenegro",
+   "iso2": "ME",
+   "areas": [
+    150
+   ],
+   "taxa": 153,
+   "records": 191
+  },
+  {
+   "id": 151,
+   "name": "Montserrat",
+   "iso2": "MS",
+   "areas": [
+    151
+   ],
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "id": 152,
+   "name": "Morocco",
+   "iso2": "MA",
+   "areas": [
+    152
+   ],
+   "taxa": 349,
+   "records": 352
+  },
+  {
+   "id": 153,
+   "name": "Mozambique",
+   "iso2": "MZ",
+   "areas": [
+    153
+   ],
+   "taxa": 85,
+   "records": 89
+  },
+  {
+   "id": 154,
+   "name": "Myanmar",
+   "iso2": "MM",
+   "areas": [
+    154
+   ],
+   "taxa": 246,
+   "records": 254
+  },
+  {
+   "id": 155,
+   "name": "Namibia",
+   "iso2": "NA",
+   "areas": [
+    155
+   ],
+   "taxa": 83,
+   "records": 96
+  },
+  {
+   "id": 157,
+   "name": "Nepal",
+   "iso2": "NP",
+   "areas": [
+    157
+   ],
+   "taxa": 55,
+   "records": 56
+  },
+  {
+   "id": 158,
+   "name": "Netherlands",
+   "iso2": "NL",
+   "areas": [
+    158
+   ],
+   "taxa": 502,
+   "records": 508
+  },
+  {
+   "id": 159,
+   "name": "New Caledonia",
+   "iso2": "NC",
+   "areas": [
+    159
+   ],
+   "taxa": 112,
+   "records": 116
+  },
+  {
+   "id": 160,
+   "name": "New Zealand",
+   "iso2": "NZ",
+   "areas": [
+    160
+   ],
+   "taxa": 565,
+   "records": 768
+  },
+  {
+   "id": 161,
+   "name": "Nicaragua",
+   "iso2": "NI",
+   "areas": [
+    161
+   ],
+   "taxa": 37,
+   "records": 39
+  },
+  {
+   "id": 162,
+   "name": "Niger",
+   "iso2": "NE",
+   "areas": [
+    162
+   ],
+   "taxa": 7,
+   "records": 7
+  },
+  {
+   "id": 163,
+   "name": "Nigeria",
+   "iso2": "NG",
+   "areas": [
+    163
+   ],
+   "taxa": 36,
+   "records": 38
+  },
+  {
+   "id": 164,
+   "name": "Niue",
+   "iso2": "NU",
+   "areas": [
+    164
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 31753,
+   "name": "North Korea",
+   "iso2": "",
+   "areas": [
+    31753
+   ],
+   "taxa": 40,
+   "records": 40
+  },
+  {
+   "id": 13812,
+   "name": "North Macedonia",
+   "iso2": "",
+   "areas": [
+    13812
+   ],
+   "taxa": 202,
+   "records": 211
+  },
+  {
+   "id": 167,
+   "name": "Norway",
+   "iso2": "NO",
+   "areas": [
+    167
+   ],
+   "taxa": 467,
+   "records": 488
+  },
+  {
+   "id": 168,
+   "name": "Oman",
+   "iso2": "OM",
+   "areas": [
+    168
+   ],
+   "taxa": 9,
+   "records": 16
+  },
+  {
+   "id": 169,
+   "name": "Pakistan",
+   "iso2": "PK",
+   "areas": [
+    169
+   ],
+   "taxa": 96,
+   "records": 111
+  },
+  {
+   "id": 170,
+   "name": "Palau",
+   "iso2": "PW",
+   "areas": [
+    170
+   ],
+   "taxa": 10,
+   "records": 10
+  },
+  {
+   "id": 172,
+   "name": "Panama",
+   "iso2": "PA",
+   "areas": [
+    172
+   ],
+   "taxa": 111,
+   "records": 116
+  },
+  {
+   "id": 173,
+   "name": "Papua New Guinea",
+   "iso2": "PG",
+   "areas": [
+    173
+   ],
+   "taxa": 676,
+   "records": 886
+  },
+  {
+   "id": 174,
+   "name": "Paraguay",
+   "iso2": "PY",
+   "areas": [
+    174
+   ],
+   "taxa": 115,
+   "records": 124
+  },
+  {
+   "id": 175,
+   "name": "Peru",
+   "iso2": "PE",
+   "areas": [
+    175
+   ],
+   "taxa": 144,
+   "records": 150
+  },
+  {
+   "id": 176,
+   "name": "Philippines",
+   "iso2": "PH",
+   "areas": [
+    176
+   ],
+   "taxa": 977,
+   "records": 1064
+  },
+  {
+   "id": 19328,
+   "name": "Pitcairn Islands",
+   "iso2": "",
+   "areas": [
+    19328
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 178,
+   "name": "Poland",
+   "iso2": "PL",
+   "areas": [
+    178
+   ],
+   "taxa": 394,
+   "records": 410
+  },
+  {
+   "id": 179,
+   "name": "Portugal",
+   "iso2": "PT",
+   "areas": [
+    179
+   ],
+   "taxa": 276,
+   "records": 311
+  },
+  {
+   "id": 180,
+   "name": "Puerto Rico",
+   "iso2": "PR",
+   "areas": [
+    180
+   ],
+   "taxa": 31,
+   "records": 90
+  },
+  {
+   "id": 183,
+   "name": "Romania",
+   "iso2": "RO",
+   "areas": [
+    183
+   ],
+   "taxa": 716,
+   "records": 859
+  },
+  {
+   "id": 19713,
+   "name": "Russia",
+   "iso2": "",
+   "areas": [
+    19713
+   ],
+   "taxa": 857,
+   "records": 3372
+  },
+  {
+   "id": 185,
+   "name": "Rwanda",
+   "iso2": "RW",
+   "areas": [
+    185
+   ],
+   "taxa": 40,
+   "records": 45
+  },
+  {
+   "id": 31880,
+   "name": "Saint Barthelemy",
+   "iso2": "",
+   "areas": [
+    31880
+   ],
+   "taxa": 6,
+   "records": 6
+  },
+  {
+   "id": 22648,
+   "name": "Saint Helena",
+   "iso2": "",
+   "areas": [
+    22648
+   ],
+   "taxa": 7,
+   "records": 7
+  },
+  {
+   "id": 188,
+   "name": "Saint Kitts and Nevis",
+   "iso2": "KN",
+   "areas": [
+    31745,
+    188
+   ],
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "id": 189,
+   "name": "Saint Lucia",
+   "iso2": "LC",
+   "areas": [
+    189
+   ],
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "id": 190,
+   "name": "Saint Martin",
+   "iso2": "MF",
+   "areas": [
+    190,
+    32686
+   ],
+   "taxa": 1,
+   "records": 2
+  },
+  {
+   "id": 31771,
+   "name": "Saint Vincent and the Grenadines",
+   "iso2": "",
+   "areas": [
+    31771,
+    22748
+   ],
+   "taxa": 12,
+   "records": 12
+  },
+  {
+   "id": 193,
+   "name": "Samoa",
+   "iso2": "WS",
+   "areas": [
+    193
+   ],
+   "taxa": 69,
+   "records": 86
+  },
+  {
+   "id": 194,
+   "name": "San Marino",
+   "iso2": "SM",
+   "areas": [
+    194
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 31763,
+   "name": "Sao Tome and Principe",
+   "iso2": "",
+   "areas": [
+    31763,
+    195
+   ],
+   "taxa": 6,
+   "records": 11
+  },
+  {
+   "id": 196,
+   "name": "Saudi Arabia",
+   "iso2": "SA",
+   "areas": [
+    196
+   ],
+   "taxa": 25,
+   "records": 44
+  },
+  {
+   "id": 197,
+   "name": "Senegal",
+   "iso2": "SN",
+   "areas": [
+    197
+   ],
+   "taxa": 54,
+   "records": 54
+  },
+  {
+   "id": 198,
+   "name": "Serbia",
+   "iso2": "RS",
+   "areas": [
+    198
+   ],
+   "taxa": 257,
+   "records": 265
+  },
+  {
+   "id": 199,
+   "name": "Seychelles",
+   "iso2": "SC",
+   "areas": [
+    199
+   ],
+   "taxa": 76,
+   "records": 113
+  },
+  {
+   "id": 200,
+   "name": "Sierra Leone",
+   "iso2": "SL",
+   "areas": [
+    200
+   ],
+   "taxa": 16,
+   "records": 16
+  },
+  {
+   "id": 201,
+   "name": "Singapore",
+   "iso2": "SG",
+   "areas": [
+    201
+   ],
+   "taxa": 30,
+   "records": 30
+  },
+  {
+   "id": 203,
+   "name": "Slovakia",
+   "iso2": "SK",
+   "areas": [
+    203
+   ],
+   "taxa": 657,
+   "records": 720
+  },
+  {
+   "id": 204,
+   "name": "Slovenia",
+   "iso2": "SI",
+   "areas": [
+    204
+   ],
+   "taxa": 261,
+   "records": 268
+  },
+  {
+   "id": 31761,
+   "name": "Solomon Islands",
+   "iso2": "",
+   "areas": [
+    31761,
+    205
+   ],
+   "taxa": 30,
+   "records": 37
+  },
+  {
+   "id": 206,
+   "name": "Somalia",
+   "iso2": "SO",
+   "areas": [
+    206
+   ],
+   "taxa": 33,
+   "records": 33
+  },
+  {
+   "id": 31764,
+   "name": "Somaliland",
+   "iso2": "",
+   "areas": [
+    31764
+   ],
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "id": 207,
+   "name": "South Africa",
+   "iso2": "ZA",
+   "areas": [
+    207
+   ],
+   "taxa": 856,
+   "records": 979
+  },
+  {
+   "id": 31746,
+   "name": "South Korea",
+   "iso2": "",
+   "areas": [
+    31746,
+    19720
+   ],
+   "taxa": 90,
+   "records": 91
+  },
+  {
+   "id": 31759,
+   "name": "South Sudan",
+   "iso2": "",
+   "areas": [
+    31759
+   ],
+   "taxa": 10,
+   "records": 10
+  },
+  {
+   "id": 210,
+   "name": "Spain",
+   "iso2": "",
+   "areas": [
+    210
+   ],
+   "taxa": 1034,
+   "records": 1139
+  },
+  {
+   "id": 211,
+   "name": "Sri Lanka",
+   "iso2": "LK",
+   "areas": [
+    211
+   ],
+   "taxa": 87,
+   "records": 88
+  },
+  {
+   "id": 212,
+   "name": "Sudan",
+   "iso2": "SD",
+   "areas": [
+    212
+   ],
+   "taxa": 18,
+   "records": 18
+  },
+  {
+   "id": 213,
+   "name": "Suriname",
+   "iso2": "SR",
+   "areas": [
+    213
+   ],
+   "taxa": 8,
+   "records": 8
+  },
+  {
+   "id": 216,
+   "name": "Sweden",
+   "iso2": "SE",
+   "areas": [
+    216
+   ],
+   "taxa": 228,
+   "records": 228
+  },
+  {
+   "id": 217,
+   "name": "Switzerland",
+   "iso2": "CH",
+   "areas": [
+    217
+   ],
+   "taxa": 325,
+   "records": 329
+  },
+  {
+   "id": 24651,
+   "name": "Syria",
+   "iso2": "",
+   "areas": [
+    24651
+   ],
+   "taxa": 497,
+   "records": 497
+  },
+  {
+   "id": 24726,
+   "name": "Taiwan",
+   "iso2": "",
+   "areas": [
+    24726
+   ],
+   "taxa": 76,
+   "records": 81
+  },
+  {
+   "id": 220,
+   "name": "Tajikistan",
+   "iso2": "TJ",
+   "areas": [
+    220
+   ],
+   "taxa": 159,
+   "records": 161
+  },
+  {
+   "id": 31770,
+   "name": "Tanzania",
+   "iso2": "",
+   "areas": [
+    31770,
+    33318
+   ],
+   "taxa": 404,
+   "records": 720
+  },
+  {
+   "id": 222,
+   "name": "Thailand",
+   "iso2": "TH",
+   "areas": [
+    222
+   ],
+   "taxa": 35,
+   "records": 37
+  },
+  {
+   "id": 31768,
+   "name": "Timor-Leste",
+   "iso2": "",
+   "areas": [
+    31768
+   ],
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "id": 224,
+   "name": "Togo",
+   "iso2": "TG",
+   "areas": [
+    224
+   ],
+   "taxa": 26,
+   "records": 26
+  },
+  {
+   "id": 226,
+   "name": "Tonga",
+   "iso2": "TO",
+   "areas": [
+    226
+   ],
+   "taxa": 10,
+   "records": 12
+  },
+  {
+   "id": 227,
+   "name": "Trinidad and Tobago",
+   "iso2": "TT",
+   "areas": [
+    227
+   ],
+   "taxa": 9,
+   "records": 9
+  },
+  {
+   "id": 228,
+   "name": "Tunisia",
+   "iso2": "TN",
+   "areas": [
+    228
+   ],
+   "taxa": 141,
+   "records": 142
+  },
+  {
+   "id": 229,
+   "name": "Turkey",
+   "iso2": "TR",
+   "areas": [
+    229
+   ],
+   "taxa": 999,
+   "records": 1134
+  },
+  {
+   "id": 230,
+   "name": "Turkmenistan",
+   "iso2": "TM",
+   "areas": [
+    230
+   ],
+   "taxa": 148,
+   "records": 156
+  },
+  {
+   "id": 231,
+   "name": "Turks and Caicos Islands",
+   "iso2": "",
+   "areas": [
+    231
+   ],
+   "taxa": 2,
+   "records": 4
+  },
+  {
+   "id": 233,
+   "name": "Uganda",
+   "iso2": "UG",
+   "areas": [
+    233
+   ],
+   "taxa": 74,
+   "records": 85
+  },
+  {
+   "id": 234,
+   "name": "Ukraine",
+   "iso2": "UA",
+   "areas": [
+    234
+   ],
+   "taxa": 1415,
+   "records": 18319
+  },
+  {
+   "id": 235,
+   "name": "United Arab Emirates",
+   "iso2": "AE",
+   "areas": [
+    235
+   ],
+   "taxa": 17,
+   "records": 33
+  },
+  {
+   "id": 236,
+   "name": "United Kingdom",
+   "iso2": "GB",
+   "areas": [
+    236
+   ],
+   "taxa": 337,
+   "records": 344
+  },
+  {
+   "id": 237,
+   "name": "United States",
+   "iso2": "US",
+   "areas": [
+    237,
+    33412
+   ],
+   "taxa": 1228,
+   "records": 4081
+  },
+  {
+   "id": 238,
+   "name": "United States Minor Outlying Islands",
+   "iso2": "",
+   "areas": [
+    238
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 239,
+   "name": "Uruguay",
+   "iso2": "UY",
+   "areas": [
+    239
+   ],
+   "taxa": 49,
+   "records": 51
+  },
+  {
+   "id": 240,
+   "name": "Uzbekistan",
+   "iso2": "UZ",
+   "areas": [
+    240
+   ],
+   "taxa": 213,
+   "records": 217
+  },
+  {
+   "id": 241,
+   "name": "Vanuatu",
+   "iso2": "VU",
+   "areas": [
+    241
+   ],
+   "taxa": 55,
+   "records": 61
+  },
+  {
+   "id": 26375,
+   "name": "Venezuela",
+   "iso2": "",
+   "areas": [
+    26375
+   ],
+   "taxa": 184,
+   "records": 202
+  },
+  {
+   "id": 243,
+   "name": "Vietnam",
+   "iso2": "VN",
+   "areas": [
+    31774,
+    243
+   ],
+   "taxa": 74,
+   "records": 75
+  },
+  {
+   "id": 31773,
+   "name": "Virgin Islands, U.S.",
+   "iso2": "",
+   "areas": [
+    31773,
+    245
+   ],
+   "taxa": 62,
+   "records": 66
+  },
+  {
+   "id": 247,
+   "name": "Western Sahara",
+   "iso2": "",
+   "areas": [
+    247
+   ],
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "id": 248,
+   "name": "Yemen",
+   "iso2": "YE",
+   "areas": [
+    248
+   ],
+   "taxa": 15,
+   "records": 34
+  },
+  {
+   "id": 249,
+   "name": "Zambia",
+   "iso2": "ZM",
+   "areas": [
+    249
+   ],
+   "taxa": 36,
+   "records": 36
+  },
+  {
+   "id": 250,
+   "name": "Zimbabwe",
+   "iso2": "ZW",
+   "areas": [
+    250
+   ],
+   "taxa": 91,
+   "records": 99
+  }
+ ],
+ "unplaced": {
+  "records": 5809,
+  "taxa": 2171
+ }
+}

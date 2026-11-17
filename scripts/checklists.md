@@ -41,7 +41,11 @@ script for how records are placed in countries. In short:
 The build also writes `public/checklists/overview.html` (served at
 `/taxa/checklists/overview.html` on the fork): for every checklist its
 TaxonWorks country areas, map outline, split-off parts, and every place its
-records come from with the rule that placed them; then everything left out.
+records come from with the rule that placed them; then everything left out,
+by reason. It is a debugging page like curator mode: areas, gazetteers,
+the distribution filter of an area, every listed record's editor and its
+OTU link into TaxonWorks (URL builders from `panels/_shared/curatorMode/`).
+Up to 30 records per row of a checklist, all left-out records.
 
 ## Map
 

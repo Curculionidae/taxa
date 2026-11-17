@@ -96,6 +96,12 @@ function parseTsv(text) {
 
 const normalize = (name) => String(name || '').trim().toLocaleLowerCase()
 
+// TaxonWorks links for overview.html, the same builders curator mode uses on
+// the site (panels/_shared/curatorMode/).
+globalThis.__APP_ENV__ = { url: BASE }
+const { twEditUrl, twOtuUrl, twRecordUrl } = await import('../panels/_shared/curatorMode/curatorMode.js')
+const TW_BASE = BASE.replace(/\/api\/v1\/?$/, '')
+
 // 1. Every DwC occurrence, in one request.
 console.log('Downloading /dwc_occurrences.csv …')
 const rows = parseTsv(await (await request('/dwc_occurrences.csv')).text())
@@ -333,18 +339,42 @@ const unplacedSources = new Map()
 function sourceOf(row, ad) {
   if (ad) {
     const shape = ad.asserted_distribution_shape
-    return { place: shape?.name || `(area ${ad.asserted_distribution_shape_id})`, kind: `${ad.asserted_distribution_shape_type} ${ad.asserted_distribution_shape_id}` }
+    return {
+      place: shape?.name || `(area ${ad.asserted_distribution_shape_id})`,
+      kind: `${ad.asserted_distribution_shape_type} ${ad.asserted_distribution_shape_id}`,
+      shapeType: ad.asserted_distribution_shape_type,
+      shapeId: ad.asserted_distribution_shape_id
+    }
   }
   const kind = row.dwc_occurrence_object_type === 'FieldOccurrence' ? 'Field occurrence' : 'Collection object'
   return { place: row.country ? `${row.country}${row.stateProvince ? `: ${row.stateProvince}` : ''}` : '(no DwC country)', kind }
 }
 
+const SAMPLES = 30 // records listed per row of the overview
 function tally(map, source, rule, row) {
   const key = `${source.kind}|${source.place}|${rule}`
-  if (!map.has(key)) map.set(key, { ...source, rule, records: 0, taxa: new Set() })
+  if (!map.has(key)) map.set(key, { ...source, rule, records: 0, taxa: new Set(), samples: [] })
   const entry = map.get(key)
   entry.records++
   entry.taxa.add(taxonKey(row))
+  // Every left-out record is listed (it is the to-do list); elsewhere a sample.
+  if (map === unplacedSources || entry.samples.length < SAMPLES) {
+    entry.samples.push({
+      type: row.dwc_occurrence_object_type,
+      id: row.dwc_occurrence_object_id,
+      otu: row.otu_id,
+      name: row.scientificName,
+      note: row.dwc_occurrence_object_type === 'AssertedDistribution' ? '' : [row.verbatimLocality, row.decimalLatitude && `${row.decimalLatitude}, ${row.decimalLongitude}`].filter(Boolean).join('; ')
+    })
+  }
+}
+
+// Why a record no rule placed has no country (for the overview).
+function unplacedReason(row, ad) {
+  if (ad) return 'area has no country'
+  if (row.decimalLatitude) return 'coordinates, no area on the collecting event'
+  if (row.verbatimLocality) return 'locality text only, no area on the collecting event'
+  return 'no locality at all'
 }
 
 function countryOf(row) {
@@ -384,7 +414,7 @@ for (const row of rows) {
   if (!id) {
     unplaced.records++
     unplaced.taxa.add(taxonKey(row))
-    tally(unplacedSources, source, '', row)
+    tally(unplacedSources, ad ? source : { place: '(no DwC country)', kind: row.dwc_occurrence_object_type }, unplacedReason(row, ad), row)
     continue
   }
 
@@ -463,15 +493,33 @@ console.log('overview written to public/checklists/overview.html')
 function overviewHtml() {
   const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   const num = (value) => value.toLocaleString('en-US')
+  const link = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`
+  const recordUrl = (sample) => ({
+    AssertedDistribution: twEditUrl.assertedDistribution,
+    CollectionObject: twEditUrl.collectionObject,
+    FieldOccurrence: twEditUrl.fieldOccurrence
+  })[sample.type]?.(sample.id)
+  const SHORT = { AssertedDistribution: 'AD', CollectionObject: 'CO', FieldOccurrence: 'FO' }
+  const sourceCell = (entry) => {
+    if (!entry.shapeId) return esc(entry.kind)
+    const page = entry.shapeType === 'Gazetteer' ? `/gazetteers/${entry.shapeId}` : `/geographic_areas/${entry.shapeId}`
+    const filter = `${TW_BASE}/tasks/asserted_distributions/filter?geo_shape_id[]=${entry.shapeId}&geo_shape_type[]=${entry.shapeType}`
+    return `${link(twRecordUrl(page), entry.kind)}<br><span class="soft">${link(filter, 'its distributions')}</span>`
+  }
+  const samplesCell = (entry) => {
+    const items = entry.samples.map((sample) => `<li>${link(recordUrl(sample), `${SHORT[sample.type] || sample.type} ${sample.id}`)} ${sample.otu ? link(twOtuUrl(sample.otu), sample.name) : esc(sample.name)}${sample.note ? ` <span class="soft">${esc(sample.note)}</span>` : ''}</li>`).join('')
+    const more = entry.records > entry.samples.length ? `<li class="soft">and ${num(entry.records - entry.samples.length)} more</li>` : ''
+    return `<details class="rec"><summary>${num(entry.records)}</summary><ul>${items}${more}</ul></details>`
+  }
   const rows = (map) => [...map.values()]
     .sort((a, b) => b.records - a.records || a.place.localeCompare(b.place))
-    .map((entry) => `<tr><td>${esc(entry.place)}</td><td>${esc(entry.kind)}</td><td>${esc(entry.rule)}</td><td class="n">${num(entry.records)}</td><td class="n">${num(entry.taxa.size)}</td></tr>`)
+    .map((entry) => `<tr><td>${esc(entry.place)}</td><td>${sourceCell(entry)}</td><td>${esc(entry.rule)}</td><td class="n">${samplesCell(entry)}</td><td class="n">${num(entry.taxa.size)}</td></tr>`)
     .join('')
   const table = (map, ruleHeader = 'Placed by') => `<div class="scroll"><table><thead><tr><th>Place</th><th>Source</th><th>${ruleHeader}</th><th class="n">Records</th><th class="n">Taxa</th></tr></thead><tbody>${rows(map)}</tbody></table></div>`
   const areaName = (areaId) => countries.get(areaId)?.name || ''
   const sections = index.map((country) => {
     const entry = checklistOf.get(country.id)
-    const areas = country.areas.map((areaId) => `${esc(areaName(areaId) || country.name)} (GeographicArea ${areaId})`).join(', ') || 'none'
+    const areas = country.areas.map((areaId) => `${esc(areaName(areaId) || country.name)} (${link(twRecordUrl(`/geographic_areas/${areaId}`), `GeographicArea ${areaId}`)})`).join(', ') || 'none'
     const outline = country.shape ? `${esc(country.shape)} from the shape cache` : fallback.has(country.name) ? 'Natural Earth fallback' : 'none, not on the map'
     const split = SEPARATE.filter((area) => area.of === country.name).map((area) => esc(area.name))
     const splitFrom = entry.separate ? `<li>Filed under ${esc(entry.separate.of)} in TaxonWorks; own checklist by area, ISO code ${esc(entry.separate.iso2)}, name or coordinates</li>` : ''
@@ -502,6 +550,10 @@ table { border-collapse:collapse; width:100%; font-size:13.5px }
 th, td { text-align:left; padding:5px 10px 5px 0; border-bottom:1px solid var(--line); vertical-align:top }
 th { color:var(--soft); font-weight:500 } .n { text-align:right; font-variant-numeric:tabular-nums }
 .rules { display:grid; gap:6px; padding-left:1.2em }
+a { color:var(--accent) } .soft { color:var(--soft) }
+details.rec summary { padding:0; display:inline; font-variant-numeric:tabular-nums; color:var(--accent) }
+details.rec ul { text-align:left; margin:6px 0 4px; padding-left:1.1em; min-width:22rem; font-size:12.5px; display:grid; gap:2px }
+details.rec[open] summary { border:0 }
 </style></head><body><main>
 <h1>Checklist sources</h1>
 <p class="soft">Built ${esc(new Date().toISOString().slice(0, 10))} by <code>scripts/build-checklists.mjs</code> together with the cache it documents. ${num(index.length)} checklists, ${num(unplaced.records)} records of ${num(unplaced.taxa.size)} taxa left out.</p>
@@ -518,8 +570,9 @@ th { color:var(--soft); font-weight:500 } .n { text-align:right; font-variant-nu
 <h2>Checklists</h2>
 ${sections}
 <h2 id="left-out">Left out</h2>
-<p class="soft">Records no rule places in a country, by place.</p>
-${table(unplacedSources, 'Reason').replace(/<td><\/td><td class="n">/g, '<td>no country found</td><td class="n">')}
+<p class="soft">Records no rule places in a country, by place and reason. Collection objects get a DwC country only from the geographic area of their collecting event; "locality text only" and "coordinates" can be fixed by giving the collecting event an area in TaxonWorks.</p>
+<p class="soft">Links open TaxonWorks (login needed): area and gazetteer pages, the asserted distribution filter for an area, the editor of each record (AD asserted distribution, CO collection object, FO field occurrence) and the OTU. Up to ${SAMPLES} records are listed per row of a checklist, every record under Left out.</p>
+${table(unplacedSources, 'Reason')}
 </main></body></html>
 `
 }

@@ -27,14 +27,17 @@
 // records. Field occurrences come without classification in the DwC export,
 // so their classification is taken from the OTU's parents.
 
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const PER = 500
 const PARALLEL = 6
 const OUT_DIR = fileURLToPath(new URL('../public/checklists/', import.meta.url))
 const COUNTRY_DIR = `${OUT_DIR}countries/`
+const SHAPE_DIR = fileURLToPath(new URL('../public/map-shapes/', import.meta.url))
+const FALLBACK_FILE = `${OUT_DIR}fallback-shapes.geojson`
+// ISO codes of countries whose TaxonWorks area has none (for the flag).
+const EXTRA_ISO = JSON.parse(readFileSync(new URL('./data/country-iso.json', import.meta.url), 'utf8'))
 const SUPERFAMILY = 'Curculionoidea'
 const RANKS = new Set(['species', 'subspecies'])
 
@@ -179,6 +182,44 @@ const checklistOf = new Map() // level0 id -> merged entry
 for (const entry of merged.values()) for (const id of entry.ids) checklistOf.set(id, entry)
 console.log(`${countries.size} country areas, ${merged.size} countries`)
 
+// Overseas parts TaxonWorks files under a country (French Guiana is a
+// subdivision of France there) get a checklist of their own, and their parts
+// are cut out of the country's outline on the map. A record goes to one when
+// its area, place or province names it, or its coordinates fall in the box.
+// The page groups them under their country (ASSOCIATED_AREAS_BY_SOVEREIGN).
+const SEPARATE = [
+  { name: 'French Guiana', iso2: 'GF', of: 'France', match: /french guiana|guyane/i, box: [-55, 1.8, -51, 6.2] },
+  { name: 'Guadeloupe', iso2: 'GP', of: 'France', match: /guadeloupe|\bglp-/i, box: [-62, 15.7, -60.8, 16.6] },
+  { name: 'Martinique', iso2: 'MQ', of: 'France', match: /martinique|\bmrt-/i, box: [-61.3, 14.3, -60.7, 15] },
+  { name: 'Réunion', iso2: 'RE', of: 'France', match: /r[ée]union|\breu-/i, box: [55.1, -21.5, 56, -20.8] },
+  { name: 'Mayotte', iso2: 'YT', of: 'France', match: /mayotte|\bmay-/i, box: [44.9, -13.1, 45.4, -12.5] }
+]
+const subdivisionIdByName = new Map() // level1 name -> level1 id (shape)
+for (const ad of distributions.values()) {
+  const shape = ad.asserted_distribution_shape
+  if (shape?.level1_id && shape.id === shape.level1_id) subdivisionIdByName.set(normalize(shape.name), shape.level1_id)
+}
+for (const area of SEPARATE) {
+  const key = normalize(area.name)
+  const level1 = [...subdivisionIdByName].find(([name]) => area.match.test(name))?.[1]
+  if (!merged.has(key)) merged.set(key, { id: level1 || area.iso2, name: area.name, iso2: area.iso2, ids: level1 ? [level1] : [] })
+  const entry = merged.get(key)
+  Object.assign(entry, { name: area.name, iso2: area.iso2, separate: area })
+  if (level1 && !entry.ids.includes(level1)) entry.ids.push(level1)
+  checklistOf.set(entry.id, entry)
+  for (const id of entry.ids) checklistOf.set(id, entry)
+}
+const separateOf = (checklist, row, place, region) => {
+  const text = [region, place, row.stateProvince, row.county].filter(Boolean).join(' | ')
+  const lat = Number.parseFloat(row.decimalLatitude)
+  const lng = Number.parseFloat(row.decimalLongitude)
+  const area = SEPARATE.find(({ of, match, box }) => of === checklist.name && (
+    match.test(text) ||
+    (Number.isFinite(lat) && Number.isFinite(lng) && lng >= box[0] && lat >= box[1] && lng <= box[2] && lat <= box[3])
+  ))
+  return area ? merged.get(normalize(area.name)) : checklist
+}
+
 // 4. Classification of OTUs the DwC export leaves without one (field
 // occurrences): from the OTU's parents, by name endings.
 const RANK_ENDINGS = [
@@ -249,7 +290,7 @@ for (const row of rows) {
     const value = classification[key]
     if (value !== '' && value != null) record[key] = value
   }
-  const checklist = checklistOf.get(id)
+  const checklist = separateOf(checklistOf.get(id), row, ad?.asserted_distribution_shape?.name, region)
   record.country = checklist.name
   if (region) record.region = region
   if (ad) {
@@ -269,7 +310,16 @@ const index = []
 for (const [id, records] of byCountry) {
   const { name, iso2, ids } = checklistOf.get(id)
   writeFileSync(`${COUNTRY_DIR}${id}.json`, JSON.stringify(records))
-  index.push({ id, name, iso2, areas: ids, taxa: new Set(records.map((record) => record.otu_id)).size, records: records.length })
+  // The map draws the country from the species map's shape cache
+  // (public/map-shapes/, npm run map-shapes).
+  const shapeId = ids.find((area) => existsSync(`${SHAPE_DIR}GeographicArea/${area}.json`))
+  // The country's outline without the parts that have a checklist of their own.
+  const exclude = SEPARATE.filter((area) => area.of === name).map((area) => area.box)
+  index.push({
+    id, name, iso2: iso2 || EXTRA_ISO[name] || '', areas: ids,
+    shape: shapeId ? `GeographicArea/${shapeId}` : null,
+    ...(exclude.length ? { exclude } : {}),
+    taxa: new Set(records.map((record) => record.otu_id)).size, records: records.length })
 }
 index.sort((a, b) => a.name.localeCompare(b.name))
 writeFileSync(`${OUT_DIR}index.json`, JSON.stringify({
@@ -279,4 +329,11 @@ writeFileSync(`${OUT_DIR}index.json`, JSON.stringify({
 }, null, 1))
 
 console.log(`${index.length} countries written, ${readdirSync(COUNTRY_DIR).length} files`)
+
+// A country no record uses directly (only its subdivisions) has no shape in
+// the cache, and TaxonWorks only hands out a shape through a record using it.
+// Those are drawn from fallback-shapes.geojson (Natural Earth outlines).
+const fallback = new Set(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).features.map((feature) => feature.properties.name))
+const withoutShape = index.filter((country) => !country.shape && !fallback.has(country.name))
+if (withoutShape.length) console.log(`not on the map (no cached or fallback shape): ${withoutShape.map((country) => country.name).join(', ')}`)
 console.log(`unplaced: ${unplaced.records} records of ${unplaced.taxa.size} taxa`)

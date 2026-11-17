@@ -221,7 +221,7 @@
               class="text-xs font-medium text-primary-color hover:underline dark:text-secondary-color"
               type="button"
               @click="selectRegion('')"
-            >← All of {{ countryDisplayName(selectedCountry) }}</button>
+            >{{ isAssociatedAreaSelection ? `← ${countryDisplayName(selectedCountry)}` : `← All of ${countryDisplayName(selectedCountry)}` }}</button>
             <div
               v-if="!countryLoading && !countryError && species.length"
               class="flex flex-wrap items-center gap-2"
@@ -537,6 +537,7 @@ const mapLayers = new Map()
 const countriesByKey = ref(new Map())
 const checklistIdByKey = ref(new Map())
 const checklistUpdated = ref('')
+const checklistCountries = ref([])
 // Resolves once index.json is in, so a country opened from the URL on load
 // can look up its file.
 let resolveIndexReady
@@ -737,12 +738,62 @@ function speciesKey(record) {
   return `${String(record.scientificName || '').trim()} ${String(record.scientificNameAuthorship || '').trim()}`.trim().toLocaleLowerCase()
 }
 
+// Country outlines are the TaxonWorks areas themselves, from the species map's
+// shape cache (public/map-shapes/, one file per area). index.json names the
+// cached area of each country; a country no record uses directly (Spain: only
+// its provinces) is not in that cache and comes from fallback-shapes.geojson.
+async function fetchJson(url) {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`${response.status} ${url}`)
+  return response.json()
+}
+
+// Drops the parts of a country's outline that lie in one of its `exclude`
+// boxes (overseas parts with a checklist of their own, e.g. French Guiana).
+function withoutExcludedParts(geometry, boxes) {
+  if (!boxes?.length || geometry?.type !== 'MultiPolygon') return geometry
+  const inBox = (polygon) => {
+    const ring = polygon[0]
+    const lngs = ring.map(([lng]) => lng)
+    const lats = ring.map(([, lat]) => lat)
+    const lng = (Math.min(...lngs) + Math.max(...lngs)) / 2
+    const lat = (Math.min(...lats) + Math.max(...lats)) / 2
+    return boxes.some(([west, south, east, north]) => lng >= west && lng <= east && lat >= south && lat <= north)
+  }
+  return { ...geometry, coordinates: geometry.coordinates.filter((polygon) => !inBox(polygon)) }
+}
+
 async function loadCountryShapes() {
   try {
-    const response = await fetch(`${base_url}data/countries.geojson`, { cache: 'no-cache' })
-    if (!response.ok) throw new Error('Could not load country boundaries.')
-    const data = await response.json()
-    countryGeoJson.value = prepareCountryMapData(data)
+    await indexReady
+    const features = []
+    const queue = [...checklistCountries.value]
+    await Promise.all(Array.from({ length: 12 }, async () => {
+      while (queue.length) {
+        const country = queue.shift()
+        if (!country.shape) continue
+        try {
+          const geometry = await fetchJson(`${base_url}map-shapes/${country.shape}.json`)
+          if (geometry) {
+            features.push({
+              type: 'Feature',
+              properties: { name: country.name, 'ISO3166-1-Alpha-2': country.iso2 },
+              geometry: withoutExcludedParts(geometry, country.exclude)
+            })
+          }
+        } catch {
+          // One missing outline leaves that country off the map, not the map.
+        }
+      }
+    }))
+    const fallback = await fetchJson(`${base_url}checklists/fallback-shapes.geojson`)
+    const isoByName = new Map(checklistCountries.value.map((country) => [country.name, country.iso2]))
+    for (const feature of fallback.features) {
+      if (!isoByName.has(feature.properties.name)) continue
+      features.push({ ...feature, properties: { name: feature.properties.name, 'ISO3166-1-Alpha-2': isoByName.get(feature.properties.name) } })
+    }
+    if (!features.length) throw new Error('No country outlines.')
+    countryGeoJson.value = prepareCountryMapData({ type: 'FeatureCollection', features })
   } catch {
     mapError.value = 'The world map could not be loaded. Use the country list to browse records.'
   }
@@ -759,6 +810,7 @@ async function loadCountryCounts() {
     if (!response.ok) throw new Error('Could not load the checklist index.')
     const index = await response.json()
     checklistUpdated.value = index.updated || ''
+    checklistCountries.value = index.countries
     countriesByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), [country.name]]))
     checklistIdByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), country.id]))
     countryCounts.value = new Map(index.countries.map((country) => [countryKey(country.name), country.taxa]))

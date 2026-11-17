@@ -686,8 +686,12 @@ function countryCode(name) {
   return /^[a-z]{2}$/i.test(code || '') ? code.toLowerCase() : ''
 }
 
+// Host plants recorded as field occurrences (nomenclaturalCode "icn") are not
+// weevils and stay off the checklist.
 function isSpeciesRecord(record) {
-  return /species/i.test(String(record.taxonRank || '')) && Boolean(record.scientificName)
+  return /species/i.test(String(record.taxonRank || ''))
+    && Boolean(record.scientificName)
+    && String(record.nomenclaturalCode || '').toLowerCase() !== 'icn'
 }
 
 function speciesKey(record) {
@@ -1259,6 +1263,9 @@ function bareName(record) {
     : name
 }
 
+const familyByOtu = ref(new Map())
+const familyLookups = new Set()
+
 const species = computed(() => {
   const byTaxon = new Map()
   for (const record of scopedRows.value) {
@@ -1274,7 +1281,13 @@ const species = computed(() => {
         family: String(record.family || '').trim(),
         otuId: Number(record.otu_id) || null
       })
+    } else if (!byTaxon.get(key).family && record.family) {
+      // A FieldOccurrence row comes without family; any other row of the taxon has it.
+      byTaxon.get(key).family = String(record.family).trim()
     }
+  }
+  for (const taxon of byTaxon.values()) {
+    if (!taxon.family && taxon.otuId) taxon.family = familyByOtu.value.get(taxon.otuId) || ''
   }
   // Grouped by family (unplaced taxa last), alphabetical within each family.
   return [...byTaxon.values()].sort((a, b) => (
@@ -1282,6 +1295,36 @@ const species = computed(() => {
     || a.family.localeCompare(b.family)
     || a.name.localeCompare(b.name)
   ))
+})
+
+// TaxonWorks' DwC export leaves the whole classification (family, genus, ...)
+// empty on FieldOccurrence rows, so a taxon known here only from field
+// occurrences has no family. Look those up from the OTU's parents, one
+// request per OTU, only for the taxa still missing one.
+
+function familyFromParents(parents) {
+  const names = Object.keys(parents || {})
+  return names.findLast((name) => /(idae|aceae)$/.test(name)) || ''
+}
+
+async function lookUpMissingFamilies(otuIds) {
+  const pending = otuIds.filter((id) => !familyLookups.has(id))
+  for (const id of pending) familyLookups.add(id)
+  for (let index = 0; index < pending.length; index += 8) {
+    const results = await Promise.all(pending.slice(index, index + 8).map((id) => (
+      makeAPIRequest.get(`/otus/${id}`, { params: { extend: ['parents'] } })
+        .then(({ data }) => [id, familyFromParents(data?.parents)])
+        .catch(() => [id, ''])
+    )))
+    const next = new Map(familyByOtu.value)
+    for (const [id, family] of results) if (family) next.set(id, family)
+    familyByOtu.value = next
+  }
+}
+
+watch(species, (list) => {
+  const missing = list.filter((taxon) => !taxon.family && taxon.otuId).map((taxon) => taxon.otuId)
+  if (missing.length) lookUpMissingFamilies(missing)
 })
 
 const filteredSpecies = computed(() => {

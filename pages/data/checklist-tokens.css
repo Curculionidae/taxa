@@ -1,25 +1,24 @@
 /* Colours for the country checklist map (pages/checklists.vue).
    Plain --pp- custom properties, see CLAUDE.md "Every colour is a theme token".
-   The count ramp runs from the page's slate greys to the site's blue
-   (--tp-secondary, rgb(3, 105, 161)), so the map reads as part of the site;
-   the low end stays grey so it does not melt into the light-blue sea of the
-   tiles. Outlines and the selection reuse --tp-* tokens directly.
+   The count ramp runs from the page's slate greys to the green of the
+   taxon pages' aggregate map (--tp-map-aggregate, rgb(3, 115, 22)), so the
+   two maps read alike. Outlines and the selection reuse --tp-* tokens directly.
    Leaflet needs literal colour strings, so the page reads these with
    getComputedStyle() at style time (cssVar() in checklists.vue). */
 :root {
   --pp-checklist-0: #e2e8f0;  /* slate-200, same as --tp-base-muted */
-  --pp-checklist-1: #c3d3e3;
-  --pp-checklist-2: #8fb4d3;
-  --pp-checklist-3: #4a8bbd;
-  --pp-checklist-4: #0369a1;  /* --tp-secondary */
+  --pp-checklist-1: #c5dcc8;
+  --pp-checklist-2: #8cc095;
+  --pp-checklist-3: #47985a;
+  --pp-checklist-4: #037316;  /* --tp-map-aggregate */
 }
 
 .dark {
   --pp-checklist-0: #303030;  /* --tp-base-muted */
-  --pp-checklist-1: #3d4b5a;
-  --pp-checklist-2: #2f6a93;
-  --pp-checklist-3: #0e8fcf;
-  --pp-checklist-4: #6cc6f3;
+  --pp-checklist-1: #33473a;
+  --pp-checklist-2: #2f6b3c;
+  --pp-checklist-3: #2f9a4a;
+  --pp-checklist-4: #66cf7e;
 }
 
 /* Clicking a country should not leave a browser focus box on the SVG path. */

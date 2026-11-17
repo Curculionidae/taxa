@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - setup
+      - country-checklists
   workflow_dispatch:
 
 concurrency:

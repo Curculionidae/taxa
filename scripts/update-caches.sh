@@ -22,18 +22,25 @@ git pull --rebase --autostash
 
 npm run caches
 
-git add public/map-shapes public/checklists public/images/random components/randomImagePool.json
+CACHES="public/map-shapes public/checklists public/images/random components/randomImagePool.json"
+# shellcheck disable=SC2086
+git add $CACHES
 
-if git diff --cached --quiet; then
+# shellcheck disable=SC2086
+if git diff --cached --quiet -- $CACHES; then
   echo "Caches unchanged, nothing to commit."
   exit 0
 fi
 
-git diff --cached --stat | tail -n 1
-git commit -m "Refresh cached data"
+# shellcheck disable=SC2086
+git diff --cached --stat -- $CACHES | tail -n 1
+# Only the caches, even if other changes are staged.
+# shellcheck disable=SC2086
+git commit -m "Refresh cached data" -- $CACHES
 
 printf "Push to origin now? [y/N] "
-read -r answer
+# No terminal (cron, CI): read fails, answer stays empty, nothing is pushed.
+read -r answer || answer=
 case "$answer" in
   y|Y) git push ;;
   *) echo "Not pushed. Run 'git push' when ready." ;;

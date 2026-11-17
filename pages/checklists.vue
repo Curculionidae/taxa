@@ -118,7 +118,7 @@
           <button
             class="ml-1 font-semibold underline"
             type="button"
-            @click="loadCountryCounts"
+            @click="retryLoading"
           >Retry</button>
         </p>
       </div>
@@ -218,7 +218,7 @@
             </div>
             <button
               v-if="selectedRegion"
-              class="text-xs font-medium text-primary-color hover:underline dark:text-secondary-color"
+              class="text-xs font-medium text-secondary hover:underline"
               type="button"
               @click="selectRegion('')"
             >{{ isAssociatedAreaSelection ? `← ${countryDisplayName(selectedCountry)}` : `← All of ${countryDisplayName(selectedCountry)}` }}</button>
@@ -256,7 +256,7 @@
             <button
               id="country-tab-species"
               class="border-b-2 px-3 py-2 text-sm font-medium"
-              :class="activeCountryTab === 'species' ? 'border-primary-color text-base-content dark:border-secondary-color' : 'border-transparent text-base-content/60 hover:text-base-content'"
+              :class="activeCountryTab === 'species' ? 'border-secondary text-base-content' : 'border-transparent text-base-content/60 hover:text-base-content'"
               type="button"
               role="tab"
               :aria-selected="activeCountryTab === 'species'"
@@ -266,7 +266,7 @@
             <button
               id="country-tab-references"
               class="border-b-2 px-3 py-2 text-sm font-medium"
-              :class="activeCountryTab === 'references' ? 'border-primary-color text-base-content dark:border-secondary-color' : 'border-transparent text-base-content/60 hover:text-base-content'"
+              :class="activeCountryTab === 'references' ? 'border-secondary text-base-content' : 'border-transparent text-base-content/60 hover:text-base-content'"
               type="button"
               role="tab"
               :aria-selected="activeCountryTab === 'references'"
@@ -372,13 +372,13 @@
                       <RouterLink
                         v-if="taxon.otuId"
                         :to="{ name: 'otus-id-overview', params: { id: taxon.otuId } }"
-                        class="font-medium italic text-primary-color hover:underline dark:text-secondary-color"
+                        class="font-medium italic text-secondary hover:underline"
                       >{{ taxon.name }}</RouterLink>
                       <span v-else class="font-medium italic">{{ taxon.name }}</span>
                       <span v-if="taxon.authorship" class="ml-1 text-base-content/75">{{ taxon.authorship }}</span>
                       <button
                         :id="`record-count-${taxon.key}`"
-                        class="ml-1 text-xs text-primary-color hover:underline dark:text-secondary-color"
+                        class="ml-1 text-xs text-secondary hover:underline"
                         type="button"
                         :aria-expanded="expandedTaxonKey === taxon.key"
                         :aria-controls="`record-sources-${taxon.key}`"
@@ -387,7 +387,7 @@
                       <div
                         v-if="expandedTaxonKey === taxon.key"
                         :id="`record-sources-${taxon.key}`"
-                        class="mt-2 border-l-2 border-primary-color/50 pl-3 text-xs text-base-content/75 dark:border-secondary-color/50"
+                        class="mt-2 border-l-2 border-secondary/50 pl-3 text-xs text-base-content/75"
                       >
                         <p
                           v-if="recordEvidenceByTaxon.get(taxon.key)"
@@ -423,7 +423,7 @@
                                   :key="citation.key"
                                 >
                                   <button
-                                    class="text-primary-color hover:underline dark:text-secondary-color"
+                                    class="text-secondary hover:underline"
                                     type="button"
                                     :aria-label="`${source.place ? `${source.place}: ` : ''}${citation.short}; show full citation`"
                                     @click="openCitation(citation, source.place)"
@@ -467,12 +467,12 @@
                   <li
                     v-for="reference in topReferences"
                     :key="reference.full"
-                    class="border-l-2 border-primary-color/60 pl-3 text-sm dark:border-secondary-color/60"
+                    class="border-l-2 border-secondary/60 pl-3 text-sm"
                   >
                     <p class="leading-relaxed">{{ reference.full }}</p>
                     <button
                       :id="`${reference.key}-count`"
-                      class="mt-1 text-xs text-primary-color hover:underline dark:text-secondary-color"
+                      class="mt-1 text-xs text-secondary hover:underline"
                       type="button"
                       :aria-expanded="expandedReferenceKey === reference.key"
                       :aria-controls="`${reference.key}-taxa`"
@@ -491,7 +491,7 @@
                         <RouterLink
                           v-if="taxon.otuId"
                           :to="{ name: 'otus-id-overview', params: { id: taxon.otuId } }"
-                          class="italic text-primary-color hover:underline dark:text-secondary-color"
+                          class="italic text-secondary hover:underline"
                         >{{ taxon.name }}</RouterLink>
                         <span v-else class="italic">{{ taxon.name }}</span>
                         <span v-if="taxon.authorship" class="ml-1 text-base-content/65">{{ taxon.authorship }}</span>
@@ -833,6 +833,7 @@ async function loadCountryShapes() {
   try {
     await indexReady
     const features = []
+    const drawn = new Set()
     const queue = [...checklistCountries.value]
     await Promise.all(Array.from({ length: 12 }, async () => {
       while (queue.length) {
@@ -841,6 +842,7 @@ async function loadCountryShapes() {
         try {
           const geometry = await fetchJson(`${base_url}map-shapes/${country.shape}.json`)
           if (geometry) {
+            drawn.add(country.name)
             features.push({
               type: 'Feature',
               properties: { name: country.name, 'ISO3166-1-Alpha-2': country.iso2 },
@@ -855,7 +857,8 @@ async function loadCountryShapes() {
     const fallback = await fetchJson(`${base_url}checklists/fallback-shapes.geojson`)
     const isoByName = new Map(checklistCountries.value.map((country) => [country.name, country.iso2]))
     for (const feature of fallback.features) {
-      if (!isoByName.has(feature.properties.name)) continue
+      // Only where no cached outline was drawn, so a country is never drawn twice.
+      if (!isoByName.has(feature.properties.name) || drawn.has(feature.properties.name)) continue
       features.push({ ...feature, properties: { name: feature.properties.name, 'ISO3166-1-Alpha-2': isoByName.get(feature.properties.name) } })
     }
     if (!features.length) throw new Error('No country outlines.')
@@ -868,6 +871,18 @@ async function loadCountryShapes() {
 // The checklist data is built ahead of time by scripts/build-checklists.mjs
 // (public/checklists/): index.json lists every country with its taxon count,
 // countries/<id>.json holds one country's records.
+// Retry after index.json failed: the index first, then what waited on it
+// (the world map and a country opened from the URL).
+async function retryLoading() {
+  await loadCountryCounts()
+  if (countsError.value) return
+  if (!countryGeoJson.value) {
+    mapError.value = ''
+    loadCountryShapes()
+  }
+  if (countryError.value && loadedCountry) loadCountry(loadedCountry)
+}
+
 async function loadCountryCounts() {
   countsLoading.value = true
   countsError.value = ''

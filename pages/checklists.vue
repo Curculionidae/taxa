@@ -627,7 +627,13 @@ const citationAccessDate = ref('')
 let countryRequestId = 0
 let pendingCountryScrollY = null
 
+// Name variants mapped to one key. The checklist names come from the build
+// (TaxonWorks names, scripts/build-checklists.mjs ALIASES); the associated-area
+// lists below use Natural Earth names, so a TaxonWorks name that differs needs
+// an entry here to be grouped under its country.
 const countryAliases = {
+  'virgin islands, u.s.': 'united states virgin islands',
+  macao: 'macao s.a.r',
   serbia: 'republic of serbia',
   'faeroe is.': 'faroe islands',
   macedonia: 'north macedonia',
@@ -723,7 +729,7 @@ const ASSOCIATED_AREAS_BY_SOVEREIGN = {
   },
   netherlands: {
     country: 'Netherlands',
-    areas: ['Aruba', 'Bonaire', 'Curaçao', 'Saba', 'Sint Eustatius', 'Sint Maarten']
+    areas: ['Aruba', 'Bonaire', 'Bonaire, Saint Eustatius and Saba', 'Curaçao', 'Saba', 'Sint Eustatius', 'Sint Maarten']
   },
   denmark: {
     country: 'Denmark',

@@ -606,7 +606,9 @@ const REGION_LABELS = {
   australia: 'State or territory',
   china: 'Province or region',
   russia: 'Administrative area',
-  'united kingdom': 'Constituent country'
+  'united kingdom': 'Constituent country',
+  // Parts from the build (index.json `parts`), drawn from cached outlines.
+  france: 'Part'
 }
 const countryLoading = ref(false)
 const countryError = ref('')
@@ -1184,17 +1186,41 @@ const recommendedCitation = computed(() => {
 
 const regionLabel = computed(() => REGION_LABELS[countryKey(selectedCountry.value)] || 'Region')
 
+// A country the build splits into selectable parts (France: Mainland France,
+// Corsica). Its records carry `part`; the outlines are cached TaxonWorks areas.
+const countryParts = computed(() => (
+  checklistCountries.value.find((country) => countryKey(country.name) === countryKey(selectedCountry.value))?.parts || null
+))
+const partFeatures = ref(new Map()) // country key -> features
+
+async function loadPartFeatures(key, parts) {
+  if (partFeatures.value.has(key)) return
+  const features = []
+  for (const part of parts) {
+    if (!part.shape) continue
+    try {
+      const geometry = await fetchJson(`${base_url}map-shapes/${part.shape}.json`)
+      features.push({ type: 'Feature', properties: { name: part.name, country: key }, geometry })
+    } catch {
+      // A part without outline stays selectable from the list.
+    }
+  }
+  partFeatures.value = new Map(partFeatures.value).set(key, features)
+}
+
 const countrySubdivisions = computed(() => {
   const key = countryKey(selectedCountry.value)
+  if (countryParts.value) return partFeatures.value.get(key) || []
   if (!REGION_LABELS[key] || !subdivisionGeoJson.value) return []
   return subdivisionGeoJson.value.features.filter((feature) => countryKey(feature.properties.country) === key)
 })
 
 const subdivisionIndex = computed(() => (
-  countrySubdivisions.value.length ? buildSubdivisionIndex(countrySubdivisions.value) : null
+  !countryParts.value && countrySubdivisions.value.length ? buildSubdivisionIndex(countrySubdivisions.value) : null
 ))
 
 function recordRegion(record) {
+  if (countryParts.value) return record.part || ''
   if (!subdivisionIndex.value) return ''
   const shapeName = distributionPlacesByOccurrence.value.get(String(record.dwc_occurrence_object_id || ''))
   return resolveSubdivision(subdivisionIndex.value, record.stateProvince, shapeName, record.county)
@@ -1277,7 +1303,8 @@ async function updateSubdivisionLayer() {
   subdivisionLayerCountryKey = ''
   if (!REGION_LABELS[country]) return
 
-  await loadSubdivisions()
+  if (countryParts.value) await loadPartFeatures(country, countryParts.value)
+  else await loadSubdivisions()
   if (requestId !== subdivisionLayerRequestId) return
   if (isAssociatedAreaSelection.value) return
   const map = countryMapRef.value?.getMapObject?.()

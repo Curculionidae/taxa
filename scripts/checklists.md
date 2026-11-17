@@ -21,10 +21,18 @@ script for how records are placed in countries. In short:
   without a country.
 - Only Curculionoidea, species and subspecies, present records. One taxon per
   name (several OTUs of a name count once).
-- Duplicate TaxonWorks country areas are merged (`ALIASES`). Overseas parts
-  filed as subdivisions (French Guiana, Guadeloupe, Martinique, Réunion,
-  Mayotte under France) get their own checklist (`SEPARATE`) and are cut out
-  of the country's outline.
+- Duplicate TaxonWorks country areas are merged (`ALIASES`). A gazetteer
+  named after a territory ("TAAF: Île Saint-Paul") goes to that territory
+  before its ISO code is used.
+- French Guiana, Guadeloupe, Martinique, Réunion and Mayotte are filed under
+  France in TaxonWorks but have ISO 3166-1 codes of their own, so they get
+  their own checklists (`SEPARATE`): by their areas (and children), ISO code,
+  name or coordinates. They are cut out of France's outline.
+- Selectable parts (`PARTS`): France's checklist has Mainland France (TDWG
+  "France" 12FRA, whose outline is the mainland only, and France's other
+  subdivisions) and Corsica. Records carry `part`; the page shows parts like
+  states. Records on the political France area or without province count for
+  France only ("no part" in the overview).
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
   about 5% of the rows. The script uses `/dwc_occurrences.csv` (one request).
 

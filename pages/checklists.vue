@@ -586,7 +586,7 @@
 <script setup>
 // Ported from Fleas of the World (https://github.com/jrpletch/fleasoftheworld,
 // pages/checklists.vue at 2afe35c), used with permission. Changes: weevil
-// wording, project-name exports, legend bins for larger counts, map colours
+// wording, project-name exports, colour steps scaled to the counts, map colours
 // as --pp-checklist-* tokens in the aggregate-map green (pages/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
@@ -618,13 +618,37 @@ function shapeOpacity() {
   return Number.isFinite(value) ? value : 0.5
 }
 
-const legend = [
-  { label: '0', max: 0, token: '--pp-checklist-0' },
-  { label: '1–19', max: 19, token: '--pp-checklist-1' },
-  { label: '20–99', max: 99, token: '--pp-checklist-2' },
-  { label: '100–499', max: 499, token: '--pp-checklist-3' },
-  { label: '500+', max: Infinity, token: '--pp-checklist-4' }
-]
+// Colour steps scaled to the highest count on the map under the current
+// filter (all taxa, or e.g. Lixini with at most 58 per country). Bin edges at
+// about 1/16, 1/4 and 9/16 of the maximum, rounded to 1, 2, 3 or 5 times a
+// power of ten: species counts are very skewed, so the steps widen as they
+// rise and the few rich countries do not leave the rest in the palest green.
+// 0 keeps its own colour; the top step is always the darkest.
+function niceNumber(value) {
+  if (value < 1) return 1
+  const power = 10 ** Math.floor(Math.log10(value))
+  const mantissa = value / power
+  return (mantissa < 1.5 ? 1 : mantissa < 2.5 ? 2 : mantissa < 4 ? 3 : mantissa < 7.5 ? 5 : 10) * power
+}
+
+const legend = computed(() => {
+  const highest = Math.max(0, ...countryCounts.value.values())
+  const edges = highest <= 4
+    ? Array.from({ length: Math.max(0, highest - 1) }, (_, index) => index + 1)
+    : [...new Set([1 / 16, 1 / 4, 9 / 16].map((share) => niceNumber(highest * share)))].filter((edge) => edge < highest)
+  const steps = []
+  let from = 1
+  for (const edge of edges) {
+    steps.push({ label: from === edge ? `${edge}` : `${from}–${edge}`, max: edge })
+    from = edge + 1
+  }
+  if (highest >= from) steps.push({ label: from === highest ? `${highest}` : `${from}+`, max: Infinity })
+  const tokens = ['--pp-checklist-1', '--pp-checklist-2', '--pp-checklist-3', '--pp-checklist-4'].slice(-steps.length)
+  return [
+    { label: '0', max: 0, token: '--pp-checklist-0' },
+    ...steps.map((step, index) => ({ ...step, token: tokens[index] }))
+  ]
+})
 
 const countryGeoJson = ref(null)
 const countryMapRef = ref(null)
@@ -1036,7 +1060,8 @@ const mapSelectionName = computed(() => (
 const selectedCountryCount = computed(() => countryCounts.value.get(countryKey(selectedCountry.value)) || 0)
 
 function colorForCount(count) {
-  return cssVar((legend.find((step) => count <= step.max) || legend[legend.length - 1]).token)
+  const steps = legend.value
+  return cssVar((steps.find((step) => count <= step.max) || steps[steps.length - 1]).token)
 }
 
 function countryStyle(feature) {
@@ -1568,7 +1593,10 @@ const countryCounts = computed(() => {
   ]))
 })
 watch(higherTaxonFilter, (filter) => { if (filter) loadTaxaIndex() })
-watch(countryCounts, () => refreshMapStyles())
+watch(countryCounts, () => {
+  refreshMapStyles()
+  restyleSubdivisions()
+})
 
 // The filter is set through the link, so it survives picking a country and
 // can be shared; replaceState, as it is not a new page.

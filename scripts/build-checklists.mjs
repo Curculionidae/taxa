@@ -178,6 +178,64 @@ for (const attribute of reassessmentAttributes) {
 }
 console.log(`${distributionTags.length} distribution tags, ${reassessmentAttributes.length} reassessments`)
 
+// Distributions asserted for a biological association ("egg of Lixus bidens
+// collected from stem of Opopanax", in Greece) are never in TaxonWorks' DwC
+// export. Each becomes a record here for every OTU side of the association
+// (the weevil side survives the Curculionoidea filter, the plant does not),
+// with the name and classification from that OTU's other DwC records, or
+// from TaxonWorks when it has none. `association` keeps the reading.
+const associationDistributions = [...distributions.values()]
+  .filter((ad) => ad.asserted_distribution_object_type === 'BiologicalAssociation')
+const associations = new Map()
+const associationIds = [...new Set(associationDistributions.map((ad) => ad.asserted_distribution_object_id))]
+for (let i = 0; i < associationIds.length; i += 100) {
+  const batch = associationIds.slice(i, i + 100)
+  for (const association of await getOnePage('/biological_associations/basic', batch.map((id) => ['biological_association_id[]', id]))) {
+    associations.set(association.id, association)
+  }
+}
+const rowByOtu = new Map()
+for (const row of rows) if (row.otu_id && row.scientificName && !rowByOtu.has(row.otu_id)) rowByOtu.set(row.otu_id, row)
+const TAXON_FIELDS = ['scientificName', 'scientificNameAuthorship', 'taxonRank', 'kingdom', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus', 'nomenclaturalCode']
+async function otuTaxonRow(otuId) {
+  if (rowByOtu.has(otuId)) return rowByOtu.get(otuId)
+  // Not in the DwC export at all: the OTU's taxon name (classification comes
+  // later from the parents lookup, as for field occurrences).
+  const otu = await (await request(`/otus/${otuId}`)).json()
+  if (!otu.taxon_name_id) return null
+  const name = await (await request(`/taxon_names/${otu.taxon_name_id}`)).json()
+  const row = {
+    otu_id: otuId,
+    scientificName: [name.cached, name.cached_author_year].filter(Boolean).join(' '),
+    scientificNameAuthorship: name.cached_author_year || '',
+    taxonRank: name.rank || ''
+  }
+  rowByOtu.set(otuId, row)
+  return row
+}
+let associationRecords = 0
+for (const ad of associationDistributions) {
+  const association = associations.get(ad.asserted_distribution_object_id)
+  if (!association) continue
+  const reading = [association.subject?.label, association.relationship, association.object?.label].filter(Boolean).join(' ')
+  for (const otuId of new Set([association.subject_otu_id, association.object_otu_id].filter(Boolean).map(String))) {
+    const taxonRow = await otuTaxonRow(otuId)
+    if (!taxonRow) continue
+    rows.push({
+      ...Object.fromEntries(TAXON_FIELDS.map((field) => [field, taxonRow[field] || ''])),
+      otu_id: otuId,
+      dwc_occurrence_object_type: 'AssertedDistribution',
+      dwc_occurrence_object_id: String(ad.id),
+      basisOfRecord: 'MaterialCitation',
+      occurrenceStatus: ad.is_absent ? 'absent' : 'present',
+      country: '',
+      association: reading
+    })
+    associationRecords++
+  }
+}
+console.log(`${associationDistributions.length} association distributions (not in the DwC export): ${associationRecords} records`)
+
 // 3. Countries: id -> name, plus lookups by ISO code and by name.
 const countries = new Map() // level0 id -> { id, name, iso2 }
 const countryByIso = new Map()
@@ -642,6 +700,7 @@ for (const row of rows) {
   const status = [record.reassessed && 'reassessed', record.adventive && 'adventive', record.endemic && 'endemic'].filter(Boolean)
   if (!contributions.has(checklist.id)) contributions.set(checklist.id, new Map())
   tally(contributions.get(checklist.id), source, [PARTS[checklist.name] ? `${rule}; ${part || 'no part'}` : rule, ...status].join('; '), row)
+  if (row.association) record.association = row.association
   if (ad) {
     record.place = ad.asserted_distribution_shape?.name || ''
     record.citations = (ad.citations || [])

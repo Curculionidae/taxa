@@ -2077,7 +2077,10 @@ async function loadCountry(name) {
     for (const record of records) {
       if (record.dwc_occurrence_object_type !== 'AssertedDistribution') continue
       const id = String(record.dwc_occurrence_object_id)
-      if (record.place) places.set(id, record.place)
+      // A distribution asserted for a biological association names it:
+      // "Greece (egg: Lixus bidens collected from stem: Opopanax)".
+      const place = record.association ? `${record.place || record.country} (${plainText(record.association)})` : record.place
+      if (place) places.set(id, place)
       if (record.citations?.length) {
         citations.set(id, record.citations.map((citation) => {
           const short = compactCitation('', citation.full)

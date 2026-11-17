@@ -21,6 +21,10 @@ script for how records are placed in countries. In short:
   coordinates: the one cached country outline containing the point, or the
   nearest within about 5 km (coasts are simplified). The DwC export alone leaves gazetteers and many TDWG areas
   without a country.
+- Distributions asserted for a biological association (e.g. "egg of Lixus
+  bidens collected from stem of Opopanax", in Greece) are not in TaxonWorks'
+  DwC export; the build adds them for each OTU side of the association, with
+  the association's reading shown next to the place.
 - Only Curculionoidea, species and subspecies, present records. One taxon per
   name (several OTUs of a name count once).
 - Duplicate TaxonWorks country areas are merged (`ALIASES`). A gazetteer

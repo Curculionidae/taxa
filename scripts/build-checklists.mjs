@@ -45,8 +45,8 @@ const apiConfig = readFileSync(new URL('../config/api.yml', import.meta.url), 'u
 const BASE = apiConfig.match(/^\s*url:\s*['"]?([^'"\s]+)/m)[1]
 const TOKEN = apiConfig.match(/^\s*project_token:\s*['"]?([^'"\s]+)/m)[1]
 
-// Retries HTTP errors and network failures; after the last try it throws,
-// which stops the build: a half-built cache must never be written.
+// Retries server errors, rate limits and network failures; after the last
+// try it throws. A client error (404, 403) is final and throws at once.
 async function request(path, params = []) {
   const query = new URLSearchParams([['project_token', TOKEN], ...params])
   for (let attempt = 1; ; attempt++) {
@@ -55,7 +55,9 @@ async function request(path, params = []) {
       const response = await fetch(`${BASE}${path}?${query}`)
       if (response.ok) return response
       failure = new Error(`${response.status} ${path}`)
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) throw failure
     } catch (error) {
+      if (error === failure) throw error
       failure = new Error(`${error.message} ${path}`)
     }
     if (attempt === 4) throw failure
@@ -204,31 +206,89 @@ for (const ad of distributions.values()) {
     areaById.set(ad.asserted_distribution_shape.id, ad.asserted_distribution_shape)
   }
 }
-// The areas a test picks, plus their children (TDWG level 4 under level 3,
-// a commune under its department), as far as distributions use them.
+// The areas a test picks (`direct`), plus their children (TDWG level 4 under
+// level 3, a commune under its department), as far as distributions use
+// them. Records are matched against all of them; an outline is only ever
+// taken from a direct one (never a commune drawn as its department).
 function areaIds(test) {
-  const ids = new Set([...areaById.values()].filter(test).map((area) => area.id))
+  const direct = new Set([...areaById.values()].filter(test).map((area) => area.id))
+  const ids = new Set(direct)
   for (let grew = true; grew;) {
     grew = false
     for (const area of areaById.values()) {
       if (!ids.has(area.id) && ids.has(area.parent_id)) { ids.add(area.id); grew = true }
     }
   }
+  ids.direct = direct
   return ids
-}
-const inBox = (row, box) => {
-  const lat = Number.parseFloat(row.decimalLatitude)
-  const lng = Number.parseFloat(row.decimalLongitude)
-  return Number.isFinite(lat) && Number.isFinite(lng) && lng >= box[0] && lat >= box[1] && lng <= box[2] && lat <= box[3]
 }
 const cachedArea = (ids) => [...ids].find((id) => existsSync(`${SHAPE_DIR}GeographicArea/${id}.json`))
 
+// Point-in-outline tests against the cached TaxonWorks outlines
+// (public/map-shapes/, the same files the maps draw) or the fallback file.
+const outlineCache = new Map()
+const fallbackShapes = new Map(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).features
+  .map((feature) => [feature.properties.name, feature.geometry]))
+function outline(ids, fallbackName = '') {
+  const id = cachedArea(ids)
+  const key = id ? `GeographicArea/${id}` : `fallback/${fallbackName}`
+  if (!outlineCache.has(key)) {
+    const geometry = id
+      ? JSON.parse(readFileSync(`${SHAPE_DIR}GeographicArea/${id}.json`, 'utf8'))
+      : fallbackShapes.get(fallbackName) || null
+    outlineCache.set(key, geometry && { geometry, box: boundingBox(geometry) })
+  }
+  return outlineCache.get(key)
+}
+function polygonsOf(geometry) {
+  if (geometry?.type === 'Polygon') return [geometry.coordinates]
+  if (geometry?.type === 'MultiPolygon') return geometry.coordinates
+  return []
+}
+function boundingBox(geometry) {
+  const box = [180, 90, -180, -90]
+  for (const polygon of polygonsOf(geometry)) {
+    for (const [lng, lat] of polygon[0]) {
+      box[0] = Math.min(box[0], lng); box[1] = Math.min(box[1], lat)
+      box[2] = Math.max(box[2], lng); box[3] = Math.max(box[3], lat)
+    }
+  }
+  return box
+}
+function inRing(ring, lng, lat) {
+  let inside = false
+  for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+    const [x1, y1] = ring[a]
+    const [x2, y2] = ring[b]
+    if ((y1 > lat) !== (y2 > lat) && lng < ((x2 - x1) * (lat - y1)) / (y2 - y1) + x1) inside = !inside
+  }
+  return inside
+}
+function pointOf(row) {
+  const lat = Number.parseFloat(row.decimalLatitude)
+  const lng = Number.parseFloat(row.decimalLongitude)
+  return Number.isFinite(lat) && Number.isFinite(lng) ? [lng, lat] : null
+}
+function contains(shape, point) {
+  if (!shape || !point) return false
+  const [lng, lat] = point
+  const [west, south, east, north] = shape.box
+  if (lng < west || lng > east || lat < south || lat > north) return false
+  return polygonsOf(shape.geometry).some(([outer, ...holes]) => (
+    inRing(outer, lng, lat) && !holes.some((hole) => inRing(hole, lng, lat))
+  ))
+}
+const inBox = (point, box) => Boolean(point) && point[0] >= box[0] && point[1] >= box[1] && point[0] <= box[2] && point[1] <= box[3]
+
 // Overseas departments TaxonWorks files under France, though each has an
 // ISO 3166-1 code of its own: they get a checklist of their own and are cut
-// out of France's outline. A record goes to one when its area is one of the
-// department's areas (named like it, or a child of one), a gazetteer carries
-// its ISO code, or the record's DwC country, province, place or coordinates
-// name it. The page lists them under France (ASSOCIATED_AREAS_BY_SOVEREIGN).
+// out of France's outline. Any record goes to one when its area is one of the
+// department's areas (named like it, or a child of one) or a gazetteer carries
+// its ISO code. A record placed in France, or placed nowhere, also goes to one
+// when its DwC country, province or place names it, or its coordinates fall
+// in the department's outline (`box` where no outline is cached). Records of
+// other countries are never moved by name or coordinates (Suriname, Amapá).
+// The page lists them under France (ASSOCIATED_AREAS_BY_SOVEREIGN).
 const SEPARATE = [
   { name: 'French Guiana', iso2: 'GF', of: 'France', match: /french guiana|guyane/i, box: [-55, 1.8, -51, 6.2] },
   { name: 'Guadeloupe', iso2: 'GP', of: 'France', match: /guadeloupe|\bglp-/i, box: [-62, 15.7, -60.8, 16.6] },
@@ -239,23 +299,28 @@ const SEPARATE = [
 for (const area of SEPARATE) {
   area.ids = areaIds((shape) => area.match.test(shape.name))
   const key = normalize(area.name)
-  const outline = cachedArea(area.ids)
-  if (!merged.has(key)) merged.set(key, { id: outline || [...area.ids][0] || area.iso2, name: area.name, iso2: area.iso2, ids: [] })
+  const outlineId = cachedArea(area.ids.direct)
+  if (!merged.has(key)) merged.set(key, { id: outlineId || [...area.ids.direct][0] || area.iso2, name: area.name, iso2: area.iso2, ids: [] })
   const entry = merged.get(key)
   Object.assign(entry, { name: area.name, iso2: area.iso2, separate: area })
+  entry.outlineIds = [...entry.ids, ...area.ids.direct]
   for (const id of area.ids) if (!entry.ids.includes(id)) entry.ids.push(id)
   checklistOf.set(entry.id, entry)
   for (const id of entry.ids) checklistOf.set(id, entry)
 }
-function separateOf(row, ad) {
+function separateOf(row, ad, placedChecklist) {
   const shape = ad?.asserted_distribution_shape
   const onArea = ad?.asserted_distribution_shape_type === 'GeographicArea' && shape
+  const loose = !placedChecklist || placedChecklist.separate || SEPARATE.some((area) => area.of === placedChecklist.name)
   const text = [shape?.name, row.country, row.stateProvince, row.county].filter(Boolean).join(' | ')
+  const point = pointOf(row)
   const area = SEPARATE.find((candidate) => (
     (onArea && candidate.ids.has(shape.id)) ||
     shape?.iso_3166_a2?.toUpperCase() === candidate.iso2 ||
-    candidate.match.test(text) ||
-    inBox(row, candidate.box)
+    (loose && (
+      candidate.match.test(text) ||
+      (outline(candidate.ids.direct) ? contains(outline(candidate.ids.direct), point) : inBox(point, candidate.box))
+    ))
   ))
   return area ? merged.get(normalize(area.name)) : null
 }
@@ -263,11 +328,13 @@ function separateOf(row, ad) {
 // Parts of a country that can be selected on their own (the page shows them
 // like states). Their records stay in the country's checklist and carry
 // `part`. A part takes a record whose area is one of its areas, whose
-// province or place names it, or whose coordinates fall in its box; the
-// `rest` part takes every other record placed inside the country (a
-// subdivision area, a specimen with a province). Records on the whole
-// country (France's political area) or without province or coordinates get
-// no part: they count for the country only.
+// province or place names it, or whose coordinates fall in its outline
+// (`box` where none is cached or the point misses the simplified outline).
+// The `rest` part takes every other record placed below the country level:
+// an asserted distribution on any area but the whole country, a specimen
+// with a province or coordinates. Records on the whole country (France's
+// political area) or without province or coordinates count for the country
+// only.
 const PARTS = {
   France: [
     { name: 'Corsica', areas: (shape) => /^cors/i.test(shape.name), match: /\bcors/i, box: [8.4, 41.3, 9.7, 43.1] },
@@ -289,12 +356,60 @@ function partOf(checklist, row, ad) {
   const shape = ad?.asserted_distribution_shape
   const onArea = ad?.asserted_distribution_shape_type === 'GeographicArea' && shape
   const text = [shape?.name, row.stateProvince, row.county].filter(Boolean).join(' | ')
-  const part = parts.find((candidate) => (onArea && candidate.ids.has(shape.id)))
-    || parts.find((candidate) => candidate.match?.test(text) || inBox(row, candidate.box))
+  const point = pointOf(row)
+  const part = parts.find((candidate) => onArea && candidate.ids.has(shape.id))
+    || parts.find((candidate) => candidate.match?.test(text))
+    || parts.find((candidate) => contains(outline(candidate.ids.direct), point))
+    || parts.find((candidate) => inBox(point, candidate.box))
   if (part) return part.name
   const rest = parts.find((candidate) => candidate.rest)
-  const onSubdivision = onArea && shape.level0_id && !checklist.ids.includes(shape.id)
-  return rest && (onSubdivision || (!ad && row.stateProvince)) ? rest.name : ''
+  const belowCountry = ad
+    ? !(onArea && checklist.ids.includes(shape.id))
+    : Boolean(row.stateProvince || point)
+  return rest && belowCountry ? rest.name : ''
+}
+
+// Coordinates of a specimen whose collecting event has no area: the country
+// whose outline contains the point, when exactly one does.
+let countryOutlines = null
+function countryByPoint(point) {
+  countryOutlines ??= [...new Set(merged.values())]
+    .filter((entry) => !entry.separate)
+    .map((entry) => ({ entry, shape: outline(entry.outlineIds || entry.ids, entry.name) }))
+    .filter(({ shape }) => shape)
+  const hits = countryOutlines.filter(({ shape }) => contains(shape, point))
+  if (hits.length) return hits.length === 1 ? { entry: hits[0].entry, rule: 'coordinates' } : 'several'
+  // A coastal point often falls just outside the simplified outline (0.5 km):
+  // the nearest country within NEAR degrees, if no other is nearly as close.
+  const near = countryOutlines
+    .map(({ entry, shape }) => ({ entry, distance: distanceTo(shape, point) }))
+    .filter(({ distance }) => distance <= NEAR)
+    .sort((a, b) => a.distance - b.distance)
+  if (!near.length) return null
+  if (near.length > 1 && near[1].distance - near[0].distance < NEAR / 2) return 'several'
+  return { entry: near[0].entry, rule: 'coordinates, nearest coast' }
+}
+
+const NEAR = 0.05 // degrees, about 5 km
+// Distance in degrees from a point to an outline's edges (only for outlines
+// whose box, widened by NEAR, holds the point).
+function distanceTo(shape, [lng, lat]) {
+  const [west, south, east, north] = shape.box
+  if (lng < west - NEAR || lng > east + NEAR || lat < south - NEAR || lat > north + NEAR) return Infinity
+  let best = Infinity
+  for (const polygon of polygonsOf(shape.geometry)) {
+    for (const ring of polygon) {
+      for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+        const [x1, y1] = ring[b]
+        const [x2, y2] = ring[a]
+        const dx = x2 - x1
+        const dy = y2 - y1
+        const t = dx || dy ? Math.max(0, Math.min(1, ((lng - x1) * dx + (lat - y1) * dy) / (dx * dx + dy * dy))) : 0
+        best = Math.min(best, Math.hypot(lng - (x1 + t * dx), lat - (y1 + t * dy)))
+      }
+    }
+  }
+  return best
 }
 
 // 4. Classification of OTUs the DwC export leaves without one (field
@@ -307,17 +422,24 @@ const missing = [...new Set(rows
   .filter((row) => !row.superfamily && row.otu_id && RANKS.has(row.taxonRank))
   .map((row) => row.otu_id))]
 const parentClassification = new Map()
+const failedLookups = []
 await forEachLimited(missing, PARALLEL, async (otuId) => {
-  // No catch: a failed lookup would silently drop every record of the OTU.
-  const { parents } = await (await request(`/otus/${otuId}`, [['extend[]', 'parents']])).json()
-  const names = Object.keys(parents || {})
-  const classification = {}
-  for (const name of names) {
-    for (const [rank, ending] of RANK_ENDINGS) if (ending.test(name)) classification[rank] = name
+  try {
+    const { parents } = await (await request(`/otus/${otuId}`, [['extend[]', 'parents']])).json()
+    const classification = {}
+    for (const name of Object.keys(parents || {})) {
+      for (const [rank, ending] of RANK_ENDINGS) if (ending.test(name)) classification[rank] = name
+    }
+    parentClassification.set(otuId, classification)
+  } catch (error) {
+    // Not fatal: the OTU's records are listed under Left out in the
+    // overview ("classification lookup failed"), not silently dropped.
+    parentClassification.set(otuId, null)
+    failedLookups.push(`${otuId} (${error.message})`)
   }
-  parentClassification.set(otuId, classification)
 })
-console.log(`${missing.length} OTUs classified from their parents`)
+console.log(`${missing.length - failedLookups.length} OTUs classified from their parents`)
+if (failedLookups.length) console.warn(`classification lookup failed for ${failedLookups.length} OTUs: ${failedLookups.join(', ')}`)
 
 // 5. Assign, filter and write.
 const KEEP = [
@@ -370,9 +492,11 @@ function tally(map, source, rule, row) {
 }
 
 // Why a record no rule placed has no country (for the overview).
-function unplacedReason(row, ad) {
+function unplacedReason(row, ad, byPoint) {
   if (ad) return 'area has no country'
-  if (row.decimalLatitude) return 'coordinates, no area on the collecting event'
+  if (row.country) return `DwC country "${row.country}" matches no checklist (name alias missing)`
+  if (byPoint === 'several') return 'coordinates on the outlines of several countries'
+  if (pointOf(row)) return 'coordinates outside every country outline'
   if (row.verbatimLocality) return 'locality text only, no area on the collecting event'
   return 'no locality at all'
 }
@@ -385,7 +509,8 @@ function countryOf(row) {
     // "TAAF: Île Saint-Paul": a gazetteer named after its territory, which
     // can differ from its ISO code (FR).
     const prefix = shape?.name?.includes(':') ? shape.name.split(':')[0] : ''
-    const prefixed = prefix && countryByName.get(normalize(canonicalName(prefix)))
+    // TaxonWorks spelling first ("Korea"), then the canonical name.
+    const prefixed = prefix && (countryByName.get(normalize(prefix)) || merged.get(normalize(canonicalName(prefix)))?.id)
     if (prefixed) return { ad, id: prefixed, region: '', rule: 'gazetteer name' }
     const iso = shape?.iso_3166_a2?.toUpperCase()
     if (iso && countryByIso.has(iso)) return { ad, id: countryByIso.get(iso), region: '', rule: 'ISO code' }
@@ -399,22 +524,30 @@ function countryOf(row) {
 for (const row of rows) {
   if (!RANKS.has(row.taxonRank) || !row.otu_id) continue
   if (normalize(row.occurrenceStatus) === 'absent') continue
+  const lookupFailed = !row.superfamily && parentClassification.get(row.otu_id) === null
   const classification = row.superfamily ? row : { ...row, ...parentClassification.get(row.otu_id) }
   if (!classification.genus) classification.genus = String(row.scientificName || '').split(' ')[0]
-  if (classification.superfamily !== SUPERFAMILY) continue
+  if (classification.superfamily !== SUPERFAMILY && !lookupFailed) continue
 
   const placed = countryOf(row)
-  const ad = placed.ad || (row.dwc_occurrence_object_type === 'AssertedDistribution' ? distributions.get(String(row.dwc_occurrence_object_id)) : undefined)
+  const { ad } = placed
   if (ad?.is_absent) continue
-  const separate = separateOf(row, ad)
-  const id = separate ? separate.id : placed.id
+  const separate = separateOf(row, ad, placed.id && checklistOf.get(placed.id))
+  let id = separate ? separate.id : placed.id
+  let rule = separate ? `overseas ${separate.iso2}` : placed.rule
+  let byPoint = null
+  if (!id && !ad && pointOf(row)) {
+    byPoint = countryByPoint(pointOf(row))
+    if (byPoint && byPoint !== 'several') { id = byPoint.entry.id; rule = byPoint.rule }
+  }
   const { region } = placed
-  const rule = separate ? `overseas ${separate.iso2}` : placed.rule
   const source = sourceOf(row, ad)
-  if (!id) {
+  if (!id || lookupFailed) {
     unplaced.records++
     unplaced.taxa.add(taxonKey(row))
-    tally(unplacedSources, ad ? source : { place: '(no DwC country)', kind: row.dwc_occurrence_object_type }, unplacedReason(row, ad), row)
+    const kind = row.dwc_occurrence_object_type === 'FieldOccurrence' ? 'Field occurrence' : 'Collection object'
+    const place = ad ? source : { place: row.country || '(no DwC country)', kind }
+    tally(unplacedSources, place, lookupFailed ? 'classification lookup failed' : unplacedReason(row, ad, byPoint), row)
     continue
   }
 
@@ -452,7 +585,8 @@ for (const [id, records] of byCountry) {
   writeFileSync(`${COUNTRY_DIR}${id}.json`, JSON.stringify(records))
   // The map draws the country from the species map's shape cache
   // (public/map-shapes/, npm run map-shapes).
-  const shapeId = ids.find((area) => existsSync(`${SHAPE_DIR}GeographicArea/${area}.json`))
+  const entry = checklistOf.get(id)
+  const shapeId = cachedArea(entry.outlineIds || ids)
   // The country's outline without the parts that have a checklist of their own.
   const exclude = SEPARATE.filter((area) => area.of === name).map((area) => area.box)
   index.push({
@@ -460,10 +594,10 @@ for (const [id, records] of byCountry) {
     shape: shapeId ? `GeographicArea/${shapeId}` : null,
     ...(exclude.length ? { exclude } : {}),
     ...(PARTS[name] ? {
-      parts: PARTS[name].map((part) => ({
-        name: part.name,
-        shape: cachedArea(part.ids) ? `GeographicArea/${cachedArea(part.ids)}` : null
-      }))
+      parts: PARTS[name].map((part) => {
+        const partShape = cachedArea(part.ids.direct)
+        return { name: part.name, shape: partShape ? `GeographicArea/${partShape}` : null }
+      })
     } : {}),
     taxa: new Set(records.map(taxonKey)).size, records: records.length })
 }
@@ -562,9 +696,10 @@ details.rec[open] summary { border:0 }
 <li><b>area country</b>: an asserted distribution whose TaxonWorks area carries a country (<code>level0_id</code>; a subdivision carries its country's).</li>
 <li><b>ISO code</b>: an asserted distribution on a gazetteer, by the gazetteer's ISO 3166 code.</li>
 <li><b>DwC country</b>: the DwC <code>country</code> text matched to a country by name; the only rule for collection objects and field occurrences.</li>
+<li><b>coordinates</b>: a specimen whose collecting event has no area, by the one country outline (cached TaxonWorks shape) that contains its coordinates; <b>coordinates, nearest coast</b>: the point lies just outside every outline (coasts are simplified to about 0.5 km), and one country is within about 5 km.</li>
 <li><b>gazetteer name</b>: a gazetteer named after its territory ("TAAF: Île Saint-Paul"), which can differ from its ISO code.</li>
 <li><b>overseas GF, GP, MQ, RE, YT</b>: an overseas department TaxonWorks files under France, by its areas, ISO code, name or coordinates; it has a checklist of its own.</li>
-<li><b>; part</b>: for a country with selectable parts, the part the record counts for, or "no part".</li>
+<li><b>; part</b>: for a country with selectable parts, the part the record counts for (by area, name, or coordinates in the part's outline), or "no part".</li>
 </ul>
 <p class="soft">Only Curculionoidea at species and subspecies rank, present records. Several TaxonWorks country areas of one country are merged into one checklist.</p>
 <h2>Checklists</h2>

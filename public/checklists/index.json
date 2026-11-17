@@ -330,7 +330,7 @@
    ],
    "shape": "GeographicArea/36",
    "taxa": 632,
-   "records": 677
+   "records": 678
   },
   {
    "id": 37,
@@ -506,8 +506,8 @@
     52
    ],
    "shape": "GeographicArea/52",
-   "taxa": 44,
-   "records": 45
+   "taxa": 45,
+   "records": 47
   },
   {
    "id": 54,
@@ -540,7 +540,7 @@
    ],
    "shape": "GeographicArea/31725",
    "taxa": 32,
-   "records": 32
+   "records": 33
   },
   {
    "id": 57,
@@ -551,7 +551,7 @@
    ],
    "shape": "GeographicArea/57",
    "taxa": 440,
-   "records": 464
+   "records": 466
   },
   {
    "id": 58,
@@ -685,8 +685,8 @@
     31739
    ],
    "shape": "GeographicArea/31739",
-   "taxa": 1,
-   "records": 1
+   "taxa": 2,
+   "records": 2
   },
   {
    "id": 70,
@@ -884,7 +884,7 @@
    ],
    "shape": "GeographicArea/83",
    "taxa": 906,
-   "records": 1076
+   "records": 1084
   },
   {
    "id": 84,
@@ -928,7 +928,7 @@
    ],
    "shape": "GeographicArea/87",
    "taxa": 776,
-   "records": 927
+   "records": 931
   },
   {
    "id": 88,
@@ -1106,7 +1106,7 @@
    ],
    "shape": "GeographicArea/104",
    "taxa": 711,
-   "records": 1153
+   "records": 1158
   },
   {
    "id": 105,
@@ -1172,7 +1172,7 @@
    ],
    "shape": "GeographicArea/111",
    "taxa": 1081,
-   "records": 1162
+   "records": 1166
   },
   {
    "id": 112,
@@ -1227,7 +1227,7 @@
    ],
    "shape": "GeographicArea/117",
    "taxa": 294,
-   "records": 414
+   "records": 417
   },
   {
    "id": 118,
@@ -1370,8 +1370,8 @@
     134
    ],
    "shape": "GeographicArea/134",
-   "taxa": 536,
-   "records": 540
+   "taxa": 537,
+   "records": 541
   },
   {
    "id": 135,
@@ -1701,8 +1701,8 @@
     31753
    ],
    "shape": "GeographicArea/31753",
-   "taxa": 40,
-   "records": 40
+   "taxa": 43,
+   "records": 46
   },
   {
    "id": 13812,
@@ -1713,7 +1713,7 @@
    ],
    "shape": "GeographicArea/13812",
    "taxa": 201,
-   "records": 211
+   "records": 212
   },
   {
    "id": 167,
@@ -1889,7 +1889,7 @@
    ],
    "shape": "GeographicArea/19713",
    "taxa": 831,
-   "records": 3372
+   "records": 3375
   },
   {
    "id": 185,
@@ -2003,7 +2003,7 @@
    ],
    "shape": "GeographicArea/31763",
    "taxa": 6,
-   "records": 11
+   "records": 12
   },
   {
    "id": 196,
@@ -2103,7 +2103,7 @@
    ],
    "shape": "GeographicArea/31761",
    "taxa": 123,
-   "records": 198
+   "records": 201
   },
   {
    "id": 206,
@@ -2170,7 +2170,7 @@
    ],
    "shape": null,
    "taxa": 1035,
-   "records": 1146
+   "records": 1148
   },
   {
    "id": 211,
@@ -2390,8 +2390,8 @@
     234
    ],
    "shape": "GeographicArea/234",
-   "taxa": 1366,
-   "records": 18319
+   "taxa": 1367,
+   "records": 18531
   },
   {
    "id": 235,
@@ -2552,7 +2552,7 @@
   }
  ],
  "unplaced": {
-  "records": 5627,
-  "taxa": 2023
+  "records": 5367,
+  "taxa": 1966
  }
 }

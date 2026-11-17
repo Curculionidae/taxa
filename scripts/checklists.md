@@ -15,9 +15,11 @@ each country's cached outline) and `countries/<id>.json` (that country's
 records, with citations and place names). See the comment at the top of the
 script for how records are placed in countries. In short:
 
-- Asserted distributions by their area's `level0_id`, gazetteers by ISO code,
-  else the DwC `country` text; specimens and field occurrences by DwC
-  `country`. The DwC export alone leaves gazetteers and many TDWG areas
+- Asserted distributions by their area's `level0_id`, gazetteers by the
+  territory in their name ("TAAF: …") or ISO code, else the DwC `country`
+  text; specimens and field occurrences by DwC `country`, else by their
+  coordinates: the one cached country outline containing the point, or the
+  nearest within about 5 km (coasts are simplified). The DwC export alone leaves gazetteers and many TDWG areas
   without a country.
 - Only Curculionoidea, species and subspecies, present records. One taxon per
   name (several OTUs of a name count once).

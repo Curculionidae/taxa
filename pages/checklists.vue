@@ -185,7 +185,7 @@
           <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China, Russia and the United Kingdom, click a state, province or constituent country to narrow it.</span>
         </div>
         <p class="mt-3 text-xs text-base-soft">
-          This feature was adapted from the country checklists of
+          This feature was adapted from
           <a
             href="https://jrpletch.github.io/fleasoftheworld/"
             target="_blank"

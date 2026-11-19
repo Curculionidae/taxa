@@ -1,10 +1,10 @@
-/* Colours for the country checklist map (pages/checklists.vue).
+/* Colours for the country checklist map (pages/checklists/index.vue).
    Plain --pp- custom properties, see CLAUDE.md "Every colour is a theme token".
    The count ramp runs from the page's slate greys to the green of the
    taxon pages' aggregate map (--tp-map-aggregate, rgb(3, 115, 22)), so the
    two maps read alike. Outlines and the selection reuse --tp-* tokens directly.
    Leaflet needs literal colour strings, so the page reads these with
-   getComputedStyle() at style time (cssVar() in checklists.vue). */
+   getComputedStyle() at style time (cssVar() in index.vue). */
 :root {
   --pp-checklist-0: #e2e8f0;  /* slate-200, same as --tp-base-muted */
   --pp-checklist-1: #e3f1e5;

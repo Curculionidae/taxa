@@ -593,14 +593,14 @@
 // Ported from Fleas of the World (https://github.com/jrpletch/fleasoftheworld,
 // pages/checklists.vue at 2afe35c), used with permission. Changes: weevil
 // wording, project-name exports, colour steps scaled to the counts, map colours
-// as --pp-checklist-* tokens in the aggregate-map green (pages/data/checklist-tokens.css).
+// as --pp-checklist-* tokens in the aggregate-map green (pages/checklists/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
-import { ADVENTIVE_CHIP_STYLE } from '../panels/_shared/adventive.js'
-import '../panels/_shared/panel-tokens.css'
+import { ADVENTIVE_CHIP_STYLE } from '../../panels/_shared/adventive.js'
+import '../../panels/_shared/panel-tokens.css'
 import './data/checklist-tokens.css'
 
 const {
@@ -611,7 +611,7 @@ const {
 
 const exportPrefix = projectName.replace(/[^A-Za-z0-9]+/g, '')
 
-// Map colours are --pp-checklist-* tokens (pages/data/checklist-tokens.css).
+// Map colours are --pp-checklist-* tokens (pages/checklists/data/checklist-tokens.css).
 // Leaflet needs literal colour strings, so resolve them when styling.
 function cssVar(name) {
   if (typeof document === 'undefined') return ''
@@ -1398,7 +1398,7 @@ const displayedSpeciesCount = computed(() => {
 async function loadSubdivisions() {
   if (subdivisionGeoJson.value) return
   try {
-    const response = await fetch(`${base_url}data/subdivisions.geojson`)
+    const response = await fetch(`${base_url}checklists/subdivisions.geojson`)
     if (!response.ok) throw new Error('Could not load subdivision boundaries.')
     subdivisionGeoJson.value = prepareSubdivisionMapData(await response.json())
   } catch {

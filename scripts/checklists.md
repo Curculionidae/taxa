@@ -3,8 +3,8 @@
 Adapted, with permission, from the country checklists of Fleas of the World
 Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 
-Files: `pages/checklists.vue` (page), `pages/components/ChecklistMap.vue`
-(Leaflet map), `pages/data/` (map helpers, colour tokens),
+Files: `pages/checklists/index.vue` (page), `pages/checklists/components/ChecklistMap.vue`
+(Leaflet map), `pages/checklists/data/` (map helpers, colour tokens),
 `scripts/build-checklists.mjs` (cache), `public/checklists/` (cache output).
 
 ## Data
@@ -75,7 +75,7 @@ through its provinces) is not in that cache, and TaxonWorks gives out a shape
 only through a record using it, so those come from
 `public/checklists/fallback-shapes.geojson` (Natural Earth). The script lists
 countries that have neither. The state/province drill-down still uses
-`public/data/subdivisions.geojson` (Natural Earth).
+`public/checklists/subdivisions.geojson` (Natural Earth).
 
 ## Updating
 

@@ -1,5 +1,5 @@
 // Builds public/checklists/: the data of the country checklists page
-// (pages/checklists.vue), so a visitor loads one small file per country
+// (pages/checklists/index.vue), so a visitor loads one small file per country
 // instead of paging through the project's 80,000 DwC occurrences.
 //
 //   index.json             updated date, every country with its taxon count

@@ -12,7 +12,11 @@ Files: `pages/checklists/index.vue` (page), `pages/checklists/components/Checkli
 Nothing is fetched from TaxonWorks while browsing. `npm run checklists`
 writes `public/checklists/index.json` (countries, taxon counts, update date,
 each country's cached outline) and `countries/<id>.json` (that country's
-records, with citations and place names). See the comment at the top of the
+records, with citations and place names). Country files are compact
+(`pages/checklists/data/compact.js`): each taxon, record kind and reference
+text once per file, records point to them; the page expands them on load into
+the same records. Only fields the page shows are kept (no collector, date or
+occurrenceID: they were CSV-only and made up most of the size). See the comment at the top of the
 script for how records are placed in countries. In short:
 
 - Asserted distributions by their area's `level0_id`, gazetteers by the

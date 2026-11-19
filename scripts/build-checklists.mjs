@@ -29,6 +29,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { compactChecklist } from '../pages/checklists/data/compact.js'
 
 const PER = 500
 const PARALLEL = 6
@@ -596,8 +597,9 @@ const KEEP = [
   'id', 'dwc_occurrence_object_type', 'dwc_occurrence_object_id', 'otu_id', 'country',
   'stateProvince', 'county', 'municipality', 'verbatimLocality', 'scientificName',
   'scientificNameAuthorship', 'taxonRank', 'basisOfRecord', 'institutionCode',
-  'catalogNumber', 'recordedBy', 'eventDate', 'verbatimEventDate', 'occurrenceID',
-  'associatedReferences', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus'
+  // Only what the page shows: collector, date and occurrenceID were CSV-only
+  // and made up most of the files (occurrenceID UUIDs hardly compress).
+  'catalogNumber', 'associatedReferences', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus'
 ]
 const byCountry = new Map()
 // A taxon is its name: several OTUs of one name count once (as on the page).
@@ -772,7 +774,8 @@ const countsByChecklist = {}
 const index = []
 for (const [id, records] of byCountry) {
   const { name, iso2, ids } = checklistOf.get(id)
-  writeFileSync(`${COUNTRY_DIR}${id}.json`, JSON.stringify(records))
+  // Compact form (pages/checklists/data/compact.js), expanded again by the page.
+  writeFileSync(`${COUNTRY_DIR}${id}.json`, JSON.stringify(compactChecklist(records)))
   // Reassessed records do not count; a taxon known only from them is shown on
   // the page (as reassessed) but counted nowhere.
   const counted = records.filter((record) => !record.reassessed)

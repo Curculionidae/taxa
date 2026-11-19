@@ -597,6 +597,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
+import { expandChecklist } from './data/compact.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
 import { ADVENTIVE_CHIP_STYLE } from '../../panels/_shared/adventive.js'
@@ -1887,12 +1888,9 @@ function countryExportRows() {
         evidenceType: isDistribution ? 'Asserted distribution' : record.dwc_occurrence_object_type === 'FieldOccurrence' ? 'Observation' : 'Specimen',
         institutionCode: record.institutionCode || '',
         catalogNumber: record.catalogNumber || '',
-        recordedBy: record.recordedBy || '',
-        eventDate: record.eventDate || record.verbatimEventDate || '',
         citation: citation.short || '',
         fullReference: citation.full || '',
         otuId: record.otu_id || '',
-        occurrenceId: record.occurrenceID || record.dwc_occurrence_object_id || '',
         status: [record.reassessed && 'reassessed (not counted)', record.adventive && 'adventive', record.endemic && 'endemic'].filter(Boolean).join('; '),
         recommendedCitation: recommendedCitation.value
       })
@@ -1925,7 +1923,7 @@ function downloadCountryCSV() {
   const columns = [
     'family', 'scientificName', 'scientificNameAuthorship', 'taxonRank', 'country', 'stateProvince',
     'county', 'municipality', 'verbatimLocality', 'evidenceType', 'institutionCode',
-    'catalogNumber', 'recordedBy', 'eventDate', 'citation', 'fullReference', 'otuId', 'occurrenceId', 'status', 'recommendedCitation'
+    'catalogNumber', 'citation', 'fullReference', 'otuId', 'status', 'recommendedCitation'
   ]
   const rows = countryExportRows()
   const csv = [columns, ...rows.map((row) => columns.map((column) => row[column]))]
@@ -2232,7 +2230,7 @@ async function loadCountry(name) {
     if (!id) throw new Error('No checklist for this country.')
     const response = await fetch(`${base_url}checklists/countries/${id}.json`)
     if (!response.ok) throw new Error('Could not load the country checklist.')
-    const records = await response.json()
+    const records = expandChecklist(await response.json())
     if (requestId !== countryRequestId) return
     const places = new Map()
     const citations = new Map()

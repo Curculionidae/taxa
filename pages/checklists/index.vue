@@ -13,7 +13,7 @@
     </header>
 
     <div class="container mx-auto box-border min-w-0 px-4 pt-4">
-      <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-wrap items-end gap-3 rounded-lg border border-base-border bg-base-foreground p-4">
         <div class="min-w-[14rem] flex-1 sm:max-w-sm">
           <label class="block text-sm font-semibold" for="distribution-country">
             Country or area
@@ -125,7 +125,7 @@
     </div>
 
     <section class="container mx-auto box-border grid min-w-0 gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(21rem,0.85fr)]">
-      <section aria-label="Weevil species world map" class="min-w-0">
+      <section aria-label="Weevil species world map" class="min-w-0 rounded-lg border border-base-border bg-base-foreground p-3">
         <div class="relative overflow-hidden rounded-lg bg-base-foreground ring-1 ring-base-border/50">
           <ClientOnly>
             <ChecklistMap
@@ -177,7 +177,7 @@
             class="inline-flex items-center gap-1.5"
           >
             <span
-              class="h-3 w-3 rounded-sm ring-1 ring-black/10"
+              class="h-3 w-3 rounded-sm ring-1 ring-base-border"
               :style="{ backgroundColor: `var(${step.token})`, opacity: 'var(--tp-map-shape-opacity, 0.5)' }"
             />
             {{ step.label }}
@@ -195,7 +195,7 @@
         </p>
       </section>
 
-      <aside class="min-w-0">
+      <aside class="min-w-0 rounded-lg border border-base-border bg-base-foreground p-4">
         <div class="mb-4">
           <label class="block text-sm font-semibold" for="taxon-filter">Taxon</label>
           <div class="relative mt-1">
@@ -595,7 +595,7 @@
 // wording, project-name exports, colour steps scaled to the counts, map colours
 // as --pp-checklist-* tokens in the aggregate-map green (pages/checklists/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
 import { expandChecklist } from './data/compact.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
@@ -698,6 +698,12 @@ const countryError = ref('')
 const countryRows = ref([])
 const citationsByOccurrence = ref(new Map())
 const distributionPlacesByOccurrence = ref(new Map())
+// TaxonWorks numbers each record type on its own: CollectionObject 5 and
+// AssertedDistribution 5 are different records. Both maps above are keyed by
+// type and id, so a specimen can never pick up a distribution's place.
+function occurrenceKey(record) {
+  return `${record.dwc_occurrence_object_type}:${record.dwc_occurrence_object_id}`
+}
 const speciesFilter = ref('')
 const CLASSIFICATION_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
 // Sorted by the ranks that get headings: sorting by subtribe too (it has no
@@ -1172,7 +1178,9 @@ function focusMapOnCountry() {
     || mainlandBounds(focusGeometry) || layer?.getBounds?.()
   const bounds = wrappedCountryBounds(layer?.feature, map.getCenter().lng, defaultBounds) || defaultBounds
   if (bounds && (Array.isArray(bounds) || bounds.isValid())) {
-    layer.bringToFront()
+    // No layer when the outline failed to load (network, or a shape the weekly
+    // map-shapes run removed): still zoom to the country's fixed view.
+    layer?.bringToFront()
     focusMapBounds(map, bounds, 8)
   }
 }
@@ -1220,26 +1228,35 @@ function selectCountry(name, region = '') {
     region = name
     name = ASSOCIATED_AREAS_BY_SOVEREIGN[areaParentKey].country
   }
-  const params = new URLSearchParams()
-  if (name) params.set('country', name)
-  if (name && region) params.set('region', region)
+  const query = {}
+  if (name) query.country = name
+  if (name && region) query.region = region
   const taxon = higherTaxonFilter.value ? taxonParam(higherTaxonFilter.value) : taxonNotFound.value ? '' : appliedTaxonParam
-  if (taxon) params.set('taxon', taxon)
-  const query = params.toString() ? `?${params.toString().replace(/\+/g, '%20')}` : ''
+  if (taxon) query.taxon = taxon
   pendingCountryScrollY = window.scrollY
-  window.location.hash = `/checklists${query}`
+  // Through the router, so the link works with and without hash mode.
+  router.push({ path: CHECKLISTS_PATH, query })
 }
 
 function selectRegion(region) {
   selectCountry(selectedCountry.value, region)
 }
 
-function syncCountryFromHash() {
-  const [path, query = ''] = window.location.hash.slice(1).split('?')
-  if (path !== '/checklists') return
-  const params = new URLSearchParams(query)
-  let country = params.get('country') || ''
-  let region = country ? params.get('region') || '' : ''
+// The page's state is its route query (?country=, ?region=, ?taxon=), read
+// from the router: the same in hash mode (#/checklists?…) and without it.
+const CHECKLISTS_PATH = '/checklists'
+const route = useRoute()
+const router = useRouter()
+function queryValue(key) {
+  const value = route.query[key]
+  return String((Array.isArray(value) ? value[0] : value) ?? '')
+}
+
+function syncCountryFromRoute() {
+  // Also runs while the router leaves the page: ignore other routes.
+  if (route.path.replace(/\/+$/, '') !== CHECKLISTS_PATH) return
+  let country = queryValue('country')
+  let region = country ? queryValue('region') : ''
   const areaParentKey = ASSOCIATED_AREA_PARENT_BY_KEY.get(countryKey(country))
   if (areaParentKey) {
     region = country
@@ -1248,7 +1265,7 @@ function syncCountryFromHash() {
   selectedCountry.value = country
   selectedRegion.value = region
   speciesFilter.value = ''
-  const taxonValue = params.get('taxon') || ''
+  const taxonValue = queryValue('taxon')
   if (taxonValue !== appliedTaxonParam) {
     appliedTaxonParam = taxonValue
     taxonNotFound.value = ''
@@ -1346,7 +1363,7 @@ const subdivisionIndex = computed(() => (
 function recordRegion(record) {
   if (countryParts.value) return record.part || ''
   if (!subdivisionIndex.value) return ''
-  const shapeName = distributionPlacesByOccurrence.value.get(String(record.dwc_occurrence_object_id || ''))
+  const shapeName = distributionPlacesByOccurrence.value.get(occurrenceKey(record))
   return resolveSubdivision(subdivisionIndex.value, record.stateProvince, shapeName, record.county)
 }
 
@@ -1637,15 +1654,13 @@ const taxonNotFound = ref('')
 // The filter changes the link through the router (a replace: not a new page),
 // so it survives picking a country, can be shared, and the router and the
 // citation in the downloads see the same address.
-const router = useRouter()
 async function setHigherTaxonFilter(filter) {
   higherTaxonFilter.value = filter
   taxonNotFound.value = ''
   appliedTaxonParam = taxonParam(filter)
-  const params = new URLSearchParams(window.location.hash.split('?')[1] || '')
-  if (filter) params.set('taxon', appliedTaxonParam)
-  else params.delete('taxon')
-  await router.replace({ path: '/checklists', query: Object.fromEntries(params) })
+  const { taxon, ...query } = route.query
+  if (filter) query.taxon = appliedTaxonParam
+  await router.replace({ path: CHECKLISTS_PATH, query })
   checklistCitationUrl.value = window.location.href
 }
 
@@ -1817,8 +1832,7 @@ function compactCitation(citationBody, fullReference) {
 
 function distributionPlace(record) {
   const country = String(record.country || mapSelectionName.value).trim()
-  const assertedDistributionId = String(record.dwc_occurrence_object_id || '')
-  const shapeName = plainText(distributionPlacesByOccurrence.value.get(assertedDistributionId) || '')
+  const shapeName = plainText(distributionPlacesByOccurrence.value.get(occurrenceKey(record)) || '')
   // A distribution asserted for a biological association names it, in the
   // label only (the place stays the lookup key for the region):
   // "Greece (egg: Lixus bidens collected from stem: Opopanax)".
@@ -1855,8 +1869,7 @@ function openCitation(citation, place) {
 
 function citationsForRecord(record) {
   if (record.dwc_occurrence_object_type !== 'AssertedDistribution') return []
-  const occurrenceId = String(record.dwc_occurrence_object_id || record.id || '')
-  const linkedCitations = citationsByOccurrence.value.get(occurrenceId)
+  const linkedCitations = citationsByOccurrence.value.get(occurrenceKey(record))
   if (linkedCitations?.length) return linkedCitations
   return splitReferences(record.associatedReferences).map((full) => ({
     short: compactCitation('', full),
@@ -2144,7 +2157,7 @@ const recordEvidenceByTaxon = computed(() => {
 
     if (record.dwc_occurrence_object_type === 'AssertedDistribution') {
       const occurrenceId = String(record.dwc_occurrence_object_id || record.id || '')
-      const linkedCitations = citationsByOccurrence.value.get(occurrenceId)
+      const linkedCitations = citationsByOccurrence.value.get(occurrenceKey(record))
       if (linkedCitations?.length) {
         for (const citation of linkedCitations) {
           const citationId = citation.id || citation.short || citation.full
@@ -2180,7 +2193,7 @@ const checklistReferences = computed(() => {
     if (!shown.has(speciesKey(record)) || record.reassessed) continue
 
     const citationRefs = isDistribution
-      ? citationsByOccurrence.value.get(String(record.dwc_occurrence_object_id))
+      ? citationsByOccurrence.value.get(occurrenceKey(record))
       : null
     const fullReferences = citationRefs?.length
       ? citationRefs.map((citation) => citation.full)
@@ -2236,7 +2249,7 @@ async function loadCountry(name) {
     const citations = new Map()
     for (const record of records) {
       if (record.dwc_occurrence_object_type !== 'AssertedDistribution') continue
-      const id = String(record.dwc_occurrence_object_id)
+      const id = occurrenceKey(record)
       if (record.place) places.set(id, record.place)
       if (record.citations?.length) {
         citations.set(id, record.citations.map((citation) => {
@@ -2264,21 +2277,21 @@ onMounted(() => {
     restyleSubdivisions()
   })
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-  window.addEventListener('hashchange', syncCountryFromHash)
-  syncCountryFromHash()
+  syncCountryFromRoute()
   loadCountryShapes()
   loadCountryCounts()
 })
 
 onBeforeUnmount(() => {
   themeObserver?.disconnect()
-  window.removeEventListener('hashchange', syncCountryFromHash)
   mapSelectionRequestId += 1
   subdivisionLayerRequestId += 1
   countryMapRef.value?.getMapObject?.()?.stop()
 })
 
 watch([selectedCountry, selectedRegion], syncMapSelection, { flush: 'post' })
+// Picking a country, back/forward and edited links all change the route.
+watch(() => route.fullPath, syncCountryFromRoute)
 
 watch([countryCounts, countsLoading, countsError], refreshCountryTooltips)
 // One restyle per change (a taxon pick changes both counts in one tick).

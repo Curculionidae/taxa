@@ -9,13 +9,6 @@
           Weevil species reported in each country. Counts are distinct species in the occurrence records.
           <template v-if="checklistUpdated">Checklists are compiled from cached data, last updated {{ checklistUpdated }}.</template>
         </p>
-        <RouterLink
-          v-if="isCuratorMode"
-          :to="{ name: 'checklists-curator' }"
-          class="text-sm text-secondary hover:underline"
-        >
-          How records are placed
-        </RouterLink>
       </div>
     </header>
 
@@ -62,6 +55,16 @@
           </svg>
           Distribution data is generally incomplete
         </p>
+
+        <!-- Curator mode only: the same red as "Leave curator mode"
+             (panels/_shared/curatorMode/CuratorModeButton.vue), so it reads as a curator tool. -->
+        <RouterLink
+          v-if="isCuratorMode"
+          :to="{ name: 'checklists-curator' }"
+          class="self-center whitespace-nowrap rounded-md bg-danger px-2.5 py-1 text-xs font-medium text-white hover:bg-danger/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          How records are placed (curator)
+        </RouterLink>
 
         <div v-if="subdivisionOptions.length" class="min-w-[14rem] flex-1 sm:max-w-sm">
           <label class="block text-sm font-semibold" for="distribution-region">

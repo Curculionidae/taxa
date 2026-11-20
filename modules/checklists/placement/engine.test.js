@@ -231,9 +231,20 @@ const geometry = {
   checklistsAt: async ([lng, lat]) => pointsIn.get(`${lng},${lat}`) ?? [],
   stateAt: async (id, [lng, lat]) => statesAt.get(`${id}:${lng},${lat}`) ?? null,
   partAt: async (id, [lng, lat]) => partsAt.get(`${id}:${lng},${lat}`) ?? null,
+  // Names and Natural Earth aliases as Geometry.stateNames gives them.
   stateNames: (id) => ({
-    237: ['Alabama', 'Georgia', 'Hawaii', 'Texas'],
-    19713: ['Krasnoyarsk', 'Moscow Oblast', "Tver'", 'Sakha', 'Chukchi Autonomous Okrug']
+    237: ['Alabama', 'Colorado', 'District of Columbia', 'Georgia', 'Hawaii', 'Oregon', 'Texas', 'Utah', 'Washington']
+      .map((name) => ({ name, aliases: [] })),
+    19713: [
+      { name: 'Krasnoyarsk', aliases: [] },
+      { name: 'Moscow Oblast', aliases: ['Moskovskaya'] },
+      { name: 'Moscow', aliases: ['Moskva', 'Moskovskaya'] },
+      { name: 'Pskov', aliases: ["Pskovskaya Oblast'"] },
+      { name: "Tver'", aliases: [] },
+      // Natural Earth lists Chukot among the aliases of Sakha (Yakutia), as in subdivisions.geojson.
+      { name: 'Sakha (Yakutia)', aliases: ['Sakha Republic', 'Chukot'] },
+      { name: 'Chukchi Autonomous Okrug', aliases: [] }
+    ]
   })[id] ?? []
 }
 const recordShapes = new Set([...shapes, 'GeographicArea/31731', 'GeographicArea/234', 'GeographicArea/81'])
@@ -461,4 +472,86 @@ test('an overlap step names what its share refers to', () => {
   const placement = placeArea(ga(fx.ga33876), ctx)
   assert.equal(placement.steps[0].pct, 100)
   assert.equal(placement.steps[0].pctOf, 'Russia')
+})
+
+// R30: an area's own name is a state only when the area is a state.
+const ignoredRef = refOf('ignored_name_words:')
+
+test('a county named like a state gets the state it lies in, not the state of its name', async () => {
+  for (const [shape, state] of [[fx.ga30398, 'Texas'], [fx.ga29533, 'Utah'], [fx.ga28085, 'Oregon']]) {
+    const placement = await ad(ga(shape))
+    assert.equal(placement.checklist.name, 'United States')
+    assert.equal(placement.state, state, shape.name)
+    assert.deepEqual(placement.steps.at(-1), {
+      text: `${shape.name} is a subdivision of ${state} (GA ${shape.parent_id}), the state ${state}`,
+      source: 'TaxonWorks'
+    })
+  }
+})
+
+test('a gadm state (type Unknown, parent the country) is the state of its own name', async () => {
+  const placement = await ad(ga(fx.ga26370))
+  assert.equal(placement.state, 'Washington')
+  assert.deepEqual(placement.steps.at(-1), { text: 'Washington (GA 26370) is the state Washington', source: 'TaxonWorks' })
+})
+
+test('a stateProvince matched through a Natural Earth alias says so', async () => {
+  const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moskva' }), rctx)
+  assert.equal(placement.state, 'Moscow')
+  assert.deepEqual(placement.steps.at(-1), { text: 'DwC stateProvince Moskva is a Natural Earth name of the state Moscow', source: 'Natural Earth' })
+})
+
+test('a stateProvince matched by ignoring words cites the word list', async () => {
+  const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Krasnoyarsk Krai' }), rctx)
+  assert.equal(placement.state, 'Krasnoyarsk')
+  assert.deepEqual(placement.steps.at(-1), {
+    text: 'DwC stateProvince "Krasnoyarsk Krai" matches the state Krasnoyarsk (ignoring "krai")',
+    source: 'manual',
+    ref: ignoredRef
+  })
+  const both = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Sakha' }), rctx)
+  assert.equal(both.state, 'Sakha (Yakutia)')
+  assert.deepEqual(both.steps.at(-1), {
+    text: 'DwC stateProvince "Sakha" matches Sakha Republic, a Natural Earth name of the state Sakha (Yakutia) (ignoring "republic")',
+    source: 'manual',
+    ref: ignoredRef
+  })
+})
+
+test('an exact stateProvince wins over coordinates and needs no Natural Earth step', async () => {
+  const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moscow Oblast' }), rctx)
+  assert.equal(placement.state, 'Moscow Oblast')
+  assert.equal(placement.steps.at(-1).source, 'TaxonWorks')
+})
+
+test('a state area matched through an alias, and a parent matched by ignoring words', async () => {
+  const moskva = { ...evenk, key: 'GA 900005', id: 900005, name: 'Moskva' }
+  const own = await ad(moskva)
+  assert.equal(own.state, 'Moscow')
+  assert.deepEqual(own.steps.at(-1), { text: 'Moskva (GA 900005) is a Natural Earth name of the state Moscow', source: 'Natural Earth' })
+  const district = { ...evenk, key: 'GA 900006', id: 900006, name: 'Some District', level1: 900007, parentId: 900007, parentName: 'Pskov Oblast', origin: 'gadm', type: 'Raion' }
+  const parent = await ad(district)
+  assert.equal(parent.state, 'Pskov')
+  assert.deepEqual(parent.steps.at(-1), {
+    text: 'Some District is a subdivision of Pskov Oblast (GA 900007), which matches the state Pskov (ignoring "oblast")',
+    source: 'manual',
+    ref: ignoredRef
+  })
+})
+
+test('a TDWG area, which has no levels, is still tried by its own name', async () => {
+  // Placed in Russia by the 14RUC country rule; its name, not the 14RUC state rule, gives the state.
+  const tdwg = { ...ga(fx.ga33876), key: 'GA 900008', id: 900008, name: 'Krasnoyarsk' }
+  const placement = await ad(tdwg)
+  assert.equal(placement.state, 'Krasnoyarsk')
+  assert.deepEqual(placement.steps.at(-1), { text: 'Krasnoyarsk (TDWG 14RUC) is the state Krasnoyarsk', source: 'TaxonWorks' })
+})
+
+test('an area below a county does not take the county name as its state', async () => {
+  // Parent GA 29533 is Washington County, Utah; the state (level1) is GA 26581 Utah.
+  const town = { ...ga(fx.ga29533), key: 'GA 900009', id: 900009, name: 'Some Town', type: 'Town', parentId: 29533, parentName: 'Washington' }
+  const placement = await ad(town)
+  assert.equal(placement.checklist.name, 'United States')
+  assert.equal(placement.state, null)
+  assert.equal(placement.steps.at(-1).text, 'no state: not measured yet')
 })

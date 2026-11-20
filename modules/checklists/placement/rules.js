@@ -13,7 +13,7 @@
 //         silently. Unknown keys are errors, so a typo never disables a rule.
 import { LineCounter, parseDocument, isMap, isSeq, isScalar } from 'yaml'
 
-const SECTIONS = ['checklists', 'synonyms', 'parts', 'manual', 'overlap']
+const SECTIONS = ['checklists', 'synonyms', 'ignored_name_words', 'parts', 'manual', 'overlap']
 const CHECKLIST_KEYS = ['name', 'iso2', 'of', 'areas', 'names', 'box', 'why']
 const PART_KEYS = ['name', 'areas', 'names', 'box', 'rest']
 const RULE_KEYS = ['match', 'subdivision_of', 'synonymous_with', 'not_placeable', 'why', 'measured', 'pct']
@@ -38,6 +38,9 @@ const AREA_KEY = /^G[AZ] \d+$/
  * @property {{ name: string, iso2: string, of?: string, areas: AreaKey[], names: string[],
  *   box?: number[], why: string, ref: string }[]} checklists
  * @property {{ names: string[], ref: string }[]} synonyms  first name is the checklist name
+ * @property {{ words: string[], ref: string|null }} ignoredNameWords  words left out when a
+ *   state name is compared (lower case, as written; ref is the line of the key, null when
+ *   the file has no such list)
  * @property {Object<string, { name: string, areas: AreaKey[], names: string[], box?: number[],
  *   rest?: true, ref: string }[]>} parts  by country name
  * @property {Rule[]} manual   hand-written area rules, win over overlap
@@ -63,7 +66,7 @@ export function compileRules(yamlText, file = 'placement.yml') {
     const error = doc.errors[0]
     fail(error.linePos?.[0]?.line ?? 1, error.message.split('\n')[0])
   }
-  const empty = { checklists: [], synonyms: [], parts: {}, manual: [], overlap: [] }
+  const empty = { checklists: [], synonyms: [], ignoredNameWords: { words: [], ref: null }, parts: {}, manual: [], overlap: [] }
   if (doc.contents == null) return empty
   if (!isMap(doc.contents)) fail(lineOf(doc.contents), 'the file must be a map of sections')
 
@@ -177,6 +180,8 @@ export function compileRules(yamlText, file = 'placement.yml') {
         if (names.length < 2) fail(lineOf(item), 'a synonym entry needs at least two names')
         return { names, ref: ref(item) }
       })
+    } else if (key === 'ignored_name_words') {
+      out.ignoredNameWords = { words: list(section).map((word) => word.toLowerCase()), ref: `${file}:${section.line}` }
     } else {
       if (!isMap(node)) fail(section.line, '"parts" must be a map from country name to a list of parts')
       for (const pair of node.items) {

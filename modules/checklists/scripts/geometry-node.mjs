@@ -16,17 +16,20 @@
 //                     outlines by properties.name, for countries with no cached
 //                     outline (Spain, used in TaxonWorks only through its provinces)
 //   subdivisionsFile  public/checklists/subdivisions.geojson: state and province
-//                     outlines, properties.country and properties.name
+//                     outlines, properties.country, properties.name and
+//                     properties.aliases (other names, from Natural Earth)
 //   checklists        from placement/checklists.js (deriveChecklists)
-//   rules             the compiled rules file (placement/rules.js), for parts
-//                     and for the `of` country of own checklists
+//   rules             the compiled rules file (placement/rules.js), for parts,
+//                     the `of` country of own checklists and synonyms
 // Outputs: a Geometry as engine.js describes it (checklistsAt, stateAt, partAt,
 //   stateNames), plus checklistTargets, stateTargets and areaPolygons for
 //   measuring; measureShares; listShapes.
 //
 // Which outline stands for what
 //   checklist  the first of its areaIds with a cached GeographicArea/<id>.json,
-//              else the fallback outline with the checklist's name, else none
+//              else the fallback outline named like the checklist or one of
+//              its synonyms (rules file `synonyms`, compared with normalizeName:
+//              "Saint Barthelemy" for Saint Barthélemy), else none
 //   part       the first of its GA areas with a cached outline, else its `box`
 //   state      the subdivisions feature with that country and name
 //
@@ -54,6 +57,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeName } from '../placement/areas.js'
+import { findByName } from '../placement/checklists.js'
 
 /** Coastal tolerance in degrees (about 5 km), as in the old build. */
 export const NEAR = 0.05
@@ -136,7 +140,7 @@ export function measureShares(polygons, targets, { near = NEAR } = {}) {
  * @param {string} input.fallbackFile      public/checklists/fallback-shapes.geojson
  * @param {string} input.subdivisionsFile  public/checklists/subdivisions.geojson
  * @param {import('../placement/checklists.js').Checklist[]} input.checklists
- * @param {import('../placement/rules.js').CompiledRules} [input.rules]  parts and `of`
+ * @param {import('../placement/rules.js').CompiledRules} [input.rules]  parts, `of` and synonyms
  * @returns {import('../placement/engine.js').Geometry & {
  *   checklistTargets: () => Target[],
  *   stateTargets: (checklistId: number|string) => Target[],
@@ -171,7 +175,7 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
   const checklistTargets = () => {
     targets ??= checklists.flatMap((checklist) => {
       const id = checklist.areaIds.find((areaId) => readShape(`GeographicArea/${areaId}`))
-      const polygons = id != null ? readShape(`GeographicArea/${id}`) : fallback.get(normalizeName(checklist.name))
+      const polygons = id != null ? readShape(`GeographicArea/${id}`) : findByName(fallback, checklist.name, rules)
       if (!polygons?.length) return []
       const of = ofByName.get(normalizeName(checklist.name))
       return [{ name: checklist.name, id: checklist.id, polygons, ...(of ? { of } : {}) }]
@@ -191,7 +195,7 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
       const list = checklist?.states
         ? subdivisions
           .filter((feature) => normalizeName(feature.properties.country) === normalizeName(checklist.name))
-          .map((feature) => ({ name: feature.properties.name, polygons: polygonsOf(feature.geometry) }))
+          .map((feature) => ({ name: feature.properties.name, aliases: feature.properties.aliases ?? [], polygons: polygonsOf(feature.geometry) }))
         : []
       statesById.set(checklistId, list)
     }
@@ -232,7 +236,7 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
       return parts.find((part) => part.box && inBox(part.box, point))?.name ?? null
     },
     stateNames(checklistId) {
-      return stateTargets(checklistId).map((target) => target.name)
+      return stateTargets(checklistId).map(({ name, aliases }) => ({ name, aliases }))
     },
     checklistTargets,
     stateTargets,

@@ -75,5 +75,6 @@ test('Borneo step tag carries no share', () => {
 test('formatStep: one step as text and source tag', () => {
   assert.equal(formatStep({ text: 'Cayenne is in France (GA 77)', source: 'TaxonWorks' }), 'Cayenne is in France (GA 77) [TaxonWorks]')
   assert.equal(formatStep({ text: 'x', source: 'manual', ref: 'placement.yml:66' }), 'x [manual, placement.yml:66]')
+  assert.equal(formatStep({ text: 'Moskva is a Natural Earth name of the state Moscow', source: 'Natural Earth' }), 'Moskva is a Natural Earth name of the state Moscow [Natural Earth]')
   assert.equal(formatStep({ text: 'y', source: 'overlap', ref: 'placement.yml:9', pct: 100, pctOf: 'Russia' }), 'y [overlap 100% Russia, placement.yml:9]')
 })

@@ -108,17 +108,21 @@ function fixtureDir() {
   write(join(shapeDir, 'Gazetteer', '9.json'), polygon(box(31, 1, 32, 2)))
   const fallbackFile = join(dir, 'fallback.geojson')
   write(fallbackFile, { type: 'FeatureCollection', features: [
-    { type: 'Feature', properties: { name: 'Spain' }, geometry: polygon(box(-10, 0, 0, 10)) }
+    { type: 'Feature', properties: { name: 'Spain' }, geometry: polygon(box(-10, 0, 0, 10)) },
+    // Named by a synonym of the checklist only (rules file `synonyms`).
+    { type: 'Feature', properties: { name: 'St. Barth' }, geometry: polygon(box(-20, 0, -15, 5)) }
   ] })
   const subdivisionsFile = join(dir, 'subdivisions.geojson')
   write(subdivisionsFile, { type: 'FeatureCollection', features: [
-    { type: 'Feature', properties: { name: 'Moscow', country: 'Russia' }, geometry: polygon(box(30, 0, 35, 10)) },
+    { type: 'Feature', properties: { name: 'Moscow', country: 'Russia', aliases: ['Moskva', 'Moscow'] }, geometry: polygon(box(30, 0, 35, 10)) },
     { type: 'Feature', properties: { name: 'Tver', country: 'Russia' }, geometry: polygon(box(35, 0, 40, 10)) }
   ] })
   return { dir, shapeDir, fallbackFile, subdivisionsFile }
 }
 
 const rules = compileRules(`
+synonyms:
+  - [Saint Barthélemy, St. Barth]
 checklists:
   - name: Réunion
     iso2: RE
@@ -137,7 +141,8 @@ const checklists = [
   { id: 4, name: 'Russia', iso2: 'RU', areaIds: [4], states: true },
   { id: 50, name: 'Spain', iso2: 'ES', areaIds: [50], states: false },
   { id: 2, name: 'Réunion', iso2: 'RE', areaIds: [2], states: false },
-  { id: 5, name: 'Suriname', iso2: 'SR', areaIds: [5], states: false }
+  { id: 5, name: 'Suriname', iso2: 'SR', areaIds: [5], states: false },
+  { id: 60, name: 'Saint Barthélemy', iso2: 'BL', areaIds: [60], states: false }
 ]
 
 test('Node geometry: checklistsAt finds the checklist outline, own checklist over its `of` country (R22)', async (t) => {
@@ -147,6 +152,7 @@ test('Node geometry: checklistsAt finds the checklist outline, own checklist ove
   assert.deepEqual(await geometry.checklistsAt([5, 5]), [1])
   assert.deepEqual(await geometry.checklistsAt([21, 1]), [2])
   assert.deepEqual(await geometry.checklistsAt([-5, 5]), [50], 'Spain from the fallback outline')
+  assert.deepEqual(await geometry.checklistsAt([-17, 2]), [60], 'Saint Barthélemy from the fallback outline of its synonym')
   assert.deepEqual(await geometry.checklistsAt([50, 50]), [])
   assert.deepEqual(await geometry.checklistsAt([10.03, 5]), [1], 'a coastal point within 0.05 degrees')
   assert.deepEqual(await geometry.checklistsAt([10.2, 5]), [])
@@ -165,7 +171,7 @@ test('Node geometry: stateAt, stateNames and partAt', async (t) => {
   const fx = fixtureDir()
   t.after(() => rmSync(fx.dir, { recursive: true, force: true }))
   const geometry = createNodeGeometry({ ...fx, checklists, rules })
-  assert.deepEqual(geometry.stateNames(4), ['Moscow', 'Tver'])
+  assert.deepEqual(geometry.stateNames(4), [{ name: 'Moscow', aliases: ['Moskva', 'Moscow'] }, { name: 'Tver', aliases: [] }])
   assert.deepEqual(geometry.stateNames(1), [])
   assert.equal(await geometry.stateAt(4, [31, 5]), 'Moscow')
   assert.equal(await geometry.stateAt(4, [38, 5]), 'Tver')
@@ -183,7 +189,7 @@ test('Node geometry: measuring targets and area outlines', async (t) => {
   const geometry = createNodeGeometry({ ...fx, checklists, rules })
   const targets = geometry.checklistTargets()
   assert.deepEqual(targets.map((target) => [target.name, target.of ?? null]),
-    [['France', null], ['Russia', null], ['Spain', null], ['Réunion', 'France'], ['Suriname', null]])
+    [['France', null], ['Russia', null], ['Spain', null], ['Réunion', 'France'], ['Suriname', null], ['Saint Barthélemy', null]])
   const area = geometry.areaPolygons('GZ', 9)
   assert.deepEqual(measureShares(area, targets).shares, [['Russia', 100]])
   assert.deepEqual(measureShares(area, geometry.stateTargets(4)).shares, [['Moscow', 100]])

@@ -3,25 +3,22 @@
 // Purpose: the one way a state or province name is recognised, shared by the
 // placement engine (engine.js: the state of an asserted distribution from its
 // area's name, the state of a specimen from its DwC stateProvince) and by the
-// public page (ChecklistsPage.vue, the subdivision drill-down). Moved here from
-// data/subdivisions.js with its behaviour unchanged.
+// public page (ChecklistsPage.vue, the subdivision drill-down).
 //
-// Input:  the state names of ONE checklist (GeoJSON features with
-//         `properties.name` and optional `properties.aliases`, or plain names
-//         through stateIndex), and the place text to match.
-// Output: the matching state name as the index spells it, or '' when none.
-// Matching: first the exact name after normalizePlace (accents, case and
-//         punctuation ignored, & read as "and"), then the core name, the name
-//         without generic words such as Oblast, Krai, Province, Republic of
-//         ("Krasnoyarsk Krai" finds Krasnoyarsk, "Republic of Sakha" finds Sakha).
+// Input:  the states of ONE checklist, each with its name and its Natural
+//         Earth aliases (`properties.aliases` in subdivisions.geojson), the
+//         words to ignore (rules file `ignored_name_words`), and the place text.
+// Output: matchSubdivision gives the state and how it matched (through an
+//         alias, after ignoring words); resolveSubdivision only the state name.
+// Matching: first the exact name or alias after normalizePlace (accents, case
+//         and punctuation ignored, & read as "and"), then the core name, the
+//         name or alias without the ignored words ("Krasnoyarsk Krai" finds
+//         Krasnoyarsk when "krai" is ignored). A state's own name wins over
+//         another state's alias, and an exact match over a core match.
 //         Names are only ever compared within one checklist, so the US state
-//         Georgia never meets the country Georgia (R16).
+//         Georgia never meets the country Georgia (R16). This file holds no
+//         word list of its own: the words come from the rules file.
 // Purity: no network, no hidden state; runs in Node and in the browser.
-
-const GENERIC_WORDS = new Set([
-  'province', 'oblast', 'krai', 'kray', 'republic', 'of', 'autonomous', 'region', 'okrug',
-  'state', 'municipality', 'city', 'district', 'territory', 'sheng', 'shi', 'the', 'and', 'county'
-])
 
 /**
  * Normal form of a place name: accents removed, lower case, & as "and", every
@@ -32,52 +29,101 @@ const GENERIC_WORDS = new Set([
 export function normalizePlace(value) {
   return String(value || '')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLocaleLowerCase()
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
 
-function coreName(value) {
-  const core = normalizePlace(value).split(' ').filter((word) => word && !GENERIC_WORDS.has(word)).join(' ')
-  return core
+// The normalized words of a name, split into the core (kept words) and the ignored ones.
+function splitWords(value, ignored) {
+  const words = normalizePlace(value).split(' ').filter(Boolean)
+  return {
+    core: words.filter((word) => !ignored.has(word)).join(' '),
+    dropped: words.filter((word) => ignored.has(word))
+  }
 }
 
 /**
- * @typedef {{ exact: Map<string, string>, core: Map<string, string> }} SubdivisionIndex
- *   normalized name, and core name, to the state name; the first state wins a key
+ * @typedef {{ name: string, alias: string|null, text: string }} IndexHit  the state,
+ *   the Natural Earth alias of the entry (null for the state's own name), and the
+ *   indexed text (name or alias)
+ * @typedef {{ exact: Map<string, IndexHit>, core: Map<string, IndexHit>, ignored: Set<string> }} SubdivisionIndex
+ *   normalized name or alias, and core name, to the state; the first entry wins a
+ *   key; `ignored` holds the normalized words left out of core names
+ * @typedef {{ state: string, candidate: string, alias: string|null, ignored: string[] }} SubdivisionMatch
+ *   the state name, the place text that matched, the alias it matched through
+ *   (null for the state's own name), and the words ignored to match (empty for an
+ *   exact match)
  */
 
 /**
  * Build the lookup of name variants to state names for one checklist.
  * @param {{ properties: { name: string, aliases?: string[] } }[]} features
+ * @param {string[]} [ignoredWords]  words left out of core names (rules file
+ *   `ignored_name_words`); none means exact names and aliases only
  * @returns {SubdivisionIndex}
  */
-export function buildSubdivisionIndex(features) {
+export function buildSubdivisionIndex(features, ignoredWords = []) {
+  const ignored = new Set(ignoredWords.map(normalizePlace).filter(Boolean))
+  const own = []
+  const aliases = []
+  for (const { properties: { name, aliases: list } } of features) {
+    own.push({ name, alias: null, text: name })
+    for (const alias of list || []) aliases.push({ name, alias, text: alias })
+  }
+  // Own names before aliases, so a state's own name wins over another state's alias.
+  const hits = [...own, ...aliases]
   const exact = new Map()
   const core = new Map()
-  const add = (map, key, name) => {
-    if (key && !map.has(key)) map.set(key, name)
+  for (const hit of hits) {
+    const key = normalizePlace(hit.text)
+    if (key && !exact.has(key)) exact.set(key, hit)
   }
-  for (const feature of features) add(exact, normalizePlace(feature.properties.name), feature.properties.name)
-  for (const feature of features) {
-    for (const alias of feature.properties.aliases || []) add(exact, normalizePlace(alias), feature.properties.name)
+  for (const hit of hits) {
+    const key = splitWords(hit.text, ignored).core
+    if (key && !core.has(key)) core.set(key, hit)
   }
-  for (const feature of features) add(core, coreName(feature.properties.name), feature.properties.name)
-  for (const feature of features) {
-    for (const alias of feature.properties.aliases || []) add(core, coreName(alias), feature.properties.name)
-  }
-  return { exact, core }
+  return { exact, core, ignored }
 }
 
 /**
- * The index of plain state names (as Geometry.stateNames gives them).
- * @param {string[]} names
+ * The index of one checklist's states as Geometry.stateNames gives them.
+ * @param {{ name: string, aliases?: string[] }[]} states
+ * @param {string[]} [ignoredWords]  rules file `ignored_name_words`
  * @returns {SubdivisionIndex}
  */
-export function stateIndex(names) {
-  return buildSubdivisionIndex(names.map((name) => ({ properties: { name } })))
+export function stateIndex(states, ignoredWords = []) {
+  return buildSubdivisionIndex(states.map(({ name, aliases }) => ({ properties: { name, aliases: aliases ?? [] } })), ignoredWords)
+}
+
+/**
+ * The state the first matching candidate names, and how it matched.
+ * @param {SubdivisionIndex} index
+ * @param {...string} candidates  place texts, tried in order (empty ones skipped)
+ * @returns {SubdivisionMatch|null}  null when no candidate matches
+ */
+export function matchSubdivision(index, ...candidates) {
+  for (const candidate of candidates) {
+    if (!normalizePlace(candidate)) continue
+    const text = String(candidate).trim()
+    const exact = index.exact.get(normalizePlace(candidate))
+    if (exact) return { state: exact.name, candidate: text, alias: aliasOf(exact), ignored: [] }
+    const { core, dropped } = splitWords(candidate, index.ignored)
+    const hit = index.core.get(core)
+    if (hit) {
+      const ignored = [...new Set([...dropped, ...splitWords(hit.text, index.ignored).dropped])]
+      return { state: hit.name, candidate: text, alias: aliasOf(hit), ignored }
+    }
+  }
+  return null
+}
+
+// The alias of a hit, null when there is none or it is spelled like the state
+// name (Natural Earth lists 'Xinjiang' among the aliases of Xinjiang).
+function aliasOf(hit) {
+  return hit.alias && normalizePlace(hit.alias) !== normalizePlace(hit.name) ? hit.alias : null
 }
 
 /**
@@ -87,11 +133,5 @@ export function stateIndex(names) {
  * @returns {string}  the state name, '' when no candidate matches
  */
 export function resolveSubdivision(index, ...candidates) {
-  for (const candidate of candidates) {
-    const normalized = normalizePlace(candidate)
-    if (!normalized) continue
-    const hit = index.exact.get(normalized) || index.core.get(coreName(candidate))
-    if (hit) return hit
-  }
-  return ''
+  return matchSubdivision(index, ...candidates)?.state ?? ''
 }

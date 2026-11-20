@@ -158,3 +158,40 @@ export function deriveChecklists(areas, rules, level0Names = new Map(), isoByNam
   }
   return { checklists: list, warnings }
 }
+
+/**
+ * Every name of a checklist: its own name, then the other names of the
+ * synonym entries it belongs to (rules file `synonyms`, accent and case
+ * insensitive), each once. Used wherever something is looked up by checklist
+ * name, such as a fallback outline named "Saint Barthelemy" for the checklist
+ * Saint Barthélemy.
+ * @param {string} name  checklist name
+ * @param {import('./rules.js').CompiledRules} rules
+ * @returns {string[]}  the name first
+ */
+export function checklistNames(name, rules) {
+  const wanted = normalizeName(name)
+  const names = [name]
+  for (const entry of rules?.synonyms ?? []) {
+    if (!entry.names.some((other) => normalizeName(other) === wanted)) continue
+    for (const other of entry.names) if (!names.includes(other)) names.push(other)
+  }
+  return names
+}
+
+/**
+ * The value stored under the first name of a checklist (checklistNames) that
+ * a map keyed by normalizeName holds.
+ * @template T
+ * @param {Map<string, T>} byNormalizedName
+ * @param {string} name  checklist name
+ * @param {import('./rules.js').CompiledRules} rules
+ * @returns {T|undefined}
+ */
+export function findByName(byNormalizedName, name, rules) {
+  for (const candidate of checklistNames(name, rules)) {
+    const key = normalizeName(candidate)
+    if (byNormalizedName.has(key)) return byNormalizedName.get(key)
+  }
+  return undefined
+}

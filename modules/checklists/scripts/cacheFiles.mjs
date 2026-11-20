@@ -191,12 +191,19 @@ export function checklistHeader({ key, name, iso2, outline, definedBy, areasUsed
  * One checklist of index.json. `file` is the name of its file in countries/;
  * `of` (own checklists only) names the country TaxonWorks files it under, so
  * the page can cut its outline out of that country's (French Guiana from France).
- * @param {{ key: string, name: string, iso2: string, of?: string, shape: string|null, bbox: number[]|null,
- *   parts?: { name: string, shape: string|null }[], states: boolean, taxa: number, records: number }} input
+ * `fallback` (only when `shape` is null and fallback-shapes.geojson has an
+ * outline for it) is the name of that outline's feature, which may be spelled
+ * like a synonym of the checklist ("Saint Barthelemy" for Saint Barthélemy).
+ * @param {{ key: string, name: string, iso2: string, of?: string, shape: string|null, fallback?: string|null,
+ *   bbox: number[]|null, parts?: { name: string, shape: string|null }[], states: boolean, taxa: number,
+ *   records: number }} input
  * @returns {Object}
  */
-export function indexEntry({ key, name, iso2, of, shape, bbox, parts, states, taxa, records }) {
-  return { key, file: `${key}.json`, name, iso2, ...(of ? { of } : {}), shape, bbox, ...(parts ? { parts } : {}), states, taxa, records }
+export function indexEntry({ key, name, iso2, of, shape, fallback, bbox, parts, states, taxa, records }) {
+  return {
+    key, file: `${key}.json`, name, iso2, ...(of ? { of } : {}), shape, ...(fallback ? { fallback } : {}),
+    bbox, ...(parts ? { parts } : {}), states, taxa, records
+  }
 }
 
 /**

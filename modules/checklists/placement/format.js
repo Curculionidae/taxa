@@ -14,7 +14,8 @@ const KINDS = ['GA', 'GZ', 'AD', 'CO', 'FO']
 const row = (name, text) => `  ${name.padEnd(LABEL_WIDTH)}${text}`
 
 /**
- * The source tag after a step text: `[TaxonWorks]`, `[manual, placement.yml:12]`,
+ * The source tag after a step text: `[TaxonWorks]`, `[Natural Earth]` (a state
+ * matched through a Natural Earth alias), `[manual, placement.yml:12]`,
  * `[overlap 72% Russia, placement.yml:40]` (measured share and what it refers
  * to), `[overlap, placement.yml:40]` (a rule without a share) and `[overlap]`
  * (a live coordinate step, no rule line).
@@ -23,6 +24,7 @@ const row = (name, text) => `  ${name.padEnd(LABEL_WIDTH)}${text}`
  */
 function sourceTag(step) {
   if (step.source === 'TaxonWorks') return '[TaxonWorks]'
+  if (step.source === 'Natural Earth') return '[Natural Earth]'
   if (step.source === 'manual') return `[manual, ${step.ref}]`
   const share = step.pct !== undefined ? ` ${step.pct}%${step.pctOf ? ` ${step.pctOf}` : ''}` : ''
   return `[overlap${share}${step.ref ? `, ${step.ref}` : ''}]`

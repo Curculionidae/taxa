@@ -69,8 +69,11 @@ Country outlines come from the species map's shape cache
 (`public/map-shapes/`). A country no record uses directly (Spain, used only
 through its provinces) is not in that cache, and TaxonWorks gives out a shape
 only through a record using it, so those come from
-`public/checklists/fallback-shapes.geojson` (Natural Earth). The script lists
-countries that have neither. A checklist filed under another country
+`public/checklists/fallback-shapes.geojson` (Natural Earth). The fallback
+feature is found by the checklist name or any name of its synonym list in the
+rules file, accent and case insensitive, so the feature "Saint Barthelemy"
+serves the checklist Saint Barthélemy; index.json `fallback` names the feature
+the page draws. The script lists countries that have neither. A checklist filed under another country
 (index.json `of`: French Guiana under France) is cut out of that country's
 outline on the world map: polygons of the country whose centre lies in the
 own checklist's `bbox` are dropped. The state/province drill-down still uses
@@ -139,8 +142,10 @@ made it as `placement.yml:<line>`, so the line number in an explanation is the
 line to open and change. The header comment of the file describes every key;
 in short:
 
-- Sources of a decision: `[TaxonWorks]` (what TaxonWorks states), `[manual]`
-  (the `manual` section), `[overlap]` (the `overlap` section). Manual lines win
+- Sources of a decision: `[TaxonWorks]` (what TaxonWorks states), `[Natural
+  Earth]` (another name of a state from `subdivisions.geojson`), `[manual]` (a
+  hand-written line: the `manual` section, a checklist, a synonym, a part, the
+  ignored name words), `[overlap]` (the `overlap` section). Manual lines win
   over overlap lines.
 - `checklists`: checklists of their own that TaxonWorks files under another
   country (French Guiana, Guadeloupe, Martinique, Réunion, Mayotte, Northern
@@ -148,7 +153,14 @@ in short:
   `names` (words in a DwC country, province or place), `box` (west, south,
   east, north), `why`.
 - `synonyms`: spellings of one country; the first name is the checklist name,
-  e.g. `[Tanzania, United Republic of Tanzania]`.
+  e.g. `[Tanzania, United Republic of Tanzania]`. Anything looked up by
+  checklist name tries every name of its synonym list too, such as the
+  fallback outline (see "Map").
+- `ignored_name_words`: words left out when a place name is compared with the
+  state names of a checklist (oblast, krai, republic, of, ...), so "Krasnoyarsk
+  Krai" finds Krasnoyarsk. Only for states, never for countries. The engine has
+  no word list of its own; a state found only by leaving words out cites this
+  line (see "States and provinces").
 - `parts`: parts of a country that can be selected on their own, by country
   name (France: Corsica, Mainland France). Keys: `name`, `areas`, `names`,
   `box`, and `rest: true` on the part that takes every other record below
@@ -188,7 +200,8 @@ engine itself stays pure (the build reads cached files, the browser fetches):
 a point, `stateAt(checklistId, [lng, lat])` the state whose outline holds it
 (or null), `partAt(checklistId, [lng, lat])` the part whose outline, else
 whose `box` in the rules file, holds it (or null), and `stateNames(checklistId)`
-the state names of a checklist. Only
+the states of a checklist as `{ name, aliases }`, the aliases being the
+Natural Earth names of `subdivisions.geojson` (`[]` when none). Only
 records with coordinates make `placeRecord` wait for it; `placeArea` never
 calls it.
 
@@ -196,6 +209,10 @@ Every step is one short sentence with its source:
 
 - `TaxonWorks`: what TaxonWorks says (the country of a political area, the
   parent of an area, the ISO code of a gazetteer). Fix it in TaxonWorks.
+- `Natural Earth`: a state found through one of its Natural Earth names
+  (`aliases` in `public/checklists/subdivisions.geojson`), e.g. `DwC
+  stateProvince Moskva is a Natural Earth name of the state Moscow`. These
+  names are data, not rules; overrule a wrong one with a manual rule.
 - `manual`: a hand-written line of the rules file (a checklist of its own, a
   synonym, a part, a manual rule), cited as `placement.yml:<line>`. Fix it there.
 - `overlap`: a measured line of the overlap section, with its line and the
@@ -234,12 +251,12 @@ Two worked examples (as the curator page shows them):
 ```
 GA 8837 Cayenne  =>  French Guiana
   Cayenne is a subdivision of French Guiana (GA 78)            [TaxonWorks]
-  French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:66]
+  French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:69]
   outline: GeographicArea/32253
 
 GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
   reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:183]
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:193]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
@@ -259,7 +276,7 @@ and optionally the `area` behind it) and the `Placement`. Example:
 AD 556796  Phaedropus candidus
   area     GA 8837 Cayenne (GA)
   step     Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
-  step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:66]
+  step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:69]
   result   French Guiana checklist
   shape    GeographicArea/32253 (French Guiana)
 ```
@@ -328,31 +345,49 @@ country level; else no part.
 
 Only checklists with `states` (United States, Canada, Australia, China,
 Russia, United Kingdom) get a state; any other has none and no state step.
-State names are matched with `placement/states.js` (`resolveSubdivision`:
-exact name, then the name without words such as Oblast, Krai, Republic of)
-and only against the states of the chosen checklist. Country names never meet
+State names are matched with `placement/states.js` (`matchSubdivision`) and
+only against the states of the chosen checklist: first the state's own name
+`[TaxonWorks]` or one of its Natural Earth names (`aliases` in
+`subdivisions.geojson`: Moskva for Moscow, Xinjiang Uygur for Xinjiang)
+`[Natural Earth]`; then either of them with the rules file's
+`ignored_name_words` left out (`DwC stateProvince "Krasnoyarsk Krai" matches
+the state Krasnoyarsk (ignoring "krai")`, `[manual]` with the line of that
+list). A state's own name wins over another state's alias. Country names never meet
 state names: the US state Georgia stays a state of the United States, and a
 specimen with DwC country Georgia and stateProvince Georgia lands in the
 country Georgia, which has no states.
 
 For an asserted distribution, the first that applies:
 
-1. The area's name, else its parent's name, is a state of the checklist
-   `[TaxonWorks]`. In the test run this agreed with the outline overlap in
-   8,847 of 8,847 areas.
-2. A manual or overlap rule for the area gives `subdivision_of: { country,
-   state }` (`[manual]` or `[overlap]`, with its line and share). This covers
-   what names cannot: Hawaiian gazetteers (state Hawaii), IBRA bioregions
-   (Australian states), renamed units (Evenk to Krasnoyarsk, TDWG Yakutskiya
-   to Sakha). The measuring script writes these lines.
-3. No state, with a last step `no state: <reason>`: `record is for the whole
+1. A manual rule for the area gives `subdivision_of: { country, state }`
+   (`[manual]`, with its line). Manual rules win over names, as they do for
+   countries: GA 20379 Chukot is Chukotka although Natural Earth lists Chukot
+   among the names of Sakha.
+2. The area's own name is a state of the checklist, but only when the area is
+   a state itself: TaxonWorks' state test (`GeographicArea#categorize`,
+   `isStateArea` in `placement/areas.js`): a state-level type (State,
+   Province, Oblast, ...), Natural Earth origin `ne_states`, its own level1
+   area, or its parent is a country (the gadm US states such as Texas, GA
+   26386). TDWG areas and gazetteers carry no levels and are always tried by
+   name. So a county named like a state never becomes that state.
+3. Its parent's name, when the parent is the area's state (its level1 area, or
+   level1 unknown): a county takes the state it lies in. `Colorado is a
+   subdivision of Texas (GA 26386), the state Texas`, not the state Colorado.
+   An area below a county gets no state from the county's name.
+4. An overlap rule for the area gives `subdivision_of: { country, state }`
+   (`[overlap]`, with its line and share). This covers what names cannot:
+   Hawaiian gazetteers (state Hawaii), IBRA bioregions (Australian states),
+   renamed units (Evenk to Krasnoyarsk, TDWG Yakutskiya to Sakha). The
+   measuring script writes these lines.
+5. No state, with a last step `no state: <reason>`: `record is for the whole
    country` (the area is one of the checklist's country areas), `spans several
    states: <shares>` (from an overlap or manual line `not_placeable: spans
    several states`; such a line only speaks about the state and never decides
    the country), or `not measured yet`.
 
 For a specimen or field occurrence: the DwC `stateProvince` (TaxonWorks'
-state) is a state of the checklist `[TaxonWorks]`; else the state outline
+state) is a state of the checklist `[TaxonWorks]` (or through a Natural Earth
+name or ignored words, as above); else the state outline
 holding its coordinates (`geometry.stateAt`, `[overlap]`); else no state, with
 the reason (`no state: Atlantis is not a state of United States`, `no state:
 no DwC stateProvince and no coordinates`, or that the coordinates lie in no
@@ -363,15 +398,15 @@ Three more worked examples:
 ```
 CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
   DwC country is United Republic of Tanzania                     [TaxonWorks]
-  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:120]
+  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:123]
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
   Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
-  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:553]
+  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:563]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
-  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:173]
-  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:496]
+  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:183]
+  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:506]
 ```
 
 The two overlap lines behind these examples, as the measuring script wrote them:
@@ -390,8 +425,8 @@ The Tanzania specimen has a DwC country that is not a checklist name, but
 the synonym line names it, so the second step cites that line. The Hawaiian
 gazetteer finds its country by its ISO code, and its name is no state name, so
 the state comes from the overlap line the measuring script wrote for it.
-Central European Russia gets its country from one overlap line (line 164,
-Russia 100%); a second line (487), `not_placeable: spans several states`,
+Central European Russia gets its country from one overlap line (line 183,
+Russia 100%); a second line (506), `not_placeable: spans several states`,
 tells why it has no state: no state holds even a fifth of it. The line
 numbers are those of the rules file on 2026-11-20; they shift when lines are
 added above.
@@ -506,7 +541,9 @@ What the build writes to `public/checklists/`:
 - `index.json`: `updated` (local build date), `countries` (one entry per
   checklist with records: `key`, `file`, `name`, `iso2`, `of` for own
   checklists filed under another country, `shape` (the cached outline, or
-  null when the page draws the Natural Earth fallback), `bbox` of that outline
+  null when the page draws the Natural Earth fallback), `fallback` (only then:
+  the name of that feature in `fallback-shapes.geojson`, possibly a synonym of
+  the checklist name), `bbox` of that outline
   `[west, south, east, north]`, `parts` (France: name and outline of each
   part, the first cached GA area the part lists in the rules file; Mainland
   France is GA 34185, TDWG 12FRA-FR, whose outline leaves out the Channel
@@ -566,13 +603,13 @@ ignores the header. Example (French Guiana, 2026-11-20):
   "iso2": "GF",
   "outline": "GeographicArea/32253",
   "defined_by": [
-    { "area": "GA 32253", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:66]" },
-    { "area": "GA 78", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:66]" },
-    { "area": "GA 34200", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:66]" }
+    { "area": "GA 32253", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:69]" },
+    { "area": "GA 78", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:69]" },
+    { "area": "GA 34200", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:69]" }
   ],
   "areas_used": [
     { "area": "GA 32253", "name": "French Guiana", "kind": "Unknown", "records": 31,
-      "how": "GA 32253 French Guiana belongs to the checklist French Guiana [manual, placement.yml:66]" },
+      "how": "GA 32253 French Guiana belongs to the checklist French Guiana [manual, placement.yml:69]" },
     { "area": "GA 8837", "name": "Cayenne", "kind": "Unknown", "records": 2,
       "how": "Cayenne is a subdivision of French Guiana (GA 78) [TaxonWorks]" }
   ],
@@ -633,7 +670,9 @@ How it works:
   country. `compareCaches.mjs` (`oldState`) reproduces that: for the United
   States, Canada, Australia, China, Russia and the United Kingdom, the
   record's stateProvince, then the place name of its distribution, then its
-  county, matched against the old `subdivisions.geojson` with its aliases.
+  county, matched against the old `subdivisions.geojson` with its aliases
+  and the old page's word list (`OLD_IGNORED_WORDS`, kept fixed there so the
+  reproduction does not follow later edits of `ignored_name_words`).
 - TaxonWorks edits are told apart from rule changes by dates: a record created
   in TaxonWorks after the old download day (`updated` in the old index.json)
   is "new in TaxonWorks", one updated after it "edited in TaxonWorks"; a

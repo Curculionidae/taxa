@@ -19,8 +19,10 @@
 // subdivisions of that country (subdivisions.geojson, features whose
 // `country` has the same country key) and matched, in this order, the
 // record's DwC stateProvince, the place name of its asserted distribution
-// (`place`) and its DwC county with resolveSubdivision (placement/states.js).
-// A country with parts (France) had no states. oldState does exactly that.
+// (`place`) and its DwC county with resolveSubdivision (placement/states.js),
+// leaving out the old page's generic words (OLD_IGNORED_WORDS, the list that
+// is now the rules file's ignored_name_words). A country with parts (France)
+// had no states. oldState does exactly that.
 
 import { buildSubdivisionIndex, resolveSubdivision } from '../placement/states.js'
 import { normalizeName } from '../placement/areas.js'
@@ -33,6 +35,13 @@ const OLD_ALIASES = {
   'russian federation': 'russia'
 }
 const OLD_STATE_COUNTRIES = new Set(['united states', 'canada', 'australia', 'china', 'russia', 'united kingdom'])
+// The old page's generic words (GENERIC_WORDS of placement/states.js at a369535),
+// kept here as they were so the old state stays reproducible when the rules
+// file's ignored_name_words change.
+const OLD_IGNORED_WORDS = [
+  'province', 'oblast', 'krai', 'kray', 'republic', 'of', 'autonomous', 'region', 'okrug',
+  'state', 'municipality', 'city', 'district', 'territory', 'sheng', 'shi', 'the', 'and', 'county'
+]
 
 /**
  * The old page's country key of a checklist or subdivision country name.
@@ -58,7 +67,7 @@ export function oldStateIndexes(features) {
     if (!byCountry.has(key)) byCountry.set(key, [])
     byCountry.get(key).push(feature)
   }
-  return new Map([...byCountry].map(([key, list]) => [key, buildSubdivisionIndex(list)]))
+  return new Map([...byCountry].map(([key, list]) => [key, buildSubdivisionIndex(list, OLD_IGNORED_WORDS)]))
 }
 
 /**

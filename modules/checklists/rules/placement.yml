@@ -9,10 +9,13 @@
 #   modules/checklists/placement/rules.js. Every explanation of a decision cites
 #   the line of the rule that made it, as placement.yml:<line>.
 #
-# The three sources of a decision (shown in square brackets in explanations)
+# The four sources of a decision (shown in square brackets in explanations)
 #   [TaxonWorks]  what TaxonWorks says: the country of a political area, the ISO
 #                 code of a gazetteer, the DwC country and stateProvince of a specimen.
-#   [manual]      a line in the manual section below, written by hand.
+#   [Natural Earth]  another name of a state from the Natural Earth state outlines
+#                 (public/checklists/subdivisions.geojson, `aliases`): Moskva for Moscow.
+#   [manual]      a line in this file written by hand (manual section, checklists,
+#                 synonyms, parts, ignored_name_words).
 #   [overlap]     a line in the overlap section: which country outlines the shape
 #                 of an area falls in, measured on the cached shapes.
 #   Manual lines win over overlap lines.
@@ -129,6 +132,13 @@ synonyms:
   - ["Côte d'Ivoire", Ivory Coast]
   # TaxonWorks spells GA 186 with a capital É; the checklist keeps the usual spelling
   - [Saint Barthélemy, Saint BarthÉlemy]
+
+# Words left out when a place name is compared with the state names of a
+# checklist, so that "Krasnoyarsk Krai" finds the state Krasnoyarsk and
+# "Republic of Sakha" finds Sakha. They apply only to states, never to country
+# names. Case and accents do not matter. An explanation that needed them says
+# which words it ignored and cites this line.
+ignored_name_words: [province, oblast, krai, kray, republic, of, autonomous, region, okrug, state, municipality, city, district, territory, sheng, shi, the, and, county]
 
 parts:
   France:

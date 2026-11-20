@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
-import { toArea, normalizeName, containsName, isCountryArea } from './areas.js'
-import { deriveChecklists } from './checklists.js'
+import { toArea, normalizeName, containsName, isCountryArea, isStateArea } from './areas.js'
+import { deriveChecklists, checklistNames, findByName } from './checklists.js'
 import * as fx from './fixtures.js'
 
 const rules = compileRules(
@@ -191,4 +191,43 @@ test('a checklist without ISO code takes it from isoByName, also through a synon
   assert.equal(list.find((c) => c.name === 'France').iso2, 'FR')
   const viaSynonym = deriveChecklists([fx.ga31761].map(ga), rules, new Map(), new Map([['solomon is', 'SB']])).checklists
   assert.equal(viaSynonym[0].iso2, 'SB')
+})
+
+test('isStateArea follows TaxonWorks GeographicArea#categorize (R30)', () => {
+  assert.equal(isStateArea(ga(fx.ga33455)), true) // type State
+  assert.equal(isStateArea(ga({ ...fx.ga33455, geographic_area_type: { name: 'Province' } })), true)
+  assert.equal(isStateArea(ga(fx.ga32253)), true) // Natural Earth state, parent is its level0
+  assert.equal(isStateArea(ga({ ...fx.ga30398, id: 26386 })), true) // id equals level1
+  // A gadm state: type Unknown, no level ids; a state only when its parent is a country.
+  assert.equal(isStateArea(ga(fx.ga26370)), false)
+  assert.equal(isStateArea(ga(fx.ga26370), true), true)
+  // Counties are not states, whatever their name.
+  assert.equal(isStateArea(ga(fx.ga30398)), false)
+  assert.equal(isStateArea(ga(fx.ga29533)), false)
+  // Countries, TDWG areas and gazetteers never are.
+  assert.equal(isStateArea(ga(fx.ga237)), false)
+  assert.equal(isStateArea(ga(fx.ga33412)), false)
+  assert.equal(isStateArea(ga(fx.ga33696)), false)
+  assert.equal(isStateArea(gz(fx.gz3529), true), false)
+})
+
+test('checklistNames gives the checklist name and every synonym of it', () => {
+  const synonyms = compileRules(`synonyms:
+  - [Saint Barthélemy, Saint BarthÉlemy, St. Barth]
+  - [Tanzania, United Republic of Tanzania]
+`)
+  assert.deepEqual(checklistNames('Saint Barthélemy', synonyms), ['Saint Barthélemy', 'Saint BarthÉlemy', 'St. Barth'])
+  assert.deepEqual(checklistNames('Spain', synonyms), ['Spain'])
+})
+
+test('findByName finds an outline by the checklist name or a synonym, accent and case insensitive', () => {
+  const synonyms = compileRules(`synonyms:
+  - [Saint Barthélemy, St. Barth]
+`)
+  const fallback = new Map([['saint barthelemy', 'A'], ['st barth', 'B'], ['spain', 'C']])
+  assert.equal(findByName(fallback, 'Saint Barthélemy', synonyms), 'A')
+  const onlySynonym = new Map([['st barth', 'B']])
+  assert.equal(findByName(onlySynonym, 'Saint Barthélemy', synonyms), 'B')
+  assert.equal(findByName(fallback, 'Spain', synonyms), 'C')
+  assert.equal(findByName(fallback, 'France', synonyms), undefined)
 })

@@ -135,6 +135,11 @@ test('indexEntry: no numeric ids, file name from the key', () => {
   assert.ok(!('of' in plain))
   const own = indexEntry({ key: 'mayotte', name: 'Mayotte', iso2: 'YT', of: 'France', shape: null, bbox: null, states: false, taxa: 1, records: 1 })
   assert.equal(own.of, 'France')
+  assert.ok(!('fallback' in own))
+  // A checklist drawn from fallback-shapes.geojson names the feature, which may be spelled
+  // like a synonym of the checklist (Saint Barthelemy for Saint Barthélemy).
+  const barth = indexEntry({ key: 'saint-barthelemy', name: 'Saint Barthélemy', iso2: 'BL', shape: null, fallback: 'Saint Barthelemy', bbox: null, states: false, taxa: 1, records: 1 })
+  assert.equal(barth.fallback, 'Saint Barthelemy')
 })
 
 test('publicPlacement: the checklist by key and name, never its numeric id', () => {

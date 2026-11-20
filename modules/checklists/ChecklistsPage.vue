@@ -677,6 +677,7 @@ const mapError = ref('')
 const selectedCountry = ref('')
 const selectedRegion = ref('')
 const subdivisionGeoJson = ref(null)
+const ignoredNameWords = ref([])
 let subdivisionLayer = null
 let subdivisionLayerCountryKey = ''
 const subdivisionsShown = ref(false)
@@ -962,11 +963,14 @@ async function loadCountryShapes() {
       }
     }))
     const fallback = await fetchJson(`${base_url}checklists/fallback-shapes.geojson`)
-    const isoByName = new Map(checklistCountries.value.map((country) => [country.name, country.iso2]))
+    // index.json `fallback` names the feature of a checklist without a cached
+    // outline; it may be spelled like a synonym (Saint Barthelemy for Saint Barthélemy).
+    const byFallback = new Map(checklistCountries.value.filter((country) => country.fallback).map((country) => [country.fallback, country]))
     for (const feature of fallback.features) {
+      const country = byFallback.get(feature.properties.name)
       // Only where no cached outline was drawn, so a country is never drawn twice.
-      if (!isoByName.has(feature.properties.name) || drawn.has(feature.properties.name)) continue
-      features.push({ ...feature, properties: { name: feature.properties.name, 'ISO3166-1-Alpha-2': isoByName.get(feature.properties.name) } })
+      if (!country || drawn.has(country.name)) continue
+      features.push({ ...feature, properties: { name: country.name, 'ISO3166-1-Alpha-2': country.iso2 } })
     }
     if (requestId !== shapesRequestId) return
     if (!features.length) throw new Error('No country outlines.')
@@ -1368,7 +1372,9 @@ const countrySubdivisions = computed(() => {
 })
 
 const subdivisionIndex = computed(() => (
-  !countryParts.value && countrySubdivisions.value.length ? buildSubdivisionIndex(countrySubdivisions.value) : null
+  !countryParts.value && countrySubdivisions.value.length
+    ? buildSubdivisionIndex(countrySubdivisions.value, ignoredNameWords.value)
+    : null
 ))
 
 function recordRegion(record) {
@@ -1426,6 +1432,12 @@ const displayedSpeciesCount = computed(() => {
 
 async function loadSubdivisions() {
   if (subdivisionGeoJson.value) return
+  // The words a state name may carry beyond the state's own name (rules file
+  // ignored_name_words, in rules.json); without them only exact names and
+  // Natural Earth aliases match.
+  fetchJson(`${base_url}checklists/rules.json`)
+    .then((rules) => { ignoredNameWords.value = rules.ignoredNameWords?.words ?? [] })
+    .catch(() => {})
   try {
     const response = await fetch(`${base_url}checklists/subdivisions.geojson`)
     if (!response.ok) throw new Error('Could not load subdivision boundaries.')

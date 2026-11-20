@@ -71,6 +71,16 @@ parts:
   assert.deepEqual(rules.parts.France[1].areas, [])
 })
 
+test('compiles ignored_name_words with the line of its key', () => {
+  const rules = compileRules(`synonyms:
+  - [Tanzania, United Republic of Tanzania]
+ignored_name_words: [Oblast, krai, "Republic"]
+`)
+  assert.deepEqual(rules.ignoredNameWords, { words: ['oblast', 'krai', 'republic'], ref: 'placement.yml:3' })
+  assert.deepEqual(compileRules(MANUAL).ignoredNameWords, { words: [], ref: null })
+  assert.throws(() => compileRules('ignored_name_words: oblast\n'), /placement.yml:1: .*must be a list/)
+})
+
 test('uses the given file name in refs', () => {
   assert.equal(compileRules(MANUAL, 'x.yml').manual[0].ref, 'x.yml:3')
 })
@@ -113,4 +123,5 @@ test('the real file compiles', () => {
   assert.deepEqual(rules.checklists.find((c) => c.name === 'French Guiana').areas, ['GA 32253', 'GA 78', 'GA 34200'])
   assert.ok(rules.parts.France.some((p) => p.rest))
   assert.ok(rules.manual.length >= 2)
+  assert.ok(rules.ignoredNameWords.words.includes('oblast'))
 })

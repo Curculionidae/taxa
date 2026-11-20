@@ -450,3 +450,52 @@ export const gz3575 = {
   iso_3166_a2: 'SB',
   iso_3166_a3: 'SLB'
 }
+
+// US counties named like a state, and a gadm state (task 9 comparison, R30).
+// Shaped as the asserted_distribution_shape of real distributions (2026-11-20).
+
+const county = (id, name, stateId, stateName) => ({
+  id,
+  name,
+  level0_id: 237,
+  level1_id: stateId,
+  parent_id: stateId,
+  parent: {
+    name: stateName
+  },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: null,
+  data_origin: 'gadm',
+  geographic_area_type: {
+    id: 33,
+    name: 'County'
+  }
+})
+
+/** Colorado County, Texas (AD 730598). */
+export const ga30398 = county(30398, 'Colorado', 26386, 'Texas')
+/** Washington County, Utah (AD 730701). */
+export const ga29533 = county(29533, 'Washington', 26581, 'Utah')
+/** Columbia County, Oregon (AD 321694); read as District of Columbia before R30. */
+export const ga28085 = county(28085, 'Columbia', 27673, 'Oregon')
+
+/** The gadm state Washington: type Unknown, no level ids, parent the country GA 237. */
+export const ga26370 = {
+  id: 26370,
+  name: 'Washington',
+  level0_id: null,
+  level1_id: null,
+  parent_id: 237,
+  parent: {
+    name: 'United States'
+  },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: null,
+  data_origin: 'gadm',
+  geographic_area_type: {
+    id: 2,
+    name: 'Unknown'
+  }
+}

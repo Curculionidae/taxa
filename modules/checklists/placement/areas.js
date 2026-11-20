@@ -100,3 +100,35 @@ export function isCountryArea(area) {
   if (COUNTRY_LEVEL_TYPES.includes(area.type)) return true
   return normalizeName(area.parentName) === 'earth' && !String(area.origin ?? '').includes('tdwg')
 }
+
+/**
+ * Geographic area types that are a state or province, as in TaxonWorks
+ * (GeographicAreaType::STATE_LEVEL_TYPES, app/models/geographic_area_type.rb).
+ */
+export const STATE_LEVEL_TYPES = ['State', 'Province', 'District', 'Prefecture', 'Region', 'Territory', 'Republic', 'Area', 'Oblast', 'Krai']
+
+/**
+ * Is the area a state (first subdivision of a country)? The state test of
+ * TaxonWorks' GeographicArea#categorize (app/models/geographic_area.rb), after
+ * its country test (isCountryArea): its type is a state-level type, or its data
+ * origin is ne_states (Natural Earth states), or its id is its own level1 id, or
+ * its parent is a country. TaxonWorks tests the parent with parent.id ==
+ * parent.level0_id; an Area only knows its own level0, so the caller says
+ * whether the parent is a country (the engine: the parent is an area of the
+ * checklist). The gadm US states (GA 26386 Texas: type Unknown, no level ids,
+ * parent GA 237 United States) are states only that way. A county (GA 30398
+ * Colorado, type County, level1 GA 26386 Texas) is not, whatever its name.
+ * TaxonWorks' last clause (grandparent Earth) is left out: an Area does not
+ * know its grandparent.
+ * @param {Area} area
+ * @param {boolean} [parentIsCountry]  the area's parent is a country area
+ * @returns {boolean}  always false for gazetteers, TDWG areas and countries
+ */
+export function isStateArea(area, parentIsCountry = false) {
+  if (area.kind !== 'GA' || isCountryArea(area) || String(area.origin ?? '').includes('tdwg')) return false
+  if (STATE_LEVEL_TYPES.includes(area.type)) return true
+  if (area.origin === 'ne_states') return true
+  if (area.level1 != null && area.id === area.level1) return true
+  if (area.parentId != null && area.parentId === area.level0) return true
+  return parentIsCountry
+}

@@ -50,6 +50,8 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compactChecklist } from '../data/compact.js'
 import { placeRecord } from '../placement/engine.js'
+import { normalizeName } from '../placement/areas.js'
+import { findByName } from '../placement/checklists.js'
 import { formatPlacement, parseLookup } from '../placement/format.js'
 import { downloadData, saveData, loadData } from './download.mjs'
 import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
@@ -254,14 +256,18 @@ for (const area of areas.values()) {
 }
 const knownAreas = new Map([...areasById, ...parentStubs])
 
-// The outline of a checklist: its first cached area, else the fallback file.
+// The outline of a checklist: its first cached area, else the fallback
+// feature named like the checklist or one of its synonyms (findByName:
+// "Saint Barthelemy" for Saint Barthélemy), the same lookup as the Node geometry.
 const targets = new Map(geometry.checklistTargets().map((target) => [target.id, target]))
-const fallbackNames = new Set(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).features.map((feature) => feature.properties.name))
+const fallbackByName = new Map(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).features
+  .map((feature) => [normalizeName(feature.properties.name), feature.properties.name]))
 const cachedGa = (ids) => ids.find((id) => shapes.has(`GeographicArea/${id}`))
 function outlineOf(checklist) {
   const id = cachedGa(checklist.areaIds)
-  if (id != null) return { shape: `GeographicArea/${id}`, outline: `GeographicArea/${id}` }
-  return { shape: null, outline: fallbackNames.has(checklist.name) ? `fallback/${checklist.name}` : null }
+  if (id != null) return { shape: `GeographicArea/${id}`, fallback: null, outline: `GeographicArea/${id}` }
+  const fallback = findByName(fallbackByName, checklist.name, rules) ?? null
+  return { shape: null, fallback, outline: fallback ? `fallback/${fallback}` : null }
 }
 
 // taxa.json, counted in the same pass as index.json (one rule for what
@@ -277,7 +283,7 @@ for (const [id, entries] of byChecklist) {
   const checklist = checklistById.get(id)
   const key = keys.get(id)
   const records = entries.map((entry) => entry.record)
-  const { shape, outline } = outlineOf(checklist)
+  const { shape, fallback, outline } = outlineOf(checklist)
   const header = checklistHeader({
     key,
     name: checklist.name,
@@ -317,6 +323,7 @@ for (const [id, entries] of byChecklist) {
     iso2: checklist.iso2,
     of: rules.checklists.find((entry) => entry.name === checklist.name)?.of,
     shape,
+    fallback,
     bbox: bboxOf(targets.get(id)?.polygons),
     parts,
     states: Boolean(checklist.states),
@@ -365,6 +372,6 @@ for (const [reason, ids] of Object.entries(unplacedGroups)) console.log(`  ${Str
 if (warnings.length) console.log(`deriveChecklists warnings (${warnings.length}):\n  ${warnings.join('\n  ')}`)
 const noIso = index.filter((entry) => !entry.iso2).map((entry) => entry.name)
 console.log(`checklists without iso2: ${noIso.length ? noIso.join(', ') : 'none'}`)
-const noOutline = index.filter((entry) => !entry.shape && !fallbackNames.has(entry.name)).map((entry) => entry.name)
+const noOutline = index.filter((entry) => !entry.shape && !entry.fallback).map((entry) => entry.name)
 if (noOutline.length) console.log(`not on the map (no cached or fallback outline): ${noOutline.join(', ')}`)
 if (partsWithoutShape.length) console.warn(`warning: parts without a cached outline (give them a cached GA area in the rules file): ${partsWithoutShape.join(', ')}`)

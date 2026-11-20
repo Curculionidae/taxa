@@ -189,7 +189,7 @@ test('Node geometry: stateAt, stateNames and partAt', async (t) => {
   const fx = fixtureDir()
   t.after(() => rmSync(fx.dir, { recursive: true, force: true }))
   const geometry = createNodeGeometry({ ...fx, checklists, rules })
-  assert.deepEqual(geometry.stateNames(4), [{ name: 'Moscow', aliases: ['Moskva', 'Moscow'] }, { name: 'Tver', aliases: [] }])
+  assert.deepEqual(geometry.stateNames(4), [{ name: 'Moscow' }, { name: 'Tver' }])
   assert.deepEqual(geometry.stateNames(1), [])
   assert.deepEqual(await geometry.stateAt(4, [31, 5]), { name: 'Moscow', near: false })
   assert.deepEqual(await geometry.stateAt(4, [38, 5]), { name: 'Tver', near: false })

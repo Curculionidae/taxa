@@ -84,7 +84,7 @@ const geometryOf = async () => {
 test('createBrowserGeometry: fetches subdivisions once and no outline before a question', async () => {
   const { geometry, calls } = await geometryOf()
   assert.deepEqual(calls, ['checklists/subdivisions.geojson'])
-  assert.deepEqual(geometry.stateNames(3), [{ name: 'North', aliases: ['Nord'] }, { name: 'South', aliases: [] }])
+  assert.deepEqual(geometry.stateNames(3), [{ name: 'North' }, { name: 'South' }])
   assert.deepEqual(geometry.stateNames(1), [])
   await geometry.stateAt(3, [25, 7])
   assert.equal(calls.filter((path) => path.endsWith('subdivisions.geojson')).length, 1)

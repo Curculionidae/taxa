@@ -33,6 +33,8 @@
 //               the build saw (the engine's `shapes`)
 //   unusable    { GeographicArea: [ids], Gazetteer: [ids] }: the cached outlines of
 //               used areas that hold no polygon (the engine's `unusable`)
+//   stateAreas  { [checklist id]: [Area] }: the areas the build placed in each
+//               checklist with states (the engine's `stateAreas`, R51)
 // Output: createBrowserGeometry gives a Geometry; loadCacheContext gives
 //   { ctx, context, rules }, ctx being the engine Context (createContext).
 // Errors: a failed fetch rejects (the page shows it), except a missing outline
@@ -190,7 +192,7 @@ export async function createBrowserGeometry({ context, rules, fetchJson }) {
       return partAtPoint(await partsOf(checklistId), point)
     },
     stateNames(checklistId) {
-      return stateTargets(checklistId).map(({ name, aliases }) => ({ name, aliases }))
+      return stateTargets(checklistId).map(({ name }) => ({ name }))
     },
     outlinePolygons
   }
@@ -211,7 +213,9 @@ export async function loadCacheContext({ fetchJson }) {
     geometry,
     shapes: shapeKeys(context.shapes),
     unusable: shapeKeys(context.unusable),
-    outlines: new Map(context.outlines.map(({ id, outline }) => [id, outline]))
+    outlines: new Map(context.outlines.map(({ id, outline }) => [id, outline])),
+    // JSON keys are text; the checklist ids may be numbers.
+    stateAreas: new Map(context.checklists.filter(({ id }) => context.stateAreas?.[id]).map(({ id }) => [id, context.stateAreas[id]]))
   })
   return { ctx, context, rules }
 }

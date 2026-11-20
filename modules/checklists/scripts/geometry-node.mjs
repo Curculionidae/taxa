@@ -16,8 +16,9 @@
 //                     outlines by properties.name, for countries with no cached
 //                     outline (Spain, used in TaxonWorks only through its provinces)
 //   subdivisionsFile  public/checklists/subdivisions.geojson: state and province
-//                     outlines, properties.country, properties.name and
-//                     properties.aliases (other names, from Natural Earth)
+//                     outlines, properties.country and properties.name
+//                     (properties.aliases, other names from Natural Earth, are
+//                     not read: they decide nothing, R51)
 //   checklists        from placement/checklists.js (deriveChecklists)
 //   rules             the compiled rules file (placement/rules.js), for parts,
 //                     the `of` country of own checklists and synonyms
@@ -215,7 +216,7 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
       return partAtPoint(partsOf(checklistId), point)
     },
     stateNames(checklistId) {
-      return stateTargets(checklistId).map(({ name, aliases }) => ({ name, aliases }))
+      return stateTargets(checklistId).map(({ name }) => ({ name }))
     },
     checklistTargets,
     stateTargets,

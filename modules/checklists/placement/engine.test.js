@@ -565,10 +565,32 @@ test('a gadm state (type Unknown, parent the country) is the state of its own na
   assert.deepEqual(placement.steps.at(-1), { text: 'Washington (GA 26370) is the state Washington', source: 'TaxonWorks' })
 })
 
-test('a stateProvince matched through a Natural Earth alias says so', async () => {
+test('a Natural Earth alias decides nothing: stateProvince Moskva is no state name (R51)', async () => {
   const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moskva' }), rctx)
-  assert.equal(placement.state, 'Moscow')
-  assert.deepEqual(placement.steps.at(-1), { text: 'DwC stateProvince Moskva is a Natural Earth name of the state Moscow', source: 'Natural Earth' })
+  assert.equal(placement.state, null)
+  assert.deepEqual(placement.steps.at(-1), { text: 'no state: Moskva is not a state of Russia', source: 'TaxonWorks' })
+  assert.ok(!placement.steps.some((step) => step.source === 'Natural Earth'))
+})
+
+test('a stateProvince that names a TaxonWorks area of the checklist takes that area\'s state (R51)', async () => {
+  const russia = recordChecklists.find((checklist) => checklist.name === 'Russia')
+  const local = createContext({
+    checklists: recordChecklists, rules: recordRules, geometry, shapes: recordShapes,
+    stateAreas: new Map([[russia.id, [evenk]]])
+  })
+  const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Evenk', lat: 50.4, lng: 30.5 }), local)
+  assert.equal(placement.state, 'Krasnoyarsk')
+  assert.deepEqual(placement.steps.at(-1), {
+    text: 'DwC stateProvince Evenk is TaxonWorks area GA 900001, which lies in the state Krasnoyarsk',
+    source: 'overlap', ref: recordRefOf('match: { area: GA 900001 }'), pct: 100, pctOf: 'Krasnoyarsk'
+  })
+  // Two areas of that name in the checklist: the name is ambiguous and ignored.
+  const twice = createContext({
+    checklists: recordChecklists, rules: recordRules, geometry, shapes: recordShapes,
+    stateAreas: new Map([[russia.id, [evenk, { ...evenk, key: 'GA 900011', id: 900011 }]]])
+  })
+  const ambiguous = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Evenk' }), twice)
+  assert.equal(ambiguous.state, null)
 })
 
 test('a stateProvince matched by ignoring words cites the word list', async () => {
@@ -579,13 +601,9 @@ test('a stateProvince matched by ignoring words cites the word list', async () =
     source: 'manual',
     ref: ignoredRef
   })
+  // "Sakha" was the alias "Sakha Republic" with "republic" ignored; aliases decide nothing now (R51).
   const both = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Sakha' }), rctx)
-  assert.equal(both.state, 'Sakha (Yakutia)')
-  assert.deepEqual(both.steps.at(-1), {
-    text: 'DwC stateProvince "Sakha" matches Sakha Republic, a Natural Earth name of the state Sakha (Yakutia) (ignoring "republic")',
-    source: 'manual',
-    ref: ignoredRef
-  })
+  assert.equal(both.state, null)
 })
 
 test('an exact stateProvince wins over coordinates and needs no Natural Earth step', async () => {
@@ -594,11 +612,11 @@ test('an exact stateProvince wins over coordinates and needs no Natural Earth st
   assert.equal(placement.steps.at(-1).source, 'TaxonWorks')
 })
 
-test('a state area matched through an alias, and a parent matched by ignoring words', async () => {
+test('a state area named by an alias gets no state from it (R51), a parent matched by ignoring words does', async () => {
   const moskva = { ...evenk, key: 'GA 900005', id: 900005, name: 'Moskva' }
   const own = await ad(moskva)
-  assert.equal(own.state, 'Moscow')
-  assert.deepEqual(own.steps.at(-1), { text: 'Moskva (GA 900005) is a Natural Earth name of the state Moscow', source: 'Natural Earth' })
+  assert.equal(own.state, null)
+  assert.deepEqual(own.steps.at(-1), { text: 'no state: no outline to measure', source: 'TaxonWorks' })
   const district = { ...evenk, key: 'GA 900006', id: 900006, name: 'Some District', level1: 900007, parentId: 900007, parentName: 'Pskov Oblast', origin: 'gadm', type: 'Raion' }
   const parent = await ad(district)
   assert.equal(parent.state, 'Pskov')

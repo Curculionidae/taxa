@@ -74,16 +74,22 @@
 //    states: <shares> or outside every state outline, both from an overlap
 //    rule; no outline to measure; no usable outline (no polygon); not
 //    measured yet). Never calls the Geometry for outlines, only for the names.
-//  specimen: the DwC stateProvince is a state [TaxonWorks]; else the state
-//    outline that contains the coordinates, else the only one within the
-//    coastal tolerance (Geometry.stateAt) [overlap]; else no state, with the
-//    reason.
+//  specimen: the DwC stateProvince (TaxonWorks' first-level area name) is a
+//    state [TaxonWorks]; else it is the name of exactly one TaxonWorks area of
+//    the same checklist in the cache (context `stateAreas`), and that area's
+//    own state decision gives the state, with a step naming both ("DwC
+//    stateProvince Primor'ye is TaxonWorks area GA 20330, which lies in the
+//    state Primorsky Krai" [overlap, that rule's line]); else the state outline
+//    that contains the coordinates, else the only one within the coastal
+//    tolerance (Geometry.stateAt) [overlap]; else no state, with the reason.
 // State names are matched only against the states of the chosen checklist
 // (states.js), never against countries, so the US state Georgia never meets
-// the country Georgia. A name matches a state's own name [TaxonWorks], one of
-// its Natural Earth aliases (Moskva for Moscow) [Natural Earth], or either
-// after leaving out the rules file's ignored_name_words ("Krasnoyarsk Krai"
-// for Krasnoyarsk) [manual, the line of that list]; the step says which.
+// the country Georgia. A name matches a state's own name [TaxonWorks], or
+// that name after leaving out the rules file's ignored_name_words
+// ("Krasnoyarsk Krai" for Krasnoyarsk) [manual, the line of that list]; the
+// step says which. The other names Natural Earth lists for a state
+// (subdivisions.geojson `aliases`) decide nothing (R51): an area known only
+// by such a name gets its state from an overlap or manual rule.
 import { normalizeName, containsName, isCountryArea, isStateArea } from './areas.js'
 import { stateIndex, resolveSubdivision, matchSubdivision } from './states.js'
 
@@ -113,8 +119,7 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
 /**
  * @typedef {Object} Step  one sentence of an explanation
  * @property {string} text  short plain sentence; the source tag and line are not part of it
- * @property {'TaxonWorks'|'Natural Earth'|'manual'|'overlap'} source  TaxonWorks data,
- *   a Natural Earth alias of a state (subdivisions.geojson `aliases`), a hand-written
+ * @property {'TaxonWorks'|'manual'|'overlap'} source  TaxonWorks data, a hand-written
  *   line of the rules file, or a measured overlap line of the rules file
  * @property {string} [ref]  'placement.yml:12', the rules file line, for manual and overlap
  * @property {number} [pct]  the measured share of an overlap step
@@ -147,9 +152,9 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
  * @property {(checklistId: number|string, point: [number, number]) => Promise<{ name: string, by: 'outline'|'box' }|null>} partAt
  *   the part of that checklist (France: Corsica) whose outline holds the point (by
  *   'outline'), else whose `box` from the rules file holds it (by 'box'); null when none (R19)
- * @property {(checklistId: number|string) => { name: string, aliases: string[] }[]} stateNames
- *   the states of a checklist with `states`, each with its Natural Earth aliases
- *   (subdivisions.geojson `properties.aliases`, [] when none); [] for any other checklist
+ * @property {(checklistId: number|string) => { name: string }[]} stateNames
+ *   the states of a checklist with `states` (subdivisions.geojson `properties.name`);
+ *   [] for any other checklist
  *
  * @typedef {Object} RecordInput  one record as placeRecord sees it (DwC fields as
  *   TaxonWorks exports them; empty text counts as missing)
@@ -177,6 +182,9 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
  * @property {Map<string, import('./checklists.js').Checklist>} byIso  upper case ISO code to checklist
  * @property {Map<string, import('./checklists.js').Checklist>} byName  normalized name or synonym to checklist
  * @property {Map<number|string, import('./checklists.js').Checklist>} byId  checklist id to checklist
+ * @property {Map<number|string, Map<string, import('./areas.js').Area|null>>} stateAreas  per
+ *   checklist with states, the TaxonWorks areas in the cache that the engine places
+ *   there, by normalizeName(name); null for a name two areas share
  * @property {Map<number|string, import('./states.js').SubdivisionIndex>} stateIndexes  state name
  *   index per checklist id, filled on first use from Geometry.stateNames and the rules
  *   file's ignored_name_words
@@ -191,9 +199,11 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
  * @param {Set<string>} [input.shapes]  keys of cached outlines, 'GeographicArea/32253'
  * @param {Set<string>} [input.unusable]  those of them that hold no polygon
  * @param {Map<number|string, string>|null} [input.outlines]  outline key by checklist id
+ * @param {Map<number|string, import('./areas.js').Area[]>} [input.stateAreas]  per checklist
+ *   with states, the areas of the cache placed there (stateAreasOf)
  * @returns {Context}
  */
-export function createContext({ checklists, rules, geometry = null, shapes = new Set(), unusable = new Set(), outlines = null }) {
+export function createContext({ checklists, rules, geometry = null, shapes = new Set(), unusable = new Set(), outlines = null, stateAreas = new Map() }) {
   const byAreaId = new Map()
   const byIso = new Map()
   const byName = new Map()
@@ -210,7 +220,37 @@ export function createContext({ checklists, rules, geometry = null, shapes = new
     if (!checklist) continue
     for (const name of names) if (!byName.has(normalizeName(name))) byName.set(normalizeName(name), checklist)
   }
-  return { checklists, rules, geometry, shapes, unusable, outlines, byAreaId, byIso, byName, byId, stateIndexes: new Map() }
+  const areaNames = new Map()
+  for (const [id, list] of stateAreas) {
+    const names = new Map()
+    for (const area of list) {
+      const key = normalizeName(area.name)
+      if (!key) continue
+      names.set(key, names.has(key) && names.get(key)?.key !== area.key ? null : area)
+    }
+    areaNames.set(id, names)
+  }
+  return { checklists, rules, geometry, shapes, unusable, outlines, byAreaId, byIso, byName, byId, stateAreas: areaNames, stateIndexes: new Map() }
+}
+
+/**
+ * The areas of the cache placed in each checklist with states, for the
+ * context's `stateAreas` (R51): a specimen's DwC stateProvince that is no
+ * state name is looked up among them.
+ * @param {Iterable<import('./areas.js').Area>} areas  every used area
+ * @param {Context} ctx  a context of the same checklists and rules
+ * @returns {Map<number|string, import('./areas.js').Area[]>}
+ */
+export function stateAreasOf(areas, ctx) {
+  const out = new Map()
+  for (const area of areas) {
+    const placement = placeArea(area, ctx)
+    const checklist = placement.checklist && ctx.byId.get(placement.checklist.id)
+    if (!checklist?.states) continue
+    if (!out.has(checklist.id)) out.set(checklist.id, [])
+    out.get(checklist.id).push(area)
+  }
+  return out
 }
 
 /**
@@ -611,8 +651,7 @@ async function recordPart(record, point, checklist, ctx, steps) {
 function areaState(area, checklist, ctx, steps) {
   if (!checklist.states) return null
   const index = statesOf(checklist, ctx)
-  // A manual state rule wins over names, as manual rules do for countries
-  // (Chukot, which Natural Earth lists as a name of Sakha).
+  // A manual state rule wins over names, as manual rules do for countries.
   const ruled = stateByRule(area, checklist, ctx, index, [[ctx.rules.manual, 'manual']], steps)
   if (ruled) return ruled
   const noLevels = area.kind === 'GZ' || String(area.origin ?? '').includes('tdwg')
@@ -622,7 +661,6 @@ function areaState(area, checklist, ctx, steps) {
     if (own) {
       steps.push(stateStep(own, ctx, {
         exact: `${label(area)} is the state ${own.state}`,
-        alias: `${label(area)} is a Natural Earth name of the state ${own.state}`,
         words: `${label(area)} matches`
       }))
       return own.state
@@ -635,7 +673,6 @@ function areaState(area, checklist, ctx, steps) {
     const subdivision = `${area.name} is a subdivision of ${area.parentName}${parentKey}`
     steps.push(stateStep(fromParent, ctx, {
       exact: `${subdivision}, the state ${fromParent.state}`,
-      alias: `${subdivision}, a Natural Earth name of the state ${fromParent.state}`,
       words: `${subdivision}, which matches`
     }))
     return fromParent.state
@@ -689,6 +726,18 @@ async function recordState(record, point, checklist, ctx, steps) {
     }))
     return named.state
   }
+  // stateProvince is the name of a TaxonWorks area of this checklist: its state decision.
+  const area = province ? ctx.stateAreas.get(checklist.id)?.get(normalizeName(province)) : null
+  if (area) {
+    const own = []
+    const state = areaState(area, checklist, ctx, own)
+    const decided = own.at(-1)
+    if (state && decided) {
+      const verb = decided.source === 'manual' ? 'counts as' : decided.source === 'overlap' ? 'lies in' : 'is in'
+      steps.push({ ...decided, text: `DwC stateProvince ${province} is TaxonWorks area ${area.key}, which ${verb} the state ${state}` })
+      return state
+    }
+  }
   if (point && ctx.geometry) {
     const where = `coordinates ${point.lat}, ${point.lng}`
     const hit = await ctx.geometry.stateAt(checklist.id, [point.lng, point.lat])
@@ -711,18 +760,14 @@ async function recordState(record, point, checklist, ctx, steps) {
 
 // The step for a state found by name (states.js matchSubdivision). `texts.exact`
 // is the text when the state's own name matched [TaxonWorks]. Else the text
-// says which Natural Earth alias matched [Natural Earth], or which words of the
-// rules file's ignored_name_words were left out [manual, that line]:
-// `${prefix} "Pskov Oblast" matches the state Pskov (ignoring "oblast")`. A
-// caller may give its own `alias` text and `words` start instead of `prefix`.
+// says which words of the rules file's ignored_name_words were left out
+// [manual, that line]: `${prefix} "Pskov Oblast" matches the state Pskov
+// (ignoring "oblast")`. A caller may give its own `words` start instead of `prefix`.
 function stateStep(match, ctx, texts) {
-  const { state, candidate, alias, ignored } = match
-  if (!alias && !ignored.length) return { text: texts.exact, source: 'TaxonWorks' }
-  if (!ignored.length) {
-    return { text: texts.alias ?? `${texts.prefix} ${candidate} is a Natural Earth name of the state ${state}`, source: 'Natural Earth' }
-  }
+  const { state, candidate, ignored } = match
+  if (!ignored.length) return { text: texts.exact, source: 'TaxonWorks' }
   const start = texts.words ?? `${texts.prefix} "${candidate}" matches`
-  const target = alias ? `${alias}, a Natural Earth name of the state ${state}` : `the state ${state}`
+  const target = `the state ${state}`
   const words = ignored.map((word) => `"${word}"`).join(', ')
   return { text: `${start} ${target} (ignoring ${words})`, source: 'manual', ref: ctx.rules.ignoredNameWords?.ref }
 }

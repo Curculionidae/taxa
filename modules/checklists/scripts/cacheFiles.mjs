@@ -219,18 +219,21 @@ export function indexEntry({ key, name, iso2, of, shape, fallback, bbox, parts, 
  * cached outlines of used areas that hold no polygon.
  * @param {{ built: string, checklists: import('../placement/checklists.js').Checklist[],
  *   targets: { id: number|string, outline: string, polygons: any[] }[], shapes: Set<string>,
- *   unusable?: Set<string> }} input
+ *   unusable?: Set<string>, stateAreas?: Map<number|string, Object[]> }} input
+ *   stateAreas: per checklist with states, the areas placed there (engine.js stateAreasOf),
+ *   written as { [checklist id]: Area[] }
  *   targets: the Node geometry's checklistTargets(), in checklist order
  * @returns {{ built: string, checklists: Object[], outlines: { id: number|string, outline: string, bbox: number[]|null }[],
  *   shapes: { GeographicArea: number[], Gazetteer: number[] }, unusable: { GeographicArea: number[], Gazetteer: number[] } }}
  */
-export function cacheContext({ built, checklists, targets, shapes, unusable = new Set() }) {
+export function cacheContext({ built, checklists, targets, shapes, unusable = new Set(), stateAreas = new Map() }) {
   return {
     built,
     checklists,
     outlines: targets.map(({ id, outline, polygons }) => ({ id, outline, bbox: bboxOf(polygons) })),
     shapes: byKind(shapes),
-    unusable: byKind(unusable)
+    unusable: byKind(unusable),
+    stateAreas: Object.fromEntries(stateAreas)
   }
 }
 
@@ -281,3 +284,4 @@ export function partShapes(parts, shapes) {
     return { name: part.name, shape: key ?? null }
   })
 }
+

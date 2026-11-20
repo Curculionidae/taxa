@@ -1,15 +1,17 @@
 // State and province names: matching place text to the states of one checklist.
 //
-// Purpose: the one way a state or province name is recognised, shared by the
+// Purpose: the one way a state or province name is recognised, used by the
 // placement engine (engine.js: the state of an asserted distribution from its
-// area's name, the state of a specimen from its DwC stateProvince) and by the
-// public page (ChecklistsPage.vue, the subdivision drill-down).
+// area's name, the state of a specimen from its DwC stateProvince).
 //
-// Input:  the states of ONE checklist, each with its name and its Natural
-//         Earth aliases (`properties.aliases` in subdivisions.geojson), the
-//         words to ignore (rules file `ignored_name_words`), and the place text.
-// Output: matchSubdivision gives the state and how it matched (through an
-//         alias, after ignoring words); resolveSubdivision only the state name.
+// Input:  the states of ONE checklist, each with its name (stateIndex: the
+//         name only; the Natural Earth `aliases` of subdivisions.geojson decide
+//         nothing since R51), the words to ignore (rules file
+//         `ignored_name_words`), and the place text. buildSubdivisionIndex
+//         still indexes aliases when its features have them: compareCaches.mjs
+//         uses it to reproduce how the old page found states.
+// Output: matchSubdivision gives the state and how it matched (after ignoring
+//         words); resolveSubdivision only the state name.
 // Matching: first the exact name or alias after normalizePlace (accents, case
 //         and punctuation ignored, & read as "and"), then the core name, the
 //         name or alias without the ignored words ("Krasnoyarsk Krai" finds
@@ -89,13 +91,14 @@ export function buildSubdivisionIndex(features, ignoredWords = []) {
 }
 
 /**
- * The index of one checklist's states as Geometry.stateNames gives them.
- * @param {{ name: string, aliases?: string[] }[]} states
+ * The index of one checklist's states as Geometry.stateNames gives them, by
+ * their names only: other names (aliases) are left out (R51).
+ * @param {{ name: string }[]} states
  * @param {string[]} [ignoredWords]  rules file `ignored_name_words`
  * @returns {SubdivisionIndex}
  */
 export function stateIndex(states, ignoredWords = []) {
-  return buildSubdivisionIndex(states.map(({ name, aliases }) => ({ properties: { name, aliases: aliases ?? [] } })), ignoredWords)
+  return buildSubdivisionIndex(states.map(({ name }) => ({ properties: { name, aliases: [] } })), ignoredWords)
 }
 
 /**

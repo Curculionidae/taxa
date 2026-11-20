@@ -194,7 +194,7 @@ parts:
       areas: [GA 5]
 manual:
   - match: { area: GA 7 }
-    subdivision_of: { country: Russian Federation, state: Moskva }
+    subdivision_of: { country: Russian Federation, state: Moscow }
   - match: { tdwg: 12FRA }
     subdivision_of: { country: France, part: Corsica }
 `
@@ -207,11 +207,11 @@ test('validateRules: a consistent file passes', () => {
 test('validateRules: unknown country, part, state, state country, parts key and synonym head throw with the line', () => {
   assert.throws(() => validate(VALID.replace('country: France, part', 'country: Frankreich, part')), /^Error: placement.yml:11: unknown country "Frankreich"$/)
   assert.throws(() => validate(VALID.replace('part: Corsica }', 'part: Korsika }')), /placement.yml:11: unknown part "Korsika" of France/)
-  assert.throws(() => validate(VALID.replace('state: Moskva', 'state: Atlantis')), /placement.yml:9: unknown state "Atlantis" of Russia/)
+  assert.throws(() => validate(VALID.replace('state: Moscow', 'state: Moskva')), /placement.yml:9: unknown state "Moskva" of Russia/)
   assert.throws(() => validate(VALID.replace('[Russia]', '[Russia, Utopia]')), /placement.yml:1: unknown country "Utopia" in state_countries/)
   assert.throws(() => validate(VALID.replace('  France:', '  Gallia:').replace('country: France, part: Corsica', 'country: France')), /placement.yml:5: unknown country "Gallia" in parts/)
   assert.throws(() => validate(VALID.replace('[Russia, Russian Federation]', '[Russian Federation, Russia]')), /placement.yml:3: the first name of a synonym list must be a checklist/)
-  assert.throws(() => validate(VALID.replace('state: Moskva', 'state: Moskva').replace('Russian Federation, state', 'France, state')), /placement.yml:9: France is not in state_countries/)
+  assert.throws(() => validate(VALID.replace('Russian Federation, state', 'France, state')), /placement.yml:9: France is not in state_countries/)
 })
 
 test('validateRules: a rule that matches no used area is a warning', () => {

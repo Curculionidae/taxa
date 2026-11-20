@@ -130,7 +130,7 @@ log(`${data.statusTags.length} adventive/endemic tags, ${data.reassessments.leng
 // (buildContext.mjs, shared with compare.mjs).
 const {
   rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
-  checklistById, shapes, unusable, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+  checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
   screenRow
 } = await createBuildContext(data, { root: ROOT, log, fromDir })
 
@@ -344,7 +344,7 @@ writeFileSync(join(OUT_DIR, 'index.json'), JSON.stringify({
 }, null, 1))
 writeFileSync(join(OUT_DIR, 'rules.json'), JSON.stringify(rules))
 writeFileSync(join(OUT_DIR, 'context.json'), JSON.stringify(cacheContext({
-  built: BUILD_DATE, checklists, targets: geometry.checklistTargets(), shapes, unusable
+  built: BUILD_DATE, checklists, targets: geometry.checklistTargets(), shapes, unusable, stateAreas
 })))
 writeFileSync(join(OUT_DIR, 'unplaced.json'), JSON.stringify(groupUnplaced(unplacedEntries)))
 

@@ -26,7 +26,7 @@ import { join } from 'node:path'
 import { compileRules, validateRules } from '../placement/rules.js'
 import { toArea, normalizeName } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
-import { createContext, placeRecord, ruleMatches } from '../placement/engine.js'
+import { createContext, placeRecord, ruleMatches, stateAreasOf } from '../placement/engine.js'
 import { formatPlacement, formatExplanation } from '../placement/format.js'
 import { createNodeGeometry, listShapes, unusableOutlines } from './geometry-node.mjs'
 import { loadData, parseTsv, level0NamesFrom, beetleSides } from './download.mjs'
@@ -178,7 +178,10 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   for (const warning of ruleWarnings) warn(`warning: ${warning}`)
   const unusable = unusableOutlines(areas.values(), shapes, geometry)
   const outlines = new Map(geometry.checklistTargets().map(({ id, outline }) => [id, outline]))
-  const ctx = createContext({ checklists, rules, geometry, shapes, unusable, outlines })
+  // The areas of each checklist with states, for specimens whose stateProvince
+  // names a TaxonWorks area rather than a state (R51); placeArea needs none of them.
+  const stateAreas = stateAreasOf(areas.values(), createContext({ checklists, rules, geometry, shapes, unusable, outlines }))
+  const ctx = createContext({ checklists, rules, geometry, shapes, unusable, outlines, stateAreas })
 
   // An area's placement, the same for every distribution on it.
   const areaPlacements = new Map()
@@ -267,7 +270,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
 
   return {
     rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
-    checklistById, shapes, unusable, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+    checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
     parentClassification, screenRow, rowsOf, placementOf
   }
 }

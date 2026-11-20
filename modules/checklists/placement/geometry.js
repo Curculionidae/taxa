@@ -272,16 +272,16 @@ export function stateAtPoint(entries, point, tolerance) {
 
 /**
  * The state targets of a checklist: the subdivisions features of its country.
- * @param {Array<{ properties: { country: string, name: string, aliases?: string[] }, geometry: object }>} features
+ * @param {Array<{ properties: { country: string, name: string }, geometry: object }>} features
  *   subdivisions.geojson features
  * @param {import('./checklists.js').Checklist|undefined} checklist
- * @returns {Array<Target & { aliases: string[] }>}  [] for a checklist without `states`
+ * @returns {Target[]}  [] for a checklist without `states`
  */
 export function stateTargetsOf(features, checklist) {
   if (!checklist?.states) return []
   return features
     .filter((feature) => normalizeName(feature.properties.country) === normalizeName(checklist.name))
-    .map((feature) => ({ name: feature.properties.name, aliases: feature.properties.aliases ?? [], polygons: polygonsOf(feature.geometry) }))
+    .map((feature) => ({ name: feature.properties.name, polygons: polygonsOf(feature.geometry) }))
 }
 
 /**

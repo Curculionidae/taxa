@@ -197,6 +197,7 @@ test('cacheContext: checklists, their outlines with bbox, and the cached outline
       { id: 2, outline: 'fallback/Spain', bbox: [-3, 0, -1, 2] }
     ],
     shapes: { GeographicArea: [2, 5, 12], Gazetteer: [7] },
-    unusable: { GeographicArea: [], Gazetteer: [7] }
+    unusable: { GeographicArea: [], Gazetteer: [7] },
+    stateAreas: {}
   })
 })

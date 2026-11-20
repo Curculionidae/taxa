@@ -44,20 +44,22 @@ test('a state\'s own name wins over another state\'s alias', () => {
   assert.equal(resolveSubdivision(index, 'Moskovskaya'), 'Moscow Oblast')
 })
 
-test('stateIndex builds the index from names with aliases', () => {
+test('stateIndex builds the index from names only; aliases are left out (R51)', () => {
   const index = stateIndex([{ name: 'Georgia', aliases: [] }, { name: 'Hawaii', aliases: ["Hawai'i"] }], ['state', 'of'])
   assert.equal(resolveSubdivision(index, 'Georgia'), 'Georgia')
   assert.equal(resolveSubdivision(index, 'State of Hawaii'), 'Hawaii')
-  assert.equal(resolveSubdivision(index, "Hawai'i"), 'Hawaii')
+  assert.equal(resolveSubdivision(index, "Hawai'i"), '')
 })
 
-test('the real Natural Earth aliases resolve Xinjiang Uygur, Sakha and Moskva as the old page did', () => {
+test('the real Natural Earth aliases: the engine index ignores them (R51), buildSubdivisionIndex still resolves them as the old page did', () => {
   const file = new URL('../../../public/checklists/subdivisions.geojson', import.meta.url)
   const features = JSON.parse(readFileSync(file, 'utf8')).features
   const of = (country) => features.filter((f) => f.properties.country === country)
     .map((f) => ({ name: f.properties.name, aliases: f.properties.aliases }))
-  const china = stateIndex(of('China'), WORDS)
-  const russia = stateIndex(of('Russia'), WORDS)
+  assert.equal(resolveSubdivision(stateIndex(of('Russia'), WORDS), 'Moskva'), '')
+  const old = (list) => buildSubdivisionIndex(list.map((properties) => ({ properties })), WORDS)
+  const china = old(of('China'))
+  const russia = old(of('Russia'))
   assert.equal(resolveSubdivision(china, 'Xinjiang Uygur'), 'Xinjiang')
   // "Sakha" is the alias "Sakha Republic" with "republic" ignored.
   assert.deepEqual(matchSubdivision(russia, 'Sakha'), { state: 'Sakha (Yakutia)', candidate: 'Sakha', alias: 'Sakha Republic', ignored: ['republic'] })

@@ -22,7 +22,7 @@ const byName = (name) => checklists.find((c) => c.name === name)
 test('toArea normalizes a geographic area', () => {
   assert.deepEqual(ga(fx.ga8837), {
     key: 'GA 8837', kind: 'GA', id: 8837, name: 'Cayenne', origin: 'gadm',
-    type: 'Unknown', tdwg: null, iso2: null, level0: null, level1: null,
+    type: 'Unknown', tdwg: null, iso2: null, level0: null, level1: null, level2: null,
     parentId: 78, parentName: 'French Guiana'
   })
   assert.equal(ga(fx.ga77).iso2, 'FR')

@@ -242,7 +242,7 @@ export function compileRules(yamlText, file = 'placement.yml') {
  * @param {Object} input
  * @param {import('./checklists.js').Checklist[]} input.checklists  from deriveChecklists
  * @param {import('./areas.js').Area[]} [input.areas]  every used area, for the warnings
- * @param {(checklist: import('./checklists.js').Checklist) => { name: string, aliases?: string[] }[]} [input.stateNamesOf]
+ * @param {(checklist: import('./checklists.js').Checklist) => { name: string }[]} [input.stateNamesOf]
  *   the states of a checklist with states (Geometry.stateNames); without it states are not checked
  * @param {(rule: Rule, area: import('./areas.js').Area) => boolean} [input.matches]  engine.js ruleMatches
  * @returns {{ warnings: string[] }}  'placement.yml:200: matches no used area (tdwg 12FRA)'

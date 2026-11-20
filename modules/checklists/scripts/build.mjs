@@ -200,9 +200,10 @@ for (const row of rows) {
 
   // Unclassified records may not be weevils: listed in unplaced.json, but not
   // counted as left-out weevil records.
-  if (lookupFailed) { unplacedEntries.push({ reason: 'classification lookup failed', kind, id, area: area?.key }); continue }
+  const where = { area: area?.key, country: area ? null : row.country }
+  if (lookupFailed) { unplacedEntries.push({ reason: 'classification lookup failed', kind, id, ...where }); continue }
   if (!placement.checklist) {
-    unplacedEntries.push({ reason: placement.reason, kind, id, area: area?.key })
+    unplacedEntries.push({ reason: placement.reason, kind, id, ...where })
     unplaced.records++
     unplaced.taxa.add(taxonKey(row))
     continue

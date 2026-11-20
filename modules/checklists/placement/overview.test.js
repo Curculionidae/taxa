@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
 import {
-  areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, groupUnplaced, summarizeOtu,
-  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, groupByPointer, splitRefs, sourceTags, afterDecisionSteps, lineLink
+  areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, reasonDetail, unplacedSections, summarizeOtu,
+  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, splitRefs, sourceTags, afterDecisionSteps, lineLink
 } from './overview.js'
 
 const placed = (name, steps = [{ text: `x is in ${name}`, source: 'TaxonWorks' }], extra = {}) => ({
@@ -131,32 +131,36 @@ test('reasonKind groups the variants of one reason', () => {
   assert.equal(reasonKind('locality text only'), 'locality text only')
 })
 
-test('groupUnplaced: one section per kind, largest first, variants with counts, locality reasons last (R45)', () => {
-  const sections = groupUnplaced({
-    'locality text only': [['CO', 1], ['CO', 2], ['FO', 3], ['CO', 4]],
-    'spans several countries: Indonesia 51%, Papua New Guinea 49%': [['AD', 10, 'GZ 3614']],
-    'spans several countries: Dominican Republic 66%, Haiti 34%': [['AD', 11, 'GZ 3549'], ['AD', 12, 'GZ 3549']]
-  })
-  assert.deepEqual(sections.map((section) => [section.kind, section.count]), [['spans several countries', 3], ['locality text only', 4]])
-  assert.deepEqual(sections[0].variants, [
-    { reason: 'spans several countries: Dominican Republic 66%, Haiti 34%', count: 2 },
-    { reason: 'spans several countries: Indonesia 51%, Papua New Guinea 49%', count: 1 }
-  ])
-  assert.deepEqual(sections[0].records[0], { kind: 'AD', id: 11, reason: 'spans several countries: Dominican Republic 66%, Haiti 34%', area: 'GZ 3549' })
-  assert.deepEqual(sections[1].variants, [{ reason: 'locality text only', count: 4 }])
-  assert.equal(sections[1].records[0].area, null)
+test('reasonDetail: the shares, names or country of a reason, no kind', () => {
+  assert.equal(reasonDetail('spans several countries: Indonesia 51%, Papua New Guinea 49%'), 'Indonesia 51%, Papua New Guinea 49%')
+  assert.equal(reasonDetail('coordinates in several countries (Russia, Ukraine)'), 'Russia, Ukraine')
+  assert.equal(reasonDetail('no checklist for Kosovo'), 'Kosovo')
+  assert.equal(reasonDetail('locality text only'), '')
 })
 
-test('groupByPointer: GA areas, then gazetteers, then collecting events (R45)', () => {
-  const groups = groupByPointer([
-    { kind: 'AD', id: 1, area: 'GZ 3614' }, { kind: 'CO', id: 2, area: null }, { kind: 'AD', id: 3, area: 'GA 33639' },
-    { kind: 'AD', id: 4, area: 'GZ 3614' }, { kind: 'FO', id: 5, area: null }
-  ], new Map([['GZ 3614', 'New Guinea'], ['GA 33639', 'Borneo']]))
-  assert.deepEqual(groups.map(({ label, pointer, records }) => [label, pointer, records.map((r) => r.id)]), [
-    ['Borneo (GA 33639)', 'GA', [3]],
-    ['New Guinea (GZ 3614)', 'GZ', [1, 4]],
-    ['Collecting events (specimens and field occurrences)', 'collecting event', [2, 5]]
+test('unplacedSections: one line per area with its shares and count, GA and GZ mixed, largest first (R53)', () => {
+  const sections = unplacedSections({
+    'locality text only': [['CO', 1], ['CO', 2, null, 'Germany'], ['FO', 3], ['CO', 4]],
+    'spans several countries: Papua New Guinea 51%, Indonesia 49%': [['AD', 10, 'GZ 3614'], ['AD', 13, 'GZ 3614']],
+    'spans several countries: Indonesia 51%, Papua New Guinea 49%': [['AD', 11, 'GA 33838'], ['AD', 12, 'GA 33838'], ['AD', 14, 'GA 33838']],
+    'no checklist for Kosovo': [['CO', 20, null, 'Kosovo']]
+  }, new Map([['GZ 3614', 'New Guinea'], ['GA 33838', 'New Guinea']]))
+  assert.deepEqual(sections.map(({ kind, count, areas, countries, locality }) => [kind, count, areas, countries, locality]), [
+    ['spans several countries', 5, 2, 0, false],
+    ['no checklist for a country', 1, 0, 1, false],
+    ['locality text only', 4, 0, 2, true]
   ])
+  assert.deepEqual(sections[0].lines.map(({ label, area, detail, count, records }) => [label, area, detail, count, records.map((r) => r.id)]), [
+    ['New Guinea', 'GA 33838', 'Indonesia 51%, Papua New Guinea 49%', 3, [11, 12, 14]],
+    ['New Guinea', 'GZ 3614', 'Papua New Guinea 51%, Indonesia 49%', 2, [10, 13]]
+  ])
+  assert.deepEqual(sections[1].lines.map(({ label, detail }) => [label, detail]), [['Kosovo', 'Kosovo']])
+})
+
+test('unplacedSections: records without an area grouped by their DwC country, else "no country"', () => {
+  const [section] = unplacedSections({ 'coordinates outside every outline': [['CO', 1, null, 'Chile'], ['FO', 2], ['CO', 3, null, 'Chile']] })
+  assert.deepEqual(section.lines.map(({ label, country, area, count }) => [label, country, area, count]), [['Chile', 'Chile', null, 2], ['no country', '', null, 1]])
+  assert.equal(section.countries, 2)
 })
 
 test('splitRefs and sourceTags: rules lines become links, every contributing source once (R43, R46)', () => {

@@ -222,37 +222,74 @@ export function reasonKind(reason) {
 }
 
 /**
- * unplaced.json as sections, one per reason kind (reasonKind), largest first:
- * the variants (exact reason texts) with their counts, largest first, and all
- * records of the section in that order.
- * @param {Object<string, Array<[string, number, string?]>>} unplaced  unplaced.json; the third
- *   element is the area of an asserted distribution ('GZ 3614'), absent otherwise
- * @returns {{ kind: string, count: number, variants: { reason: string, count: number }[],
- *   records: { kind: string, id: number, reason: string, area: string|null }[] }[]}
- *   the reasons 'locality text only' and 'no locality at all' last
+ * The detail of a reason within its kind (reasonKind): the shares of
+ * 'spans several countries: Indonesia 51%, Papua New Guinea 49%', the names
+ * of 'coordinates in several countries (Russia, Ukraine)', the country of
+ * 'no checklist for Kosovo'; '' when the reason is its kind.
+ * @param {string} reason
+ * @returns {string}
  */
-export function groupUnplaced(unplaced) {
+export function reasonDetail(reason) {
+  const text = String(reason ?? '')
+  if (text.startsWith('no checklist for ')) return text.slice('no checklist for '.length)
+  const kind = reasonKind(text)
+  return text.slice(kind.length).replace(/^[\s:(]+/, '').replace(/\)\s*$/, '').trim()
+}
+
+/** Reason kinds of records with nothing to place them by, shown last and closed (R45). */
+export const LOCALITY_REASONS = ['locality text only', 'no locality at all']
+
+/**
+ * unplaced.json for the Not placed tab (R53): one section per reason kind
+ * (reasonKind), with its record count, and under it one line per area (the
+ * area of the asserted distributions) or, for records without an area
+ * (specimens and field occurrences), per DwC country text ('no country'
+ * without one). A line has its label, the reason detail (reasonDetail: the
+ * shares of that area, no date), its record count and its records. Lines by
+ * record count, largest first; sections by record count, the locality
+ * reasons (LOCALITY_REASONS) last.
+ * @param {Object<string, Array<[string, number, (string|null)?, string?]>>} unplaced  unplaced.json:
+ *   [kind, id], [kind, id, area key] or [kind, id, null, DwC country]
+ * @param {Map<string, string>} [areaNames]  area key to name (areas.json)
+ * @returns {{ kind: string, count: number, areas: number, countries: number, locality: boolean,
+ *   lines: { key: string, label: string, area: string|null, country: string|null, detail: string,
+ *     count: number, records: { kind: string, id: number }[] }[] }[]}
+ */
+export function unplacedSections(unplaced, areaNames = new Map()) {
   const sections = new Map()
   for (const [reason, ids] of Object.entries(unplaced ?? {})) {
     const kind = reasonKind(reason)
-    if (!sections.has(kind)) sections.set(kind, { kind, count: 0, variants: [] })
+    if (!sections.has(kind)) sections.set(kind, { kind, count: 0, lines: new Map() })
     const section = sections.get(kind)
-    section.count += ids.length
-    section.variants.push({ reason, count: ids.length, ids })
+    for (const [recordKind, id, area, country] of ids) {
+      section.count += 1
+      const text = String(country ?? '').trim()
+      const key = area ? `area:${area}` : recordKind === 'AD' ? 'no area' : `country:${text}`
+      if (!section.lines.has(key)) {
+        const label = area ? (areaNames.get(area) ?? area) : recordKind === 'AD' ? 'Asserted distributions without area' : (text || 'no country')
+        section.lines.set(key, { key, label, area: area ?? null, country: area ? null : (recordKind === 'AD' ? null : text || ''), details: new Set(), count: 0, records: [] })
+      }
+      const line = section.lines.get(key)
+      line.count += 1
+      line.details.add(reasonDetail(reason))
+      line.records.push({ kind: recordKind, id: Number(id) })
+    }
   }
   return [...sections.values()]
-    .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind))
     .map((section) => {
-      const variants = section.variants.sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
+      const lines = [...section.lines.values()]
+        .map(({ details, ...line }) => ({ ...line, detail: [...details].filter(Boolean).join('; ') }))
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
       return {
         kind: section.kind,
         count: section.count,
-        variants: variants.map(({ reason, count }) => ({ reason, count })),
-        records: variants.flatMap(({ reason, ids }) => ids.map(([kind, id, area]) => ({ kind, id: Number(id), reason, area: area ?? null })))
+        areas: lines.filter((line) => line.area).length,
+        countries: lines.filter((line) => line.country !== null && !line.area).length,
+        locality: LOCALITY_REASONS.includes(section.kind),
+        lines
       }
     })
-    // Records with nothing to place them by come last (R45).
-    .sort((a, b) => Number(LOCALITY_REASONS.includes(a.kind)) - Number(LOCALITY_REASONS.includes(b.kind)))
+    .sort((a, b) => Number(a.locality) - Number(b.locality) || b.count - a.count || a.kind.localeCompare(b.kind))
 }
 
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`
@@ -466,35 +503,6 @@ export function afterDecisionSteps(rules) {
     { text: 'The outline: the part\'s outline, else the checklist\'s.', ref: null }
   ]
 }
-
-/**
- * The records of one reason grouped by what they point to (R45): each
- * geographic area (GA) and gazetteer (GZ) of the asserted distributions, then
- * the collecting events of the specimens and field occurrences (no area).
- * Areas with more records first.
- * @param {{ kind: string, id: number, area?: string|null }[]} records  of one reason
- * @param {Map<string, string>} [areaNames]  area key to name (areas.json)
- * @returns {{ key: string, label: string, pointer: 'GA'|'GZ'|'collecting event', records: Object[] }[]}
- */
-export function groupByPointer(records, areaNames = new Map()) {
-  const groups = new Map()
-  for (const record of records) {
-    const key = record.area ?? (record.kind === 'AD' ? 'AD without area' : 'collecting event')
-    if (!groups.has(key)) {
-      const pointer = key.startsWith('GZ ') ? 'GZ' : key.startsWith('GA ') ? 'GA' : 'collecting event'
-      const label = pointer === 'collecting event'
-        ? (key === 'AD without area' ? 'Asserted distributions without area' : 'Collecting events (specimens and field occurrences)')
-        : `${areaNames.get(key) ?? key} (${key})`
-      groups.set(key, { key, label, pointer, records: [] })
-    }
-    groups.get(key).records.push(record)
-  }
-  const order = { GA: 0, GZ: 1, 'collecting event': 2 }
-  return [...groups.values()].sort((a, b) => order[a.pointer] - order[b.pointer] || b.records.length - a.records.length || a.label.localeCompare(b.label))
-}
-
-/** Reason kinds of records with nothing to place them by, shown last and closed (R45). */
-export const LOCALITY_REASONS = ['locality text only', 'no locality at all']
 
 /**
  * The route to line N of the rules file on the curator page's Rules tab: the

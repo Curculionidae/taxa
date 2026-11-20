@@ -2,18 +2,16 @@
   A small copy button beside a record id on the curator page (R43): copies
   the id as text ("AD 669847") to the clipboard and says "Copied" for a
   moment. When the clipboard is not available (no permission, no secure
-  context), the id is selected instead, ready for Ctrl+C, and the button says
-  "Selected". The click does not reach the table row (no lookup).
+  context), a small read-only field with the id appears, selected, ready for
+  Ctrl+C, and the button says "Selected". The id itself is never rendered a
+  second time (no hidden copy of it), so it is read and seen once. The click
+  does not reach the table row (no lookup).
 
   Props
     text  what to copy, e.g. 'AD 669847'
 -->
 <template>
   <span class="ml-1 inline-flex items-center gap-1 align-middle">
-    <span
-      ref="target"
-      class="sr-only"
-    >{{ text }}</span>
     <button
       type="button"
       class="rounded p-0.5 text-base-soft hover:text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
@@ -42,6 +40,17 @@
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
       </svg>
     </button>
+    <input
+      v-if="manual"
+      ref="field"
+      class="w-28 rounded border border-base-border bg-base-foreground px-1 font-mono text-xs text-base-content"
+      readonly
+      :value="text"
+      :aria-label="`${text}, selected for copying`"
+      @click.stop
+      @keydown.enter.stop
+      @blur="manual = false"
+    >
     <span
       v-if="feedback"
       class="text-xs text-base-content"
@@ -51,13 +60,14 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
 
 const props = defineProps({
   text: { type: String, required: true }
 })
 
-const target = ref(null)
+const field = ref(null)
+const manual = ref(false)
 const feedback = ref('')
 let timer = null
 
@@ -67,18 +77,13 @@ function show(message) {
   timer = setTimeout(() => { feedback.value = '' }, 1500)
 }
 
-// Select the id as text, so it can be copied by hand.
-function selectText() {
-  const element = target.value
-  if (!element || typeof window === 'undefined') return
-  element.classList.remove('sr-only')
-  const range = document.createRange()
-  range.selectNodeContents(element)
-  const selection = window.getSelection()
-  selection.removeAllRanges()
-  selection.addRange(range)
+// Show the id in a read-only field, selected, so it can be copied by hand.
+async function selectText() {
+  manual.value = true
+  await nextTick()
+  field.value?.focus()
+  field.value?.select()
   show('Selected')
-  setTimeout(() => element.classList.add('sr-only'), 4000)
 }
 
 function copy() {

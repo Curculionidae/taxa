@@ -34,11 +34,11 @@ test('groupUnplaced: ids by reason, the most frequent reason first, ids sorted',
   const grouped = groupUnplaced([
     { reason: 'no locality at all', kind: 'CO', id: 9 },
     { reason: 'not measured yet', kind: 'AD', id: 5, area: 'GZ 3614' },
-    { reason: 'no locality at all', kind: 'CO', id: 3 },
+    { reason: 'no locality at all', kind: 'CO', id: 3, country: 'Germany' },
     { reason: 'no locality at all', kind: 'FO', id: 1 }
   ])
   assert.deepEqual(Object.keys(grouped), ['no locality at all', 'not measured yet'])
-  assert.deepEqual(grouped['no locality at all'], [['CO', 3], ['CO', 9], ['FO', 1]])
+  assert.deepEqual(grouped['no locality at all'], [['CO', 3, null, 'Germany'], ['CO', 9], ['FO', 1]], 'a specimen keeps its DwC country text')
   assert.deepEqual(grouped['not measured yet'], [['AD', 5, 'GZ 3614']], 'an asserted distribution keeps its area')
 })
 

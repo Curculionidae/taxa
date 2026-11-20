@@ -51,16 +51,19 @@ export function assignKeys(checklists) {
 /**
  * unplaced.json: record ids by reason, the most frequent reason first, the ids
  * of a reason sorted by kind, then id. An asserted distribution carries its
- * area as a third element ('GZ 3614'), so the curator page can group the
- * records by what they point to (R45).
- * @param {{ reason: string, kind: string, id: number, area?: string|null }[]} entries  kind: 'AD', 'CO' or 'FO'
- * @returns {Object<string, Array<[string, number] | [string, number, string]>>}
+ * area as a third element ('GZ 3614'); a specimen or field occurrence with a
+ * DwC country text carries it as a fourth (third null), so the curator page
+ * can list the records by area or by country (R45, R53).
+ * @param {{ reason: string, kind: string, id: number, area?: string|null, country?: string|null }[]} entries
+ *   kind: 'AD', 'CO' or 'FO'
+ * @returns {Object<string, Array<[string, number] | [string, number, string] | [string, number, null, string]>>}
  */
 export function groupUnplaced(entries) {
   const byReason = new Map()
-  for (const { reason, kind, id, area } of entries) {
+  for (const { reason, kind, id, area, country } of entries) {
     if (!byReason.has(reason)) byReason.set(reason, [])
-    byReason.get(reason).push(area ? [kind, id, area] : [kind, id])
+    const text = String(country ?? '').trim()
+    byReason.get(reason).push(area ? [kind, id, area] : text ? [kind, id, null, text] : [kind, id])
   }
   const sorted = [...byReason].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'en'))
   return Object.fromEntries(sorted.map(([reason, ids]) => [

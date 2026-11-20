@@ -941,25 +941,30 @@ what matches, opened.
 
 ### Not placed
 
-`unplaced.json` grouped by kind of reason (`overview.js` `groupUnplaced`,
-`reasonKind`): the text before `:` or `(` (`spans several countries`,
-`coordinates in several countries`), `no checklist for a country` for every
-`no checklist for <name>`, else the reason. A section lists its exact reasons
-with counts when there are several. Within a section the records are grouped
-by what they point to (`overview.js` `groupByPointer`, R45): each geographic
-area (GA), then each gazetteer (GZ), then the collecting events of specimens
-and field occurrences, each with its count (an area name opens it in the
-lookup tab); `unplaced.json` keeps the area of each asserted distribution as
-a third element (`["AD", 669847, "GZ 3614"]`). The reasons `locality text
-only` and `no locality at all` come last, closed, after one note: their
-collecting events have no georeference or area; fix them in TaxonWorks when
-convenient. Its records load only when it is opened,
-50 at a time ("Load more"): distributions in one request per 50 (`GET
-/asserted_distributions?asserted_distribution_id[]=…&extend[]=asserted_distribution_shape`,
+`unplaced.json` by kind of reason and by area (`overview.js`
+`unplacedSections`, R53). Kinds come from `reasonKind`: the text before `:` or
+`(` (`spans several countries`, `coordinates in several countries`), `no
+checklist for a country` for every `no checklist for <name>`, else the
+reason. Each kind is a heading with its record count and its number of areas
+(or countries). Under it one line per area: its name and key (GA or GZ, a
+link to TaxonWorks), the reason detail for that area (`reasonDetail`: the
+measured shares such as "Indonesia 51%, Papua New Guinea 49%", the names, or
+the country), and its record count; largest first, GA and GZ mixed.
+Specimens and field occurrences have no area: their lines are their DwC
+country text, else "no country" (`unplaced.json` keeps the area of each
+asserted distribution as a third element, `["AD", 669847, "GZ 3614"]`, and
+the DwC country of a specimen as a fourth, `["CO", 12, null, "Chile"]`). The
+reasons `locality text only` and `no locality at all` come last, closed,
+after one note: their collecting events have no georeference or area; fix
+them in TaxonWorks when convenient.
+
+A line opens (a button with `aria-expanded`) to its records, loaded only
+then, 50 at a time ("Load more"): distributions in one request per 50 (`GET
+/asserted_distributions?asserted_distribution_id[]=…`,
 `fetchDistributionsByIds`), specimens and field occurrences one by one
 (`/collection_objects/:id/dwc`, `/field_occurrences/:id/dwc`, at most 6 at
-once). Each row: the record (edit link), its name, its area or DwC place, and
-its exact reason when the section has several.
+once). Each record: its id (edit link and copy button) and its name;
+clicking it opens the lookup.
 
 ### Rules
 

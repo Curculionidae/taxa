@@ -94,8 +94,16 @@ The list of checklists comes from `placement/checklists.js` (`deriveChecklists`)
 which reads the areas that asserted distributions use (`placement/areas.js`,
 `toArea`) and the rules file.
 
-- Country areas come from TaxonWorks. A country area is a geographic area whose
-  id equals its `level0_id`. Each becomes a checklist, named after the area.
+- Country areas come from TaxonWorks. A country area is what TaxonWorks calls
+  one in `GeographicArea#categorize` (`isCountryArea` in `placement/areas.js`):
+  its id equals its `level0_id`, or its type is a country-level type
+  (`COUNTRY_LEVEL_TYPES`: Country, Governorate), or its parent is Earth and it
+  is not a TDWG area. Each becomes a checklist, named after the area. GA 33412
+  "United States of America" (Natural Earth, type Country, `level0_id` empty,
+  no shape) is a country by this rule; the US states point to it with their
+  `level0_id`, and the synonym line `[United States, United States of
+  America]` merges it with GA 237 into United States (areas 237 and 33412, as
+  in today's index; the outline comes from GA 237).
 - Merging by synonyms: TaxonWorks has several country-level areas for some
   countries (for example "Bosnia and Herz." and "Bosnia and Herzegovina"). Areas
   whose names are listed together in `synonyms`, or are the same after
@@ -103,7 +111,7 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   become one checklist. Its name is the first synonym and its `areaIds` list
   every merged area. Its id is the area with the only ISO code; with none or
   several ISO codes, the lowest id.
-- A country-level area whose parent is not "Earth" (England under United
+- A country area whose parent is not "Earth" (England under United
   Kingdom, Sint Maarten under Netherlands) is not a checklist of its own: its id
   joins its parent's country.
 - A country used only through its subdivisions (Spain, Western Sahara, ...) has
@@ -112,12 +120,6 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   those records). Without a name the id is skipped and `deriveChecklists`
   returns a warning `level0 <id> has no name (areas: ...)`; it returns
   `{ checklists, warnings }`.
-- A level0 id whose own area exists but is not country-level is treated the
-  same way. GA 33412 "United States of America" (Natural Earth) has no level0
-  of its own, yet every Natural Earth US state points to it. It becomes a
-  country named by `level0Names`, else by its own name, and the synonym line
-  `[United States, United States of America]` merges it into United States
-  (areas 237 and 33412, as in today's index).
 - Own checklists: every entry of `checklists` in the rules file is a checklist
   of its own, even when TaxonWorks files it under another country (`of:`). An
   area id listed there is removed from the country checklist it would have
@@ -205,9 +207,12 @@ Decision order for an area; the first that applies decides:
 2. A checklist of its own: the area or its parent is listed in the entry's
    `areas`, the area has the entry's ISO code, or a word of the entry's `names`
    is in the area's or its parent's name (accent insensitive, whole words).
-3. The country TaxonWorks gives the area (`level0_id`). An area without one
-   goes to the checklist that owns the area itself (GA 33412 United States of
-   America) or its parent (Texas, GA 26386, under GA 237 United States).
+3. The country TaxonWorks gives the area: its `level0_id`; without one, the
+   area itself when TaxonWorks counts it as a country (GA 33412 United States
+   of America, type Country), else a parent that belongs to a checklist
+   (Texas, GA 26386, under GA 237 United States). A country area whose name
+   differs from its checklist gets a second, manual step citing the synonym
+   line (`United States of America is a spelling of United States`).
 4. The ISO code of a gazetteer.
 5. An overlap rule for the area.
 6. Otherwise not placeable. Reasons: `spans several countries: <shares>` (from

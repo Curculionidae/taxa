@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
-import { toArea, normalizeName, containsName } from './areas.js'
+import { toArea, normalizeName, containsName, isCountryArea } from './areas.js'
 import { deriveChecklists } from './checklists.js'
 import * as fx from './fixtures.js'
 
@@ -155,7 +155,7 @@ test('Turks and Caicos areas merge; without or with several ISO codes the lowest
   assert.equal(both.find((c) => c.name === 'Turks and Caicos Islands').id, 231)
 })
 
-test('United States of America (GA 33412, not country-level) joins United States through its states (R17)', () => {
+test('United States of America (GA 33412, type Country, level0 empty) merges with GA 237 into United States (R17)', () => {
   const list = deriveChecklists([fx.ga237, fx.ga33412, fx.ga33455].map(ga), rules).checklists
   const us = list.filter((c) => /united states/i.test(c.name))
   assert.equal(us.length, 1)
@@ -164,13 +164,23 @@ test('United States of America (GA 33412, not country-level) joins United States
   assert.deepEqual(us[0].areaIds.sort((a, b) => a - b), [237, 33412])
 })
 
-test('a referenced level0 area that is not country-level is named by level0Names first (R17)', () => {
+test('isCountryArea follows TaxonWorks GeographicArea#categorize (R17)', () => {
+  assert.equal(isCountryArea(ga(fx.ga237)), true) // id equals level0
+  assert.equal(isCountryArea(ga(fx.ga33412)), true) // type Country, level0 empty
+  assert.equal(isCountryArea(ga({ ...fx.ga33455, geographic_area_type: { name: 'Governorate' } })), true)
+  // parent Earth and not TDWG, whatever the type
+  assert.equal(isCountryArea(ga({ ...fx.ga8837, parent_id: 1, parent: { name: 'Earth' } })), true)
+  assert.equal(isCountryArea(ga({ ...fx.ga33639, parent_id: 1, parent: { name: 'Earth' } })), false) // TDWG
+  assert.equal(isCountryArea(ga(fx.ga33455)), false) // a state
+  assert.equal(isCountryArea(ga(fx.ga33639)), false)
+  assert.equal(isCountryArea(gz(fx.gz3529)), false)
+})
+
+test('GA 33412 is a country area itself, not a stub: its own name, no level0Names needed (R17)', () => {
   const countriesOf = (list) => list.filter((c) => !c.ref).map((c) => [c.name, c.areaIds])
-  const named = deriveChecklists([fx.ga33412, fx.ga33455].map(ga), rules, new Map([[33412, 'USA']])).checklists
-  assert.deepEqual(countriesOf(named), [['USA', [33412]]])
-  // Without a level0 name, the area's own name, through the synonym line.
-  const own = deriveChecklists([fx.ga33412, fx.ga33455].map(ga), rules).checklists
-  assert.deepEqual(countriesOf(own), [['United States', [33412]]])
+  const result = deriveChecklists([fx.ga33455, fx.ga33412].map(ga), rules, new Map([[33412, 'USA']]))
+  assert.deepEqual(countriesOf(result.checklists), [['United States', [33412]]])
+  assert.deepEqual(result.warnings, [])
 })
 
 test('a checklist without ISO code takes it from isoByName, also through a synonym (R18)', () => {

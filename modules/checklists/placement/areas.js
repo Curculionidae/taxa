@@ -78,3 +78,25 @@ export function containsName(text, name) {
   if (!wanted) return false
   return ` ${normalizeName(text)} `.includes(` ${wanted} `)
 }
+
+/**
+ * Geographic area types that are a country, as in TaxonWorks
+ * (GeographicAreaType::COUNTRY_LEVEL_TYPES, app/models/geographic_area_type.rb).
+ */
+export const COUNTRY_LEVEL_TYPES = ['Country', 'Governorate']
+
+/**
+ * Is the area a country area? The same test as TaxonWorks'
+ * GeographicArea#categorize (app/models/geographic_area.rb): its id is its own
+ * level0 id, or its type is a country-level type, or its parent is Earth and
+ * it is not a TDWG area (data origin contains "tdwg"). So GA 33412 "United
+ * States of America" (type Country, parent Earth, level0 empty) is a country.
+ * @param {Area} area
+ * @returns {boolean}  always false for gazetteers
+ */
+export function isCountryArea(area) {
+  if (area.kind !== 'GA') return false
+  if (area.level0 != null && area.id === area.level0) return true
+  if (COUNTRY_LEVEL_TYPES.includes(area.type)) return true
+  return normalizeName(area.parentName) === 'earth' && !String(area.origin ?? '').includes('tdwg')
+}

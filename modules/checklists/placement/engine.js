@@ -23,13 +23,14 @@
 //  2. a checklist of its own (rules file, checklists section): the area, or its
 //     parent, is listed in `areas`, the area's ISO code is the checklist's, or
 //     a word of `names` is in the area's or its parent's name
-//  3. the country TaxonWorks gives the area (`level0_id`); without one, the
-//     checklist that owns the area itself or its parent
+//  3. the country TaxonWorks gives the area: its `level0_id`, the area itself
+//     when TaxonWorks counts it as a country (isCountryArea), else a parent
+//     that belongs to a checklist
 //  4. the ISO code of a gazetteer
 //  5. an overlap rule for the area (rules file, overlap section)
 //  6. otherwise not placeable, with the reason
 // Then the part of the checklist (France) and the outline.
-import { normalizeName, containsName } from './areas.js'
+import { normalizeName, containsName, isCountryArea } from './areas.js'
 
 /**
  * @typedef {Object} Step  one sentence of an explanation
@@ -245,9 +246,9 @@ function ownChecklist(area, ctx) {
 // Step 3 of the order: the country TaxonWorks gives the area.
 function byTaxonWorksCountry(area, ctx) {
   if (area.kind !== 'GA') return null
-  // An area without level0 that a checklist owns itself is its own country
-  // (GA 33412 United States of America, R17).
-  const level0 = area.level0 ?? (ctx.byAreaId.has(area.id) ? area.id : null)
+  // A country area without level0 is its own country, as TaxonWorks sees it
+  // (GA 33412 United States of America: type Country, level0 empty; R17).
+  const level0 = area.level0 ?? (isCountryArea(area) ? area.id : null)
   if (level0 != null) {
     const checklist = ctx.byAreaId.get(level0)
     const countryName = area.id === level0 ? area.name
@@ -263,15 +264,16 @@ function byTaxonWorksCountry(area, ctx) {
     if (area.id !== level0) {
       return placed(checklist, [{ text: `${area.name} is in ${checklist.name} (GA ${level0})`, source: 'TaxonWorks' }])
     }
-    if (normalizeName(area.name) === normalizeName(checklist.name)) {
-      return placed(checklist, [{ text: `${area.name} (GA ${area.id}) is a country`, source: 'TaxonWorks' }])
-    }
+    const country = { text: `${area.name} (GA ${area.id}) is a country`, source: 'TaxonWorks' }
+    if (normalizeName(area.name) === normalizeName(checklist.name)) return placed(checklist, [country])
     const synonym = ctx.rules.synonyms.find(({ names }) =>
       names.some((n) => normalizeName(n) === normalizeName(area.name)) &&
       names.some((n) => normalizeName(n) === normalizeName(checklist.name)))
     if (synonym) {
-      return placed(checklist, [{ text: `${area.name} (GA ${area.id}) is a spelling of ${checklist.name}`, source: 'manual', ref: synonym.ref }])
+      return placed(checklist, [country,
+        { text: `${area.name} is a spelling of ${checklist.name}`, source: 'manual', ref: synonym.ref }])
     }
+    // A country area under another country (England under United Kingdom, R10).
     return placed(checklist, [{ text: `${area.name} (GA ${area.id}) is part of ${checklist.name}`, source: 'TaxonWorks' }])
   }
   // No level0: a parent that belongs to a checklist still names the country.

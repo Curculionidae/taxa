@@ -10,20 +10,20 @@
 //         file order.
 //
 // Rules in short:
-//  - A country area is a geographic area whose id equals its level0 id and
-//    whose parent is "Earth". A country-level area under another parent (England
-//    under United Kingdom, Sint Maarten under Netherlands) is not a checklist
-//    of its own: its id joins the checklist of its parent's country.
+//  - A country area is what TaxonWorks calls one (isCountryArea in areas.js,
+//    after GeographicArea#categorize): its id equals its level0 id, or its type
+//    is a country-level type, or its parent is Earth and it is not TDWG. So GA
+//    33412 "United States of America" (type Country, level0 empty) is a
+//    country, and the US states, whose level0 is 33412, belong to it (R17).
+//    A country area whose parent is "Earth" is a checklist. A country area
+//    under another parent (England under United Kingdom, Sint Maarten under
+//    Netherlands) is not a checklist of its own: its id joins the checklist
+//    of its parent's country (R10).
 //  - A level0 id that areas refer to but that is not itself among the areas (a
 //    country used only through its subdivisions, such as Spain) becomes a
 //    country too, named by `level0Names` (the build fills it from the DwC
 //    country text of those records). Without a name it is skipped and a
 //    warning is returned.
-//  - A level0 id whose own area is among the areas but is not country-level
-//    (GA 33412 "United States of America" has no level0 of its own, yet every
-//    Natural Earth US state points to it) becomes a country the same way,
-//    named by `level0Names` or else by that area's own name, and merges by
-//    synonyms (R17).
 //  - Countries whose names are synonyms (rules.synonyms, accent and case
 //    insensitive) or equal after normalizing merge into one checklist. Its id
 //    is the area with the only ISO code; with none or several, the lowest id.
@@ -36,7 +36,7 @@
 //    country file. No area id belongs to two checklists: an id listed by such
 //    an entry is removed from the country checklist it would otherwise belong
 //    to (a country left with no area is dropped).
-import { normalizeName } from './areas.js'
+import { normalizeName, isCountryArea } from './areas.js'
 
 /** Countries whose checklist can be browsed by state or province. */
 const STATE_COUNTRIES = new Set(
@@ -61,8 +61,7 @@ const STATE_COUNTRIES = new Set(
  * Derive the checklists.
  * @param {import('./areas.js').Area[]} areas
  * @param {import('./rules.js').CompiledRules} rules
- * @param {Map<number, string>} [level0Names]  names of level0 ids no area is itself (R9),
- *   or whose area is not country-level (R17)
+ * @param {Map<number, string>} [level0Names]  names of level0 ids no area is itself (R9)
  * @param {Map<string, string>} [isoByName]  ISO 3166-1 alpha-2 code by normalizeName(country
  *   name), used for countries TaxonWorks gives no ISO code (R18)
  * @returns {{ checklists: Checklist[], warnings: string[] }}  warnings name level0 ids skipped for lack of a name
@@ -81,7 +80,6 @@ export function deriveChecklists(areas, rules, level0Names = new Map(), isoByNam
 
   const warnings = []
   const areaById = new Map(areas.filter((area) => area.kind === 'GA').map((area) => [area.id, area]))
-  const isCountryLevel = (area) => area.kind === 'GA' && area.level0 != null && area.id === area.level0
   const nameOf = (name) => canonical.get(normalizeName(name)) ?? name
 
   const countries = new Map() // normalized canonical name -> { name, members: [{ id, iso2 }] }
@@ -94,23 +92,20 @@ export function deriveChecklists(areas, rules, level0Names = new Map(), isoByNam
   }
   const nested = []
   for (const area of areas) {
-    if (!isCountryLevel(area) || owned.has(area.id)) continue
+    if (!isCountryArea(area) || owned.has(area.id)) continue
     if (area.parentName != null && normalizeName(area.parentName) !== 'earth') nested.push(area)
     else addCountry(area.id, area.name, area.iso2)
   }
-  // Countries used only through their subdivisions, or whose own area is not
-  // country-level (GA 33412 United States of America, R17).
+  // Countries used only through their subdivisions.
   const stubs = new Map() // level0 id -> ids of the areas that refer to it
   for (const area of areas) {
-    if (area.kind !== 'GA' || area.level0 == null || owned.has(area.level0)) continue
-    const own = areaById.get(area.level0)
-    if (own && isCountryLevel(own)) continue
+    if (area.kind !== 'GA' || area.level0 == null || areaById.has(area.level0) || owned.has(area.level0)) continue
     if (!stubs.has(area.level0)) stubs.set(area.level0, [])
     stubs.get(area.level0).push(area.id)
   }
   for (const [id, users] of stubs) {
-    const name = level0Names.get(id) ?? areaById.get(id)?.name
-    if (name) addCountry(id, name, areaById.get(id)?.iso2 ?? '')
+    const name = level0Names.get(id)
+    if (name) addCountry(id, name, '')
     else warnings.push(`level0 ${id} has no name (areas: ${users.join(', ')})`)
   }
   // A country-level area under another country joins that country's checklist.

@@ -31,7 +31,7 @@ const isoByName = new Map([['solomon islands', 'SB']])
 const newZealand = { id: 158, name: 'New Zealand', iso2: 'NZ', areaIds: [158], states: false }
 const checklists = [...deriveChecklists(areas, rules, new Map(), isoByName).checklists, newZealand]
 const shapes = new Set(['GeographicArea/32253', 'GeographicArea/77', 'GeographicArea/32254',
-  'GeographicArea/19713', 'GeographicArea/236', 'GeographicArea/33639', 'GeographicArea/33876'])
+  'GeographicArea/19713', 'GeographicArea/236', 'GeographicArea/237', 'GeographicArea/33639', 'GeographicArea/33876'])
 const ctx = createContext({ checklists, rules, geometry: null, shapes })
 const sources = (placement) => placement.steps.map((step) => step.source)
 
@@ -116,15 +116,20 @@ test('a US state under GA 33412 lands in United States (R17)', () => {
   assert.equal(placement.steps[0].text, 'Alabama is in United States (GA 33412)')
   const usa = placeArea(ga(fx.ga33412), ctx)
   assert.equal(usa.checklist.name, 'United States')
-  assert.equal(usa.steps[0].text, 'United States of America (GA 33412) is a spelling of United States')
-  assert.equal(usa.steps[0].source, 'manual')
-  assert.equal(usa.steps[0].ref, refOf('[United States, United States of America]'))
+  assert.deepEqual(usa.steps.map((step) => [step.text, step.source]), [
+    ['United States of America (GA 33412) is a country', 'TaxonWorks'],
+    ['United States of America is a spelling of United States', 'manual']
+  ])
+  assert.equal(usa.steps[1].ref, refOf('[United States, United States of America]'))
+  // GA 33412 has no shape; the outline is GA 237's.
+  assert.deepEqual(usa.shape, { key: 'GeographicArea/237', name: 'United States' })
+  assert.deepEqual(placement.shape, { key: 'GeographicArea/237', name: 'United States' })
 })
 
 test('Texas (no level0) lands in United States through its parent GA 237', () => {
   const placement = placeArea(ga(fx.ga26386), ctx)
   assert.equal(placement.checklist.name, 'United States')
-  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks'])
+  assert.deepEqual(sources(placement), ['TaxonWorks'])
   assert.equal(placement.steps[0].text, 'Texas is a subdivision of United States (GA 237)')
 })
 

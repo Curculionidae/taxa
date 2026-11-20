@@ -499,3 +499,43 @@ export const ga26370 = {
     name: 'Unknown'
   }
 }
+
+// User decisions 2026-11-20 (R34 to R36), shaped as real distributions.
+
+/** TDWG Norfolk Is. (50NFK): AD 301919, 309101, 421981. */
+export const ga33700 = {
+  id: 33700,
+  name: 'Norfolk Is.',
+  level0_id: null,
+  level1_id: null,
+  parent_id: 33576,
+  parent: { name: 'Australia' },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: '50NFK',
+  data_origin: 'tdwg_l3',
+  geographic_area_type: { id: 111, name: 'TDWG Level 3' }
+}
+
+/** TDWG Lord Howe I. (50NFK-LH), whose TDWG parent is Norfolk Is. */
+export const ga34374 = {
+  id: 34374,
+  name: 'Lord Howe I.',
+  level0_id: null,
+  level1_id: null,
+  parent_id: 33700,
+  parent: { name: 'Norfolk Is.' },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: '50NFK-LH',
+  data_origin: 'tdwg_l4',
+  geographic_area_type: { id: 112, name: 'TDWG Level 4' }
+}
+
+/** Králický Sněžník, a mountain on the Czech and Polish border. */
+export const gz10572 = {
+  id: 10572,
+  name: 'Králický Sněžník',
+  iso_3166_a2: null,
+  iso_3166_a3: null
+}

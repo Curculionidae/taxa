@@ -103,7 +103,15 @@ checklists:
     why: ISO 3166-1 code YT of its own, though TaxonWorks files it under France
   - name: Northern Mariana Islands
     iso2: MP
+    areas: [GA 31750]   # the TaxonWorks country area; no record uses it, so its outline is not cached
     why: 31 records on Northern Mariana Islands gazetteers had no checklist (test report 2026-11-20)
+  - name: Kosovo
+    iso2: XK
+    why: own checklist by user decision 2026-11-20 (XK is the user-assigned code in common use)
+  - name: Norfolk Island
+    iso2: NF
+    areas: [GA 33700]   # TDWG Norfolk Is. (50NFK)
+    why: own checklist by user decision 2026-11-20
 
 # Checklists that can be browsed by state or province. Their records get a
 # state, and the page shows a state drill-down. The state outlines and their
@@ -164,13 +172,17 @@ manual:
   - match: { tdwg: 10IRE-NI }
     subdivision_of: { country: United Kingdom }
     why: TaxonWorks DwC says Ireland (its name match climbs to TDWG Ireland)
-  - match: { tdwg: 50NFK }
+  - match: { tdwg: 50NFK-LH }
     subdivision_of: { country: Australia }
-    why: Australian external territory, as TaxonWorks DwC says; no country outline is cached for it
+    why: Lord Howe Island belongs to New South Wales; its TDWG parent 50NFK is the Norfolk Island checklist
   # Areas whose cached TaxonWorks outline is wrong
   - match: { area: GA 20379 }
     subdivision_of: { country: Russia, state: Chukchi Autonomous Okrug }
     why: the cached TaxonWorks outline of Chukot also covers Yakutia; fix the shape in TaxonWorks
+  # Areas on a border
+  - match: { area: GZ 10572 }
+    not_placeable: lies on the border of Czech Republic and Poland
+    why: user decision 2026-11-20, to be reviewed
   # Gazetteers with a wrong ISO code
   - match: { gazetteer_prefix: "TAAF:" }
     subdivision_of: { country: French Southern Territories }
@@ -314,9 +326,6 @@ overlap:
   - match: { tdwg: 31PRM-OO }   # GA 34445 Primorye (TDWG Level 4 31PRM-OO), 2 records
     subdivision_of: { country: "Russia" }
     measured: "Russia 99%, China 1% (2026-11-20)"
-  - match: { area: "GZ 10572" }   # GZ 10572 Králický Sněžník, 2 records
-    subdivision_of: { country: "Poland" }
-    measured: "Poland 100% (2026-11-20)"
   # GZ 10497 Low Beskids, 2 records: no cached shape, not measured
   # GZ 10498 Low Tatra, 2 records: no cached shape, not measured
   - match: { tdwg: 14RUS }   # GA 33879 South European Russia (TDWG Level 3 14RUS), 2 records

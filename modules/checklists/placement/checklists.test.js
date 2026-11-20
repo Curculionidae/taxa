@@ -73,11 +73,14 @@ test('French Guiana is its own checklist with GA 32253, 78, 34200', () => {
   assert.match(guiana.ref, /^placement\.yml:\d+$/)
 })
 
-test('Northern Mariana Islands exists with iso2 MP', () => {
+test('Northern Mariana Islands exists with iso2 MP and its country area', () => {
   const mp = byName('Northern Mariana Islands')
   assert.equal(mp.iso2, 'MP')
-  assert.equal(mp.id, 'MP')
-  assert.deepEqual(mp.areaIds, [])
+  assert.equal(mp.id, 31750)
+  assert.deepEqual(mp.areaIds, [31750])
+  // An entry without GA areas is identified by its ISO code.
+  assert.equal(byName('Kosovo').id, 'XK')
+  assert.deepEqual(byName('Kosovo').areaIds, [])
 })
 
 test('states flag on Australia, Russia, United Kingdom; France has parts Corsica and Mainland France', () => {

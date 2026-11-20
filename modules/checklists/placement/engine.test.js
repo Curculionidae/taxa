@@ -191,10 +191,10 @@ test('an area with outline but no rule is not measured yet', () => {
 })
 
 test('a TaxonWorks country without checklist', () => {
-  const area = { ...ga(fx.ga32254), key: 'GA 5', id: 5, name: 'Somewhere', level0: 4, parentId: 4, parentName: 'Kosovo' }
+  const area = { ...ga(fx.ga32254), key: 'GA 5', id: 5, name: 'Somewhere', level0: 4, parentId: 4, parentName: 'Atlantis' }
   const placement = placeArea(area, ctx)
   assert.equal(placement.checklist, null)
-  assert.equal(placement.reason, 'no checklist for Kosovo')
+  assert.equal(placement.reason, 'no checklist for Atlantis')
   assert.deepEqual(sources(placement), ['TaxonWorks'])
 })
 
@@ -319,11 +319,29 @@ test('no country and no coordinates', async () => {
   assert.equal((await placeRecord({ type: 'FieldOccurrence', id: 2 }, rctx)).reason, 'no locality at all')
 })
 
-test('Kosovo specimen reason', async () => {
+test('a Kosovo specimen lands in the Kosovo checklist (R34)', async () => {
   const placement = await placeRecord(specimen({ country: 'Kosovo', lat: 42.6, lng: 21.1 }), rctx)
+  assert.equal(placement.checklist.name, 'Kosovo')
+  assert.equal(placement.reason, null)
+  assert.equal(placement.steps[0].text, 'DwC country is Kosovo')
+})
+
+test('TDWG Norfolk Is. is the Norfolk Island checklist; Lord Howe I. below it stays in Australia (R35)', () => {
+  const norfolk = placeArea(ga(fx.ga33700), ctx)
+  assert.equal(norfolk.checklist.name, 'Norfolk Island')
+  assert.equal(norfolk.steps[0].ref, refOf('- name: Norfolk Island'))
+  const lordHowe = placeArea(ga(fx.ga34374), ctx)
+  assert.equal(lordHowe.checklist.name, 'Australia')
+  assert.equal(lordHowe.steps[0].source, 'manual')
+  assert.equal(lordHowe.steps[0].ref, refOf('match: { tdwg: 50NFK-LH }'))
+})
+
+test('Kralicky Sneznik is not placeable by a manual rule (R36)', () => {
+  const placement = placeArea(gz(fx.gz10572), ctx)
   assert.equal(placement.checklist, null)
-  assert.equal(placement.reason, 'no checklist for Kosovo')
-  assert.deepEqual(placement.steps, [{ text: 'DwC country is Kosovo, which has no checklist', source: 'TaxonWorks' }])
+  assert.equal(placement.reason, 'lies on the border of Czech Republic and Poland')
+  assert.equal(placement.steps[0].source, 'manual')
+  assert.ok(!rules.overlap.some((rule) => rule.match.area === 'GZ 10572'))
 })
 
 test('a US specimen takes its state from DwC stateProvince', async () => {

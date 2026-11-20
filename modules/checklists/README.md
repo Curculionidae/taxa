@@ -349,20 +349,24 @@ and optionally the `area` behind it) and the `Placement`. Example:
 
 ```
 AD 556796  Phaedropus candidus (Fabricius, 1775)
-  area     GA 8837 Cayenne (GA)
-  step     Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
-  step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:69]
-  result   French Guiana checklist
-  shape    GeographicArea/32253 (French Guiana)
+  area      GA 8837 Cayenne (GA)
+  step      Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
+  step      French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:69]
+  result    French Guiana checklist
+  drawn as  French Guiana outline (GeographicArea/32253)
 ```
 
 The first line is the kind, the id and the label. `area` appears only when an
 area is given. Each `step` is one sentence of the decision, in order, followed
 by its source tag in an aligned column. `result` names the checklist, with
 `, part <P>` and `, state <S>` when set, or says `not placeable:` and the
-reason. `shape` is the outline shown (`none (<reason>)` when the record could
-not be placed, `none (no outline cached)` when it was placed but has no
-cached outline).
+reason. `drawn as` is about the outline the record is drawn with on the
+checklist map, not about the area's own shape: `<Name> outline (GeographicArea/32253)`
+for a cached TaxonWorks area (Name is the checklist, or the part when a part
+outline is used), `<Name> outline (Natural Earth)` for the fallback outline,
+`nothing (no outline for <Name>)` when it was placed but has no outline, and
+`nothing (not placed in a checklist)` when it was not placed (the `result` line
+gives the reason).
 
 Source tags:
 

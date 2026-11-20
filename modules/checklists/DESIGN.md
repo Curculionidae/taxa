@@ -168,6 +168,7 @@ these places (the README describes what exists):
   the build had it. The build also copies `placement.yml` into the cache for
   the Rules tab, and `areas.json` carries each area's tree position
   (`ancestors`, compiled from TaxonWorks level ids and TDWG codes).
+- The last line of an explanation is `drawn as`, the outline the record is drawn with on the checklist map (named, with its key or `Natural Earth`), not the area's own shape.
 - Files are named by the checklist key (the slug of its name,
   `countries/french-guiana.json`), not by a numeric id.
 - Natural Earth is geometry only (R51): country fallback outlines and state

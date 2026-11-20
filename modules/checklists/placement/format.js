@@ -10,7 +10,7 @@
 //         --verbose and --explain output and shown on the curator page.
 // Pure and browser-safe: no imports, no network, no file system.
 
-const LABEL_WIDTH = 9
+const LABEL_WIDTH = 10
 const KINDS = ['GA', 'GZ', 'AD', 'CO', 'FO']
 
 const row = (name, text) => `  ${name.padEnd(LABEL_WIDTH)}${text}`
@@ -65,7 +65,7 @@ export function formatStep(step) {
  * Render one decision as text. Lines: `<KIND> <id>  <label>`, then `area` (only
  * when an area is given), one `step` per decision step with the source tags
  * aligned in a column (every step text padded to the longest plus two spaces),
- * `result` and `shape`.
+ * `result` and `drawn as` (the outline the record is drawn with on the checklist map).
  * @param {{ kind: string, id: number|string, label: string,
  *   area?: { kind: string, id: number|string, name: string } }} subject
  *   what was placed: 'AD 556796' and its label; `area` is the area behind it
@@ -87,9 +87,17 @@ export function formatPlacement(subject, placement) {
     lines.push(row('result', `not placeable: ${placement.reason}`))
   }
 
-  if (placement.shape) lines.push(row('shape', `${placement.shape.key} (${placement.shape.name})`))
-  else lines.push(row('shape', `none (${placement.checklist ? 'no outline cached' : placement.reason})`))
+  lines.push(row('drawn as', drawnAs(placement)))
   return lines.join('\n')
+}
+
+// What the record is drawn with on the checklist map: the outline's name and key
+// (a cached TaxonWorks area) or 'Natural Earth' (the fallback), or nothing.
+function drawnAs(placement) {
+  if (!placement.checklist) return 'nothing (not placed in a checklist)'
+  const { shape } = placement
+  if (!shape) return `nothing (no outline for ${placement.checklist.name})`
+  return `${shape.name} outline (${shape.key.startsWith('fallback/') ? 'Natural Earth' : shape.key})`
 }
 
 /**

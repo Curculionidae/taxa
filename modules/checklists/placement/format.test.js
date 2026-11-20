@@ -25,11 +25,11 @@ test('Cayenne explanation reads as the short text form', () => {
   const second = 'French Guiana (GA 78) belongs to the checklist French Guiana'
   assert.equal(text, [
     'AD 556796  Phaedropus candidus',
-    '  area     GA 8837 Cayenne (GA)',
-    `  step     ${first.padEnd(second.length + 2)}[TaxonWorks]`,
-    `  step     ${second}  [manual, ${ref}]`,
-    '  result   French Guiana checklist',
-    '  shape    GeographicArea/32253 (French Guiana)'
+    '  area      GA 8837 Cayenne (GA)',
+    `  step      ${first.padEnd(second.length + 2)}[TaxonWorks]`,
+    `  step      ${second}  [manual, ${ref}]`,
+    '  result    French Guiana checklist',
+    '  drawn as  French Guiana outline (GeographicArea/32253)'
   ].join('\n'))
 })
 
@@ -38,19 +38,19 @@ test('overlap tag carries share and name, not placeable shows the reason', () =>
   const text = formatPlacement({ kind: 'GA', id: 33876, label: 'x' }, placeArea(area, ctx))
   assert.match(text, /\[overlap 100% Russia, placement\.yml:\d+\]/)
   const bad = formatPlacement({ kind: 'GA', id: 33639, label: 'y' }, placeArea(ga(fx.ga33639), ctx))
-  assert.match(bad, /  result   not placeable: /)
-  assert.match(bad, /  shape    none \(.+\)$/)
+  assert.match(bad, /  result    not placeable: /)
+  assert.match(bad, /  drawn as  nothing \(not placed in a checklist\)$/)
 })
 
 test('part, state, and no outline cached', () => {
   const placement = { checklist: { id: 1, name: 'France' }, part: 'Corsica', state: 'X', shape: null, reason: null,
     steps: [{ text: 'live', source: 'overlap' }, { text: 'r', source: 'overlap', ref: 'placement.yml:3' }] }
   const text = formatPlacement({ kind: 'CO', id: 5, label: 'l' }, placement)
-  assert.match(text, /  result   France checklist, part Corsica, state X\n/)
-  assert.match(text, /  step     live {2}\[overlap\]\n/)
+  assert.match(text, /  result    France checklist, part Corsica, state X\n/)
+  assert.match(text, /  step      live {2}\[overlap\]\n/)
   assert.match(text, /\[overlap, placement\.yml:3\]/)
-  assert.ok(text.endsWith('  shape    none (no outline cached)'))
-  assert.ok(!text.includes('area     '))
+  assert.ok(text.endsWith('  drawn as  nothing (no outline for France)'))
+  assert.ok(!text.includes('area      '))
 })
 
 test('parseLookup', () => {
@@ -69,7 +69,7 @@ test('Borneo step tag carries no share', () => {
   const ref = `placement.yml:${index + 1}`
   const text = formatPlacement({ kind: 'GA', id: 33639, label: 'Borneo' }, placeArea(ga(fx.ga33639), ctx))
   const step = 'Borneo spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%'
-  assert.ok(text.includes(`  step     ${step}  [overlap, ${ref}]\n`), text)
+  assert.ok(text.includes(`  step      ${step}  [overlap, ${ref}]\n`), text)
   assert.ok(!/overlap \d/.test(text))
 })
 
@@ -82,7 +82,15 @@ test('formatStep: one step as text and source tag', () => {
 test('formatExplanation: the --explain text; a decision without steps is one result line', () => {
   const subject = { kind: 'AD', id: 7, label: 'Aus bus' }
   assert.equal(formatExplanation(subject, { checklist: null, part: null, state: null, shape: null, reason: 'distribution has no area', steps: [] }),
-    'AD 7  Aus bus\n  result   not placeable: distribution has no area')
+    'AD 7  Aus bus\n  result    not placeable: distribution has no area')
   const placement = { checklist: { id: 1, name: 'Chile' }, part: null, state: null, shape: null, reason: null, steps: [{ text: 'DwC country is Chile', source: 'TaxonWorks' }] }
   assert.equal(formatExplanation(subject, placement), formatPlacement(subject, placement))
+})
+
+test('drawn as names the outline: part, Natural Earth, none', () => {
+  const steps = [{ text: 's', source: 'TaxonWorks' }]
+  const base = { checklist: { id: 1, name: 'France' }, part: null, state: null, reason: null, steps }
+  const last = (shape) => formatPlacement({ kind: 'CO', id: 1, label: 'l' }, { ...base, shape }).split('\n').at(-1)
+  assert.equal(last({ key: 'GeographicArea/34185', name: 'Mainland France' }), '  drawn as  Mainland France outline (GeographicArea/34185)')
+  assert.equal(last({ key: 'fallback/Norfolk Island', name: 'Norfolk Island' }), '  drawn as  Norfolk Island outline (Natural Earth)')
 })

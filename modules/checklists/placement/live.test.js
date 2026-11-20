@@ -185,7 +185,7 @@ test('lookupLive: an AD without area gives the build text "distribution has no a
   assert.deepEqual(live.subject, { kind: 'AD', id: 556796, label: 'Phaedropus candidus (Fabricius, 1775)' })
   const placement = await placeLive(live, null)
   assert.equal(formatExplanation(live.subject, placement),
-    'AD 556796  Phaedropus candidus (Fabricius, 1775)\n  result   not placeable: distribution has no area')
+    'AD 556796  Phaedropus candidus (Fabricius, 1775)\n  result    not placeable: distribution has no area')
 })
 
 test('fromDistribution and placeLive place an AD with its area as placeRecord does', async () => {

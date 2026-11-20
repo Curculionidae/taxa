@@ -1,6 +1,9 @@
 <!--
   One area of the curator page's area tree (AreaTree.vue), and its children
-  when open. Children are rendered only while the node is open.
+  when open. Children are rendered only while the node is open. A group node
+  (gazetteers of one ISO code) shows its name and size only. A
+  placement.yml:N in the source tag links to that line on the Rules tab
+  (RefText.vue).
 
   Props
     node      a TreeNode (placement/overview.js buildAreaTree)
@@ -30,7 +33,11 @@
         v-else
         class="w-5 shrink-0"
       />
-      <template v-if="node.stub">
+      <span
+        v-if="node.group"
+        class="font-medium"
+      >{{ node.name }} <span class="font-normal text-base-soft">({{ node.children.length }} {{ node.children.length === 1 ? 'gazetteer' : 'gazetteers' }})</span></span>
+      <template v-else-if="node.stub">
         <span class="text-base-soft">{{ node.name }} (<a
           :href="twUrl"
           target="_blank"
@@ -55,7 +62,10 @@
         >{{ node.key }}</a>)</span>
         <span>{{ node.row.records }} {{ node.row.records === 1 ? 'record' : 'records' }}:</span>
         <span :class="decision.problem ? 'font-semibold text-danger' : ''">{{ decision.text }}</span>
-        <span class="font-mono text-xs">{{ decision.tag }}</span>
+        <RefText
+          class="font-mono text-xs"
+          :text="decision.tag"
+        />
       </template>
     </div>
     <ul
@@ -78,6 +88,7 @@
 <script setup>
 import { computed } from 'vue'
 import { decisionOf } from '../placement/overview.js'
+import RefText from './RefText.vue'
 import { twRecordUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
 const props = defineProps({
@@ -91,7 +102,7 @@ const emit = defineEmits(['toggle', 'lookup'])
 
 // A filter opens the nodes on the way to its matches; a click toggles that.
 const isOpen = computed(() => (props.filtered && props.node.open) !== props.openKeys.has(props.node.key))
-const decision = computed(() => decisionOf(props.node.row.placement) ?? { text: '', tag: '', problem: false })
+const decision = computed(() => decisionOf(props.node.row?.placement) ?? { text: '', tag: '', problem: false })
 const twUrl = computed(() => {
   const [kind, id] = props.node.key.split(' ')
   return twRecordUrl(kind === 'GZ' ? `/gazetteers/${id}` : `/geographic_areas/${id}`)

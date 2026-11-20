@@ -29,6 +29,8 @@
 //                          the compact form of data/compact.js
 //   taxa.json              per higher taxon, its number of taxa in each checklist
 //   rules.json             the compiled rules file (placement/rules.js)
+//   placement.yml          a copy of the rules file, shown with line numbers on
+//                          the curator page's Rules tab
 //   context.json           the engine checklists, their outlines and the cached
 //                          outline keys: with rules.json, all the curator page
 //                          needs to place a record exactly as this build does
@@ -48,7 +50,7 @@
 // (not absent) records. Field occurrences come without classification in the
 // DwC export, so their classification is taken from the OTU's parents.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compactChecklist } from '../data/compact.js'
@@ -58,7 +60,7 @@ import { downloadData, saveData, loadData } from './download.mjs'
 import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
 import {
   groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary, checklistHeader,
-  indexEntry, publicPlacement, decidingSource, partShapes, cacheContext
+  indexEntry, publicPlacement, decidingSource, partShapes, cacheContext, areaPositions
 } from './cacheFiles.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -198,9 +200,9 @@ for (const row of rows) {
 
   // Unclassified records may not be weevils: listed in unplaced.json, but not
   // counted as left-out weevil records.
-  if (lookupFailed) { unplacedEntries.push({ reason: 'classification lookup failed', kind, id }); continue }
+  if (lookupFailed) { unplacedEntries.push({ reason: 'classification lookup failed', kind, id, area: area?.key }); continue }
   if (!placement.checklist) {
-    unplacedEntries.push({ reason: placement.reason, kind, id })
+    unplacedEntries.push({ reason: placement.reason, kind, id, area: area?.key })
     unplaced.records++
     unplaced.taxa.add(taxonKey(row))
     continue
@@ -248,8 +250,8 @@ for (const file of readdirSync(COUNTRY_DIR)) if (!written.has(file)) rmSync(join
 if (existsSync(join(OUT_DIR, 'overview.html'))) rmSync(join(OUT_DIR, 'overview.html'))
 
 // Parents known only by their name (GA 78 French Guiana, the parent of
-// Cayenne, no distribution uses it), once: for the names in `defined_by` and
-// as stubs at the end of areas.json.
+// Cayenne, no distribution uses it), once: for the names in `defined_by`.
+// (The stubs of areas.json come from areaPositions below.)
 const parentStubs = new Map() // GA id -> { key, kind, id, name, parentName, stub }
 for (const area of areas.values()) {
   if (area.parentId == null || areasById.has(area.parentId) || parentStubs.has(area.parentId)) continue
@@ -343,22 +345,30 @@ writeFileSync(join(OUT_DIR, 'index.json'), JSON.stringify({
   unplaced: { records: unplaced.records, taxa: unplaced.taxa.size }
 }, null, 1))
 writeFileSync(join(OUT_DIR, 'rules.json'), JSON.stringify(rules))
+// The rules file itself, for the curator page's Rules tab (line numbers and links, R46).
+copyFileSync(buildPaths(ROOT).rulesFile, join(OUT_DIR, 'placement.yml'))
 writeFileSync(join(OUT_DIR, 'context.json'), JSON.stringify(cacheContext({
   built: BUILD_DATE, checklists, targets: geometry.checklistTargets(), shapes, unusable, stateAreas
 })))
 writeFileSync(join(OUT_DIR, 'unplaced.json'), JSON.stringify(groupUnplaced(unplacedEntries)))
 
-// areas.json: every area a distribution uses, then the parents known only as
-// parents (records 0, no placement), for the curator page's area tree.
-// `records` counts the build's records on the area (after the filters above).
+// areas.json: every area a distribution uses, then the areas known only as
+// their ancestors (stubs: records 0, no placement), for the curator page's
+// area tree. `records` counts the build's records on the area (after the
+// filters above). `ancestors` is the area's position in the tree, compiled
+// from TaxonWorks data (cacheFiles.mjs areaPositions, R44): the page only shows it.
+const positions = areaPositions([...areas.values()], level0Names)
 const areaRows = []
 for (const area of areas.values()) {
   const { key, name, origin, type, tdwg, iso2, parentId, parentName } = area
   const placement = publicPlacement(await placeAreaRecord(area), keys)
-  areaRows.push({ key, name, origin, type, tdwg, iso2, parentId, parentName, records: recordsByArea.get(key) ?? 0, placement })
+  areaRows.push({
+    key, name, origin, type, tdwg, iso2, parentId, parentName, ancestors: positions.ancestors.get(key) ?? [],
+    records: recordsByArea.get(key) ?? 0, placement
+  })
 }
-const stubRows = [...parentStubs.values()].map(({ key, name }) => ({
-  key, name, origin: null, type: null, tdwg: null, iso2: null, parentId: null, parentName: null, records: 0, placement: null
+const stubRows = positions.stubs.map(({ key, name, tdwg, ancestors }) => ({
+  key, name: name ?? key, origin: null, type: null, tdwg, iso2: null, parentId: null, parentName: null, ancestors, records: 0, placement: null
 }))
 writeFileSync(join(OUT_DIR, 'areas.json'), JSON.stringify([...areaRows, ...stubRows]))
 

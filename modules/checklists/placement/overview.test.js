@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
 import {
   areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, groupUnplaced, summarizeOtu,
-  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER
+  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, groupByPointer, splitRefs, sourceTags, afterDecisionSteps
 } from './overview.js'
 
 const placed = (name, steps = [{ text: `x is in ${name}`, source: 'TaxonWorks' }], extra = {}) => ({
@@ -56,10 +56,30 @@ test('buildAreaTree: three roots, nested by parentId, stubs in the root of their
   assert.deepEqual(political.nodes[1].children.map((node) => node.key), ['GA 8837'])
   assert.deepEqual(tdwg.nodes.map((node) => node.key), ['GA 33722', 'GA 33574'])
   assert.deepEqual(tdwg.nodes[1].children.map((node) => node.key), ['GA 33639'])
-  assert.deepEqual(gazetteers.nodes.map((node) => node.key), ['GZ 3549'])
+  assert.deepEqual(gazetteers.nodes.map((node) => node.key), ['ISO none'])
+  assert.deepEqual(gazetteers.nodes[0].children.map((node) => node.key), ['GZ 3549'])
   assert.equal(political.count, 4)
   assert.equal(political.problems, 1)
   assert.equal(earth.problems, 1)
+})
+
+// Alabama as TaxonWorks gives it: GA 26688 is used by no record, known only as
+// the parent (level1) of its counties, whose level0 is GA 237 United States.
+// The build compiles `ancestors` (cacheFiles.mjs areaPositions); the tree shows them.
+test('buildAreaTree: a stub sits where the build compiled it, Alabama under the United States (R44)', () => {
+  const rows = [
+    row('GA 237', 'United States', { origin: 'country_names_and_code_elements', type: 'Country', parentId: 1, ancestors: [] }),
+    row('GA 30081', 'Clay', { parentId: 26688, ancestors: ['GA 237', 'GA 26688'] }),
+    { ...stub('GA 26688', 'Alabama'), ancestors: ['GA 237'] },
+    row('GZ 10453', "Hawai'i: Kaua'i", { origin: null, type: null, iso2: 'US', ancestors: [] }),
+    row('GZ 10458', 'Australia: Norfolk Island', { origin: null, type: null, iso2: 'AU', ancestors: [] })
+  ]
+  const [political, , gazetteers] = buildAreaTree(rows)
+  assert.deepEqual(political.nodes.map((node) => node.key), ['GA 237'])
+  assert.deepEqual(political.nodes[0].children.map((node) => node.key), ['GA 26688'])
+  assert.deepEqual(political.nodes[0].children[0].children.map((node) => node.key), ['GA 30081'])
+  assert.deepEqual(gazetteers.nodes.map((node) => [node.name, node.children.map((child) => child.key)]),
+    [['ISO AU', ['GZ 10458']], ['ISO US', ['GZ 10453']]])
 })
 
 test('isProblem: not placeable or no outline; stubs never', () => {
@@ -82,7 +102,7 @@ test('filterTree: problems only, accent insensitive text, and no filter leaves t
   assert.deepEqual(problems[0].nodes.map((node) => node.key), ['GA 1'])
   assert.deepEqual(problems[0].nodes[0].children.map((node) => node.key), ['GA 210'])
   assert.deepEqual(problems[1].nodes.map((node) => node.key), ['GA 33574'])
-  assert.deepEqual(problems[2].nodes.map((node) => node.key), ['GZ 3549'])
+  assert.deepEqual(problems[2].nodes[0].children.map((node) => node.key), ['GZ 3549'])
   assert.equal(filterTree(tree, { text: 'BÓRNEO' })[1].nodes[0].children[0].key, 'GA 33639')
   assert.equal(filterTree(tree, {}), tree)
 })
@@ -111,19 +131,51 @@ test('reasonKind groups the variants of one reason', () => {
   assert.equal(reasonKind('locality text only'), 'locality text only')
 })
 
-test('groupUnplaced: one section per kind, largest first, variants with counts', () => {
+test('groupUnplaced: one section per kind, largest first, variants with counts, locality reasons last (R45)', () => {
   const sections = groupUnplaced({
-    'locality text only': [['CO', 1], ['CO', 2], ['FO', 3]],
-    'spans several countries: Indonesia 51%, Papua New Guinea 49%': [['AD', 10]],
-    'spans several countries: Dominican Republic 66%, Haiti 34%': [['AD', 11], ['AD', 12]]
+    'locality text only': [['CO', 1], ['CO', 2], ['FO', 3], ['CO', 4]],
+    'spans several countries: Indonesia 51%, Papua New Guinea 49%': [['AD', 10, 'GZ 3614']],
+    'spans several countries: Dominican Republic 66%, Haiti 34%': [['AD', 11, 'GZ 3549'], ['AD', 12, 'GZ 3549']]
   })
-  assert.deepEqual(sections.map((section) => [section.kind, section.count]), [['locality text only', 3], ['spans several countries', 3]])
-  assert.deepEqual(sections[1].variants, [
+  assert.deepEqual(sections.map((section) => [section.kind, section.count]), [['spans several countries', 3], ['locality text only', 4]])
+  assert.deepEqual(sections[0].variants, [
     { reason: 'spans several countries: Dominican Republic 66%, Haiti 34%', count: 2 },
     { reason: 'spans several countries: Indonesia 51%, Papua New Guinea 49%', count: 1 }
   ])
-  assert.deepEqual(sections[1].records[0], { kind: 'AD', id: 11, reason: 'spans several countries: Dominican Republic 66%, Haiti 34%' })
-  assert.deepEqual(sections[0].variants, [{ reason: 'locality text only', count: 3 }])
+  assert.deepEqual(sections[0].records[0], { kind: 'AD', id: 11, reason: 'spans several countries: Dominican Republic 66%, Haiti 34%', area: 'GZ 3549' })
+  assert.deepEqual(sections[1].variants, [{ reason: 'locality text only', count: 4 }])
+  assert.equal(sections[1].records[0].area, null)
+})
+
+test('groupByPointer: GA areas, then gazetteers, then collecting events (R45)', () => {
+  const groups = groupByPointer([
+    { kind: 'AD', id: 1, area: 'GZ 3614' }, { kind: 'CO', id: 2, area: null }, { kind: 'AD', id: 3, area: 'GA 33639' },
+    { kind: 'AD', id: 4, area: 'GZ 3614' }, { kind: 'FO', id: 5, area: null }
+  ], new Map([['GZ 3614', 'New Guinea'], ['GA 33639', 'Borneo']]))
+  assert.deepEqual(groups.map(({ label, pointer, records }) => [label, pointer, records.map((r) => r.id)]), [
+    ['Borneo (GA 33639)', 'GA', [3]],
+    ['New Guinea (GZ 3614)', 'GZ', [1, 4]],
+    ['Collecting events (specimens and field occurrences)', 'collecting event', [2, 5]]
+  ])
+})
+
+test('splitRefs and sourceTags: rules lines become links, every contributing source once (R43, R46)', () => {
+  assert.deepEqual(splitRefs('a [manual, placement.yml:12] b'), [{ text: 'a [manual, ' }, { text: 'placement.yml:12', line: 12 }, { text: '] b' }])
+  assert.deepEqual(splitRefs('plain'), [{ text: 'plain' }])
+  const placement = placed('Russia', [
+    { text: 'x is in Russia', source: 'TaxonWorks' },
+    { text: 'y lies in the state Z', source: 'overlap', ref: 'placement.yml:539', pct: 100, pctOf: 'Z' },
+    { text: 'z', source: 'TaxonWorks' }
+  ])
+  assert.deepEqual(sourceTags(placement), ['[TaxonWorks]', '[overlap 100% Z, placement.yml:539]'])
+})
+
+test('afterDecisionSteps: part, state (named state countries) and outline', () => {
+  const rules = compileRules(readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8'))
+  const steps = afterDecisionSteps(rules)
+  assert.equal(steps[0].text, 'The part (France only: Corsica or Mainland France).')
+  assert.equal(steps[1].text, 'The state or province, only for the checklists browsed by state: United States, Canada, Australia, China and Russia.')
+  assert.match(steps[1].ref, /^placement\.yml:\d+$/)
 })
 
 test('summarizeOtu: by kind, placed, checklists, not placed by kind, left out', () => {

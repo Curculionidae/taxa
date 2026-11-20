@@ -24,6 +24,7 @@
  * @property {string|null} iso2    ISO 3166-1 alpha-2 code
  * @property {number|null} level0  id of the country-level area above a GA (itself for a country)
  * @property {number|null} level1  id of the first subdivision above a GA
+ * @property {number|null} level2  id of the second subdivision above a GA (a county)
  * @property {number|null} parentId
  * @property {string|null} parentName
  */
@@ -47,6 +48,7 @@ export function toArea(shapeType, shape) {
     iso2: shape.iso_3166_a2 ?? null,
     level0: shape.level0_id ?? null,
     level1: shape.level1_id ?? null,
+    level2: shape.level2_id ?? null,
     parentId: shape.parent_id ?? null,
     parentName: shape.parent?.name ?? null
   }

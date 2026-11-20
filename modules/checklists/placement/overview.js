@@ -27,13 +27,15 @@ export const ROOTS = ['Political', 'TDWG', 'Gazetteers']
  * @property {string} name
  * @property {string|null} origin  TaxonWorks data_origin ('tdwg_l3', 'ne_states', 'gadm', ...)
  * @property {number|null} parentId  the parent GA id
+ * @property {string[]} [ancestors]  the keys above the area, top first (R44)
  * @property {number} records  records on the area (0 for a parent stub)
  * @property {Object|null} placement  the area's Placement, null for a parent stub
  *
  * @typedef {Object} TreeNode
  * @property {string} key
  * @property {string} name
- * @property {AreaRow} row
+ * @property {AreaRow|null} row  null for a group node
+ * @property {boolean} [group]  a group of gazetteers with one ISO code ('ISO AU')
  * @property {boolean} stub  known only as a parent: used by no record
  * @property {TreeNode[]} children  sorted by name, then key
  * @property {number} problems  problem areas in this subtree, itself included
@@ -74,19 +76,25 @@ export function isProblem(row) {
 const byName = (a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key)
 
 /**
- * The area tree: three roots (ROOTS); within each, areas nested by parentId.
- * A parent stub appears in every root that has one of its descendants (GA 78
- * French Guiana under Political as the parent of Cayenne; GA 33722 French
- * Guiana under TDWG as the parent of the TDWG L4 French Guiana). An area whose
- * parent is an area of another root starts at the top of its own root.
+ * The area tree: three roots (ROOTS); within each, areas nested by the
+ * position the build compiled from TaxonWorks data (areas.json `ancestors`,
+ * cacheFiles.mjs areaPositions, R44): an area sits under the last of its
+ * ancestors. The tree only displays that position; rows without `ancestors`
+ * (an older areas.json) sit under their parentId. A stub (an area known only
+ * as an ancestor) appears in every root that has one of its descendants. An
+ * area whose parent is an area of another root starts at the top of its own
+ * root. Gazetteers have no ancestors: they are grouped by their ISO code
+ * (group nodes 'ISO AU', and 'No ISO code').
  * @param {AreaRow[]} rows  areas.json
  * @returns {TreeRoot[]}
  * @example
- *   buildAreaTree(areas)[1].nodes  // TDWG: the stubs and TDWG areas without parent in TDWG
+ *   buildAreaTree(areas)[0].nodes  // Political: the countries, Alabama (a stub) under GA 237 United States
  */
 export function buildAreaTree(rows) {
-  const gaRows = new Map()
-  for (const row of rows) if (row.key.startsWith('GA ')) gaRows.set(Number(row.key.slice(3)), row)
+  const byKey = new Map(rows.map((row) => [row.key, row]))
+  const parentKeyOf = (row) => (Array.isArray(row.ancestors)
+    ? row.ancestors.at(-1) ?? null
+    : row.parentId != null ? `GA ${row.parentId}` : null)
 
   const roots = ROOTS.map((name) => ({ name, nodes: [], count: 0, problems: 0, byKey: new Map() }))
   const rootOf = Object.fromEntries(roots.map((root) => [root.name, root]))
@@ -107,13 +115,16 @@ export function buildAreaTree(rows) {
     // Link it to its parent in this root; stubs are made on the way up.
     let child = node
     let current = row
+    const seen = new Set([row.key])
     for (;;) {
-      const parent = current.parentId != null ? gaRows.get(Number(current.parentId)) : null
-      const sameRoot = parent && (isStub(parent) || areaRoot(parent) === root.name) && parent.key !== current.key
+      const parentKey = parentKeyOf(current)
+      const parent = parentKey ? byKey.get(parentKey) : null
+      const sameRoot = parent && (isStub(parent) || areaRoot(parent) === root.name) && !seen.has(parent.key)
       if (!sameRoot) {
         if (!child.top) { child.top = true; root.nodes.push(child) }
         break
       }
+      seen.add(parent.key)
       const { node: parentNode, isNew } = nodeIn(root, parent)
       if (!parentNode.children.includes(child)) parentNode.children.push(child)
       if (!isNew) break
@@ -128,9 +139,10 @@ export function buildAreaTree(rows) {
     const linked = new Set()
     for (const node of root.byKey.values()) for (const child of node.children) linked.add(child)
     root.nodes = root.nodes.filter((node) => !linked.has(node))
+    if (root.name === 'Gazetteers') root.nodes = groupByIso(root.nodes)
     const visit = (node) => {
       node.children.sort(byName)
-      node.problems = (isProblem(node.row) ? 1 : 0) + node.children.reduce((sum, child) => sum + visit(child), 0)
+      node.problems = (node.row && isProblem(node.row) ? 1 : 0) + node.children.reduce((sum, child) => sum + visit(child), 0)
       delete node.top
       return node.problems
     }
@@ -139,6 +151,18 @@ export function buildAreaTree(rows) {
     delete root.byKey
   }
   return roots
+}
+
+// Top gazetteer nodes grouped by the ISO code TaxonWorks gives them.
+function groupByIso(nodes) {
+  const groups = new Map()
+  for (const node of nodes) {
+    const iso = String(node.row?.iso2 ?? '').toUpperCase()
+    const key = iso ? `ISO ${iso}` : 'ISO none'
+    if (!groups.has(key)) groups.set(key, { key, name: iso ? `ISO ${iso}` : 'No ISO code', row: null, stub: false, group: true, children: [], problems: 0 })
+    groups.get(key).children.push(node)
+  }
+  return [...groups.values()]
 }
 
 /**
@@ -154,7 +178,7 @@ export function filterTree(roots, { text = '', problemsOnly = false } = {}) {
   const needle = normalizeName(text)
   if (!needle && !problemsOnly) return roots
   const matches = (node) => (!needle || normalizeName(node.name).includes(needle) || node.key.toLowerCase() === text.trim().toLowerCase()) &&
-    (!problemsOnly || isProblem(node.row))
+    (!problemsOnly || (node.row && isProblem(node.row)))
   const keep = (node) => {
     const children = node.children.map(keep).filter(Boolean)
     if (!children.length && !matches(node)) return null
@@ -201,9 +225,11 @@ export function reasonKind(reason) {
  * unplaced.json as sections, one per reason kind (reasonKind), largest first:
  * the variants (exact reason texts) with their counts, largest first, and all
  * records of the section in that order.
- * @param {Object<string, Array<[string, number]>>} unplaced  unplaced.json
+ * @param {Object<string, Array<[string, number, string?]>>} unplaced  unplaced.json; the third
+ *   element is the area of an asserted distribution ('GZ 3614'), absent otherwise
  * @returns {{ kind: string, count: number, variants: { reason: string, count: number }[],
- *   records: { kind: string, id: number, reason: string }[] }[]}
+ *   records: { kind: string, id: number, reason: string, area: string|null }[] }[]}
+ *   the reasons 'locality text only' and 'no locality at all' last
  */
 export function groupUnplaced(unplaced) {
   const sections = new Map()
@@ -222,9 +248,11 @@ export function groupUnplaced(unplaced) {
         kind: section.kind,
         count: section.count,
         variants: variants.map(({ reason, count }) => ({ reason, count })),
-        records: variants.flatMap(({ reason, ids }) => ids.map(([kind, id]) => ({ kind, id: Number(id), reason })))
+        records: variants.flatMap(({ reason, ids }) => ids.map(([kind, id, area]) => ({ kind, id: Number(id), reason, area: area ?? null })))
       }
     })
+    // Records with nothing to place them by come last (R45).
+    .sort((a, b) => Number(LOCALITY_REASONS.includes(a.kind)) - Number(LOCALITY_REASONS.includes(b.kind)))
 }
 
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`
@@ -382,3 +410,88 @@ export function ruleSections(rules) {
     }
   ]
 }
+
+/**
+ * A text cut at every rules file reference, for links to the line (R46).
+ * @param {string} text  e.g. 'x [manual, placement.yml:12]'
+ * @returns {{ text: string, line?: number }[]}  'placement.yml:12' parts carry its line
+ * @example
+ *   splitRefs('a [manual, placement.yml:12]')
+ *   // [{ text: 'a [manual, ' }, { text: 'placement.yml:12', line: 12 }, { text: ']' }]
+ */
+export function splitRefs(text) {
+  const parts = []
+  const pattern = /placement\.yml:(\d+)/g
+  const value = String(text ?? '')
+  let last = 0
+  for (const found of value.matchAll(pattern)) {
+    if (found.index > last) parts.push({ text: value.slice(last, found.index) })
+    parts.push({ text: found[0], line: Number(found[1]) })
+    last = found.index + found[0].length
+  }
+  if (last < value.length || !parts.length) parts.push({ text: value.slice(last) })
+  return parts
+}
+
+/**
+ * Every source that contributed to a placement (country, part, state,
+ * outline), as source tags in step order, each once (R43): e.g.
+ * ['[TaxonWorks]', '[overlap 100% Primorsky Krai, placement.yml:539]'].
+ * @param {Object|null} placement  a Placement
+ * @returns {string[]}
+ */
+export function sourceTags(placement) {
+  const tags = []
+  for (const step of placement?.steps ?? []) {
+    const tag = sourceTag(step)
+    if (!tags.includes(tag)) tags.push(tag)
+  }
+  return tags
+}
+
+/**
+ * The steps after the checklist is decided, numbered on from DECISION_ORDER
+ * on the Rules tab (R46): the part, the state or province (naming the
+ * checklists of state_countries) and the outline.
+ * @param {import('./rules.js').CompiledRules} rules
+ * @returns {{ text: string, ref: string|null }[]}
+ */
+export function afterDecisionSteps(rules) {
+  const parts = Object.entries(rules?.parts ?? {}).map(([country, list]) => `${country} only: ${list.map((part) => part.name).join(' or ')}`)
+  const states = rules?.stateCountries?.names ?? []
+  const listed = states.length > 1 ? `${states.slice(0, -1).join(', ')} and ${states.at(-1)}` : states.join('')
+  return [
+    { text: `The part (${parts.join('; ') || 'no checklist has parts'}).`, ref: null },
+    { text: `The state or province, only for the checklists browsed by state: ${listed || 'none'}.`, ref: rules?.stateCountries?.ref ?? null },
+    { text: 'The outline: the part\'s outline, else the checklist\'s.', ref: null }
+  ]
+}
+
+/**
+ * The records of one reason grouped by what they point to (R45): each
+ * geographic area (GA) and gazetteer (GZ) of the asserted distributions, then
+ * the collecting events of the specimens and field occurrences (no area).
+ * Areas with more records first.
+ * @param {{ kind: string, id: number, area?: string|null }[]} records  of one reason
+ * @param {Map<string, string>} [areaNames]  area key to name (areas.json)
+ * @returns {{ key: string, label: string, pointer: 'GA'|'GZ'|'collecting event', records: Object[] }[]}
+ */
+export function groupByPointer(records, areaNames = new Map()) {
+  const groups = new Map()
+  for (const record of records) {
+    const key = record.area ?? (record.kind === 'AD' ? 'AD without area' : 'collecting event')
+    if (!groups.has(key)) {
+      const pointer = key.startsWith('GZ ') ? 'GZ' : key.startsWith('GA ') ? 'GA' : 'collecting event'
+      const label = pointer === 'collecting event'
+        ? (key === 'AD without area' ? 'Asserted distributions without area' : 'Collecting events (specimens and field occurrences)')
+        : `${areaNames.get(key) ?? key} (${key})`
+      groups.set(key, { key, label, pointer, records: [] })
+    }
+    groups.get(key).records.push(record)
+  }
+  const order = { GA: 0, GZ: 1, 'collecting event': 2 }
+  return [...groups.values()].sort((a, b) => order[a.pointer] - order[b.pointer] || b.records.length - a.records.length || a.label.localeCompare(b.label))
+}
+
+/** Reason kinds of records with nothing to place them by, shown last and closed (R45). */
+export const LOCALITY_REASONS = ['locality text only', 'no locality at all']

@@ -112,3 +112,15 @@ test('browser context reproduces 200 specimen placements of the country files an
   assert.deepEqual(differ, [])
   assert.equal(sample.length, 200)
 })
+
+test('the built cache: Norfolk Island drawn from Natural Earth, GZ 10458 in it, Alabama under the United States (R44, R49)', { skip }, () => {
+  const index = readJson(join(PUBLIC, 'checklists/index.json'))
+  const norfolk = index.countries.find((country) => country.name === 'Norfolk Island')
+  assert.equal(norfolk.shape, null)
+  assert.equal(norfolk.fallback, 'Norfolk Island')
+  const rows = new Map(readJson(join(PUBLIC, 'checklists/areas.json')).map((row) => [row.key, row]))
+  assert.equal(rows.get('GZ 10458').placement.checklist.name, 'Norfolk Island')
+  assert.equal(rows.get('GZ 10458').placement.shape.key, 'fallback/Norfolk Island')
+  assert.equal(rows.get('GA 34374').placement.checklist.name, 'Australia', 'Lord Howe I. stays Australia')
+  assert.deepEqual(rows.get('GA 26688').ancestors, ['GA 237'])
+})

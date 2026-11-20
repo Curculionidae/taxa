@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   checklistKey, assignKeys, groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary,
-  checklistHeader, indexEntry, publicPlacement, decidingSource, partShapes, cacheContext, RULES_PATH
+  checklistHeader, indexEntry, publicPlacement, decidingSource, partShapes, cacheContext, RULES_PATH, areaPositions, tdwgAncestorCodes
 } from './cacheFiles.mjs'
 
 const area = (fields) => ({
@@ -33,13 +33,13 @@ test('assignKeys: key by checklist id; a clash names both checklists', () => {
 test('groupUnplaced: ids by reason, the most frequent reason first, ids sorted', () => {
   const grouped = groupUnplaced([
     { reason: 'no locality at all', kind: 'CO', id: 9 },
-    { reason: 'not measured yet', kind: 'AD', id: 5 },
+    { reason: 'not measured yet', kind: 'AD', id: 5, area: 'GZ 3614' },
     { reason: 'no locality at all', kind: 'CO', id: 3 },
     { reason: 'no locality at all', kind: 'FO', id: 1 }
   ])
   assert.deepEqual(Object.keys(grouped), ['no locality at all', 'not measured yet'])
   assert.deepEqual(grouped['no locality at all'], [['CO', 3], ['CO', 9], ['FO', 1]])
-  assert.deepEqual(grouped['not measured yet'], [['AD', 5]])
+  assert.deepEqual(grouped['not measured yet'], [['AD', 5, 'GZ 3614']], 'an asserted distribution keeps its area')
 })
 
 test('bboxOf: west, south, east, north over every polygon, null for none', () => {
@@ -200,4 +200,37 @@ test('cacheContext: checklists, their outlines with bbox, and the cached outline
     unusable: { GeographicArea: [], Gazetteer: [7] },
     stateAreas: {}
   })
+})
+
+test('tdwgAncestorCodes: L4 under L3 under L2 under L1', () => {
+  assert.deepEqual(tdwgAncestorCodes('12FRA-FR'), ['1', '12', '12FRA'])
+  assert.deepEqual(tdwgAncestorCodes('12FRA'), ['1', '12'])
+  assert.deepEqual(tdwgAncestorCodes('12'), ['1'])
+  assert.deepEqual(tdwgAncestorCodes('1'), [])
+})
+
+test('areaPositions: Alabama, known from its counties, under the United States; TDWG by code; gazetteers flat (R44)', () => {
+  const areas = [
+    area({ id: 237, name: 'United States', level0: 237, parentId: 1, parentName: 'Earth', type: 'Country' }),
+    area({ id: 30081, name: 'Clay', level0: 237, level1: 26688, level2: 30081, parentId: 26688, parentName: 'Alabama' }),
+    area({ id: 30082, name: 'Coffee', level0: 237, level1: 26688, level2: 30082, parentId: 26688, parentName: 'Alabama' }),
+    // TDWG: 12FRA-FR (used) under 12FRA (used); 12FRA's parent 33550 is known only as a parent, so it is L2 '12'.
+    area({ id: 33696, name: 'France', tdwg: '12FRA', origin: 'tdwg_l3', parentId: 33550, parentName: 'Southwestern Europe' }),
+    area({ id: 34185, name: 'France', tdwg: '12FRA-FR', origin: 'tdwg_l4', parentId: 33696, parentName: 'France' }),
+    area({ id: 34374, name: 'Lord Howe I.', tdwg: '50NFK-LH', origin: 'tdwg_l4', parentId: 33700, parentName: 'Norfolk Is.' }),
+    { key: 'GZ 10458', kind: 'GZ', id: 10458, name: 'Australia: Norfolk Island', iso2: 'AU', tdwg: null, origin: null, level0: null, level1: null, parentId: null, parentName: null }
+  ]
+  const { ancestors, stubs } = areaPositions(areas)
+  assert.deepEqual(ancestors.get('GA 237'), [], 'Earth is left out')
+  assert.deepEqual(ancestors.get('GA 30081'), ['GA 237', 'GA 26688'])
+  assert.deepEqual(ancestors.get('GA 26688'), ['GA 237'])
+  assert.deepEqual(ancestors.get('GA 34185'), ['GA 33550', 'GA 33696'])
+  assert.deepEqual(ancestors.get('GA 33696'), ['GA 33550'])
+  assert.deepEqual(ancestors.get('GA 34374'), ['GA 33700'], 'its L3 50NFK is known as its parent')
+  assert.deepEqual(ancestors.get('GZ 10458'), [])
+  assert.deepEqual(stubs.map(({ key, name, tdwg, ancestors: chain }) => [key, name, tdwg, chain]), [
+    ['GA 26688', 'Alabama', null, ['GA 237']],
+    ['GA 33550', 'Southwestern Europe', '12', []],
+    ['GA 33700', 'Norfolk Is.', '50NFK', []]
+  ])
 })

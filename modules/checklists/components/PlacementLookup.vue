@@ -9,7 +9,8 @@
                         record, used by no record), with optional `details` lines
              or { text, links, status, notes }
                text    the explanation (placement/format.js formatExplanation),
-                       shown as is in a <pre>, the same text as the build's --explain
+                       shown as is in a <pre>, the same text as the build's --explain;
+                       every placement.yml:N links to that line (RefText.vue)
                links   [{ label, href }] into TaxonWorks (record, area, OTU)
                status  { listed, text }: what the cache says about the record
                notes   further plain lines (outlines not cached, ...)
@@ -70,7 +71,7 @@
     <template v-else-if="result">
       <pre
         class="overflow-x-auto rounded-md border border-base-muted bg-base-foreground p-3 font-mono text-xs leading-relaxed text-base-content"
-      >{{ result.text }}</pre>
+      ><RefText :text="result.text" /></pre>
 
       <p
         class="text-sm font-semibold"
@@ -116,6 +117,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import RefText from './RefText.vue'
 
 const props = defineProps({
   initial: { type: String, default: '' },

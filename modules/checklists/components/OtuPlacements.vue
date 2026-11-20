@@ -25,6 +25,10 @@
                                       rows of this OTU only
   Each record is placed with placeLive in the engine context of the cache files
   (geometry-browser.js loadCacheContext), so the result equals the build's.
+  The Source column lists every source that contributed to the row's
+  placement (country, part, state, outline; overview.js sourceTags, R43), each
+  rules line a link to the Rules tab; every record id has a copy button
+  (CopyId.vue).
   Only the OTU's own records: no synonyms, no subordinate taxa.
 -->
 <template>
@@ -131,6 +135,7 @@
                     class="text-secondary hover:underline"
                     @click.stop
                   >{{ row.key }}</a>
+                  <CopyId :text="row.key" />
                 </td>
                 <td class="py-1.5 pr-3">
                   <a
@@ -151,8 +156,15 @@
                 >
                   {{ row.leftOut ? `${row.leftOut} (not in checklists)` : row.decision.text }}
                 </td>
-                <td class="whitespace-nowrap py-1.5 pr-3 font-mono text-xs">
-                  {{ row.leftOut ? '' : row.decision.tag }}
+                <td class="py-1.5 pr-3 font-mono text-xs">
+                  <template v-if="!row.leftOut">
+                    <RefText
+                      v-for="tag in row.sources"
+                      :key="tag"
+                      class="mr-1 inline-block whitespace-nowrap"
+                      :text="tag"
+                    />
+                  </template>
                 </td>
                 <td class="whitespace-nowrap py-1.5 font-semibold">
                   {{ row.differs ? 'differs' : '' }}
@@ -172,7 +184,9 @@ import { makeAPIRequest } from '@/utils/request'
 import {
   fetchOtuDistributions, fetchOtuSpecimens, fromDistribution, fromDwcRow, placeLive, recordLeftOut, otuLeftOut, plainLabel
 } from '../placement/live.js'
-import { decisionOf, summarizeOtu, cachedPlacement, differsFromCache } from '../placement/overview.js'
+import { decisionOf, summarizeOtu, cachedPlacement, differsFromCache, sourceTags } from '../placement/overview.js'
+import CopyId from './CopyId.vue'
+import RefText from './RefText.vue'
 import { twEditUrl, twRecordUrl, twOtuUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
 const props = defineProps({
@@ -285,6 +299,7 @@ function rowOf(live, placement, { unplaced, records }) {
     place: placeOf(live),
     placement,
     decision: decisionOf(placement),
+    sources: sourceTags(placement),
     leftOut,
     differs: !leftOut && differsFromCache(placement, cached)
   }

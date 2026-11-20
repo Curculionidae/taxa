@@ -11,7 +11,10 @@
                                    (components/OtuPlacements.vue, ?otu=<id>)
     Area tree       ?tab=areas     areas.json as a tree (components/AreaTree.vue)
     Not placed      ?tab=unplaced  unplaced.json by reason (components/UnplacedList.vue)
-    Rules           ?tab=rules     rules.json (components/RulesView.vue)
+    Rules           ?tab=rules     rules.json and the copy of placement.yml
+                                   (components/RulesView.vue); ?line=N marks a
+                                   line, the target of every placement.yml:N
+                                   link on the page (components/RefText.vue)
   A row clicked in the OTU, tree or unplaced list opens the lookup tab with
   ?lookup=<KIND> <id>. The cache files are fetched once per visit and shared
   with the tabs through `cache`.
@@ -143,11 +146,13 @@
             <UnplacedList
               v-else-if="tab === 'unplaced'"
               :load-unplaced="cache.unplaced"
+              :load-areas="cache.areas"
               @lookup="lookUp"
             />
             <RulesView
               v-else-if="tab === 'rules'"
               :load-rules="cache.rules"
+              :load-rules-text="cache.rulesText"
             />
           </div>
         </section>
@@ -244,6 +249,13 @@ const unplacedFile = () => load('unplaced', () => fetchJson('checklists/unplaced
 const areasFile = () => load('areas', () => fetchJson('checklists/areas.json'))
 const countryRecords = (file) => load(`country:${file}`, async () => expandChecklist(await fetchJson(`checklists/countries/${file}`)))
 const rulesFile = () => load('rules', () => fetchJson('checklists/rules.json'))
+// The rules file as the build copied it, as text.
+const rulesText = () => load('rulesText', async () => {
+  const base = base_url.endsWith('/') ? base_url : `${base_url}/`
+  const response = await fetch(`${base}checklists/placement.yml`)
+  if (!response.ok) throw new Error(`could not load checklists/placement.yml (${response.status})`)
+  return response.text()
+})
 
 // The cache files for the tabs, each a function giving a promise.
 const cache = {
@@ -252,6 +264,7 @@ const cache = {
   unplaced: unplacedFile,
   areas: areasFile,
   rules: rulesFile,
+  rulesText,
   countryRecords
 }
 
@@ -410,7 +423,8 @@ async function layersOf(live, placement, ctx, context) {
     const key = placement.shape?.key ?? (fallback?.startsWith('fallback/') ? fallback : null)
     const polygons = key ? await geometry.outlinePolygons(key) : null
     const name = placement.shape?.name ?? placement.checklist.name
-    if (polygons?.length) assigned = { label: `${name}, where the placement puts it${placement.shape ? '' : ' (fallback outline)'}`, polygons }
+    const naturalEarth = key?.startsWith('fallback/') ? ' (Natural Earth outline)' : ''
+    if (polygons?.length) assigned = { label: `${name}, where the placement puts it${naturalEarth}`, polygons }
     else notes.push(`No outline cached for ${placement.checklist.name}.`)
   }
   return { own, assigned, ownKind: live.record.type === 'FieldOccurrence' ? 'FieldOccurrence' : 'CollectionObject', notes }

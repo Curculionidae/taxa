@@ -3,7 +3,9 @@
   public/checklists/areas.json and how the build placed it.
 
   Three roots, Political, TDWG and Gazetteers (placement/overview.js
-  buildAreaTree), areas nested by their TaxonWorks parent. Each area shows its
+  buildAreaTree), areas nested by the position the build compiled from
+  TaxonWorks data (areas.json `ancestors`: level ids for political areas,
+  TDWG codes for TDWG areas); gazetteers grouped by ISO code. Each area shows its
   name and key (a TaxonWorks link), its record count and its decision in one
   line with the deciding source tag (overview.js decisionOf); parent stubs
   (areas known only as a parent) are muted with "used by no record". Clicking

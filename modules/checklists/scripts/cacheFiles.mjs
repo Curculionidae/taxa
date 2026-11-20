@@ -50,15 +50,17 @@ export function assignKeys(checklists) {
 
 /**
  * unplaced.json: record ids by reason, the most frequent reason first, the ids
- * of a reason sorted by kind, then id.
- * @param {{ reason: string, kind: string, id: number }[]} entries  kind: 'AD', 'CO' or 'FO'
- * @returns {Object<string, Array<[string, number]>>}
+ * of a reason sorted by kind, then id. An asserted distribution carries its
+ * area as a third element ('GZ 3614'), so the curator page can group the
+ * records by what they point to (R45).
+ * @param {{ reason: string, kind: string, id: number, area?: string|null }[]} entries  kind: 'AD', 'CO' or 'FO'
+ * @returns {Object<string, Array<[string, number] | [string, number, string]>>}
  */
 export function groupUnplaced(entries) {
   const byReason = new Map()
-  for (const { reason, kind, id } of entries) {
+  for (const { reason, kind, id, area } of entries) {
     if (!byReason.has(reason)) byReason.set(reason, [])
-    byReason.get(reason).push([kind, id])
+    byReason.get(reason).push(area ? [kind, id, area] : [kind, id])
   }
   const sorted = [...byReason].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'en'))
   return Object.fromEntries(sorted.map(([reason, ids]) => [
@@ -285,3 +287,84 @@ export function partShapes(parts, shapes) {
   })
 }
 
+/**
+ * The TDWG codes above a TDWG code, top first: '12FRA-FR' gives ['1', '12',
+ * '12FRA'], '12FRA' gives ['1', '12'], '12' gives ['1'], '1' gives [].
+ * @param {string} code
+ * @returns {string[]}
+ */
+export function tdwgAncestorCodes(code) {
+  const text = String(code ?? '')
+  if (/^\d{2}[A-Z]{3}-[A-Z0-9]{2}$/.test(text)) return [text[0], text.slice(0, 2), text.slice(0, 5)]
+  if (/^\d{2}[A-Z]{3}$/.test(text)) return [text[0], text.slice(0, 2)]
+  if (/^\d{2}$/.test(text)) return [text[0]]
+  return []
+}
+
+/**
+ * Where every area sits in the curator page's area tree, compiled from
+ * TaxonWorks data in the cache (R44): `ancestors`, the keys above an area, top
+ * first, and the rows of the areas known only as ancestors (stubs).
+ *  - Political areas (GADM, Natural Earth, ISO country names): their
+ *    level0_id, level1_id and level2_id, then their parent when it is not
+ *    among those; "Earth" is left out. GA 30081 Clay (level0 237, level1
+ *    26688) gives ['GA 237', 'GA 26688'], so the stub GA 26688 Alabama, known
+ *    only as Clay's parent, sits under GA 237 United States.
+ *  - TDWG areas: their TDWG code, L4 under L3 under L2 under L1 by code
+ *    prefix ('12FRA-FR' under '12FRA' under '12' under '1'), each level that
+ *    occurs in the cache: as a used area, or as the parent of a used TDWG area
+ *    (its code is then the child's code one level up). Missing levels are
+ *    skipped, so an area with none sits at the top of the TDWG root.
+ *  - Gazetteers: no ancestors (the tree groups them by their ISO code).
+ * A stub's ancestors are those of the first area that names it (political)
+ * or come from its code (TDWG); its name is the parentName of a child, else
+ * the level0 name the build found (level0Names), else null.
+ * @param {import('../placement/areas.js').Area[]} areas  every used area
+ * @param {Map<number, string>} [level0Names]  names of countries used only through subdivisions
+ * @returns {{ ancestors: Map<string, string[]>, stubs: { key: string, name: string|null, tdwg: string|null, ancestors: string[] }[] }}
+ */
+export function areaPositions(areas, level0Names = new Map()) {
+  const used = new Map(areas.map((area) => [area.key, area]))
+  const isTdwg = (area) => area.kind === 'GA' && (Boolean(area.tdwg) || String(area.origin ?? '').toLowerCase().includes('tdwg'))
+  const names = new Map() // GA id -> name, from children's parentName
+  for (const area of areas) if (area.parentId != null && area.parentName && !names.has(area.parentId)) names.set(area.parentId, area.parentName)
+  const isEarth = (id) => normalizeName(used.get(`GA ${id}`)?.name ?? names.get(id)) === 'earth'
+
+  // TDWG codes in the cache: used areas, and parents of used TDWG areas.
+  const byCode = new Map()
+  for (const area of areas) if (isTdwg(area) && area.tdwg) byCode.set(area.tdwg, area.key)
+  const stubCodes = new Map() // stub key -> code
+  for (const area of areas) {
+    if (!isTdwg(area) || !area.tdwg || area.parentId == null || used.has(`GA ${area.parentId}`)) continue
+    const code = tdwgAncestorCodes(area.tdwg).at(-1)
+    if (code && !byCode.has(code)) { byCode.set(code, `GA ${area.parentId}`); stubCodes.set(`GA ${area.parentId}`, code) }
+  }
+  const tdwgChain = (code) => tdwgAncestorCodes(code).map((c) => byCode.get(c)).filter(Boolean)
+
+  const ancestors = new Map()
+  const stubs = new Map() // key -> { key, name, tdwg, ancestors }
+  const addStub = (key, chain, tdwg = null) => {
+    if (used.has(key) || stubs.has(key)) return
+    const id = Number(key.slice(3))
+    stubs.set(key, { key, name: names.get(id) ?? level0Names.get(id) ?? null, tdwg, ancestors: chain })
+  }
+  for (const area of areas) {
+    if (area.kind === 'GZ') { ancestors.set(area.key, []); continue }
+    if (isTdwg(area)) {
+      const chain = tdwgChain(area.tdwg)
+      ancestors.set(area.key, chain)
+      chain.forEach((key, index) => { if (stubCodes.has(key)) addStub(key, chain.slice(0, index), stubCodes.get(key)) })
+      continue
+    }
+    const ids = []
+    for (const id of [area.level0, area.level1, area.level2, area.parentId]) {
+      if (id == null || id === area.id || ids.includes(id) || isEarth(id)) continue
+      ids.push(id)
+    }
+    const chain = ids.map((id) => `GA ${id}`)
+    ancestors.set(area.key, chain)
+    chain.forEach((key, index) => addStub(key, chain.slice(0, index)))
+  }
+  for (const stub of stubs.values()) ancestors.set(stub.key, stub.ancestors)
+  return { ancestors, stubs: [...stubs.values()] }
+}

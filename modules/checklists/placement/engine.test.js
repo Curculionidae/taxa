@@ -228,9 +228,11 @@ const recordChecklists = [...checklists, tanzania, ukraine, georgia]
 // Fake geometry: points by "lng,lat", states by checklist id.
 const pointsIn = new Map([['30.5,50.4', [234]], ['40.1,49.9', [234, 19713]], ['0,0', []], ['-84.4,33.7', [237]]])
 const statesAt = new Map([['237:-84.4,33.7', 'Georgia']])
+const partsAt = new Map([['77:9.1,42.1', 'Corsica'], ['77:2.3,48.9', 'Mainland France']])
 const geometry = {
   checklistsAt: async ([lng, lat]) => pointsIn.get(`${lng},${lat}`) ?? [],
   stateAt: async (id, [lng, lat]) => statesAt.get(`${id}:${lng},${lat}`) ?? null,
+  partAt: async (id, [lng, lat]) => partsAt.get(`${id}:${lng},${lat}`) ?? null,
   stateNames: (id) => ({
     237: ['Alabama', 'Georgia', 'Hawaii', 'Texas'],
     19713: ['Krasnoyarsk', 'Moscow Oblast', "Tver'", 'Sakha']
@@ -398,4 +400,36 @@ test('a country without states gets no state step', async () => {
   const placement = await ad(ga(fx.ga77))
   assert.equal(placement.state, null)
   assert.ok(!placement.steps.some((step) => step.text.startsWith('no state')))
+})
+
+test('a France specimen with only coordinates in Corsica gets part Corsica', async () => {
+  const placement = await placeRecord(specimen({ country: 'France', lat: 42.1, lng: 9.1 }), rctx)
+  assert.equal(placement.part, 'Corsica')
+  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 42.1, 9.1 lie inside Corsica', source: 'overlap' })
+  assert.deepEqual(placement.shape, { key: 'GeographicArea/32254', name: 'Corsica' })
+})
+
+test('a France specimen with coordinates on the mainland gets Mainland France', async () => {
+  const byOutline = await placeRecord(specimen({ country: 'France', lat: 48.9, lng: 2.3 }), rctx)
+  assert.equal(byOutline.part, 'Mainland France')
+  assert.equal(byOutline.steps.at(-1).source, 'overlap')
+  // A point no part outline or box holds still lies below country level: the rest part.
+  const byRest = await placeRecord(specimen({ country: 'France', lat: 45.5, lng: 4.8 }), rctx)
+  assert.equal(byRest.part, 'Mainland France')
+  assert.equal(byRest.steps.at(-1).text, 'coordinates 45.5, 4.8 lie below country level, so they go to the part Mainland France')
+})
+
+test('a county abroad named like an overseas department stays in its own country', async () => {
+  const placement = await placeRecord(specimen({ country: 'United States', stateProvince: 'Texas', county: 'Martinique County' }), rctx)
+  assert.equal(placement.checklist.name, 'United States')
+  assert.equal(placement.state, 'Texas')
+  const loose = await placeRecord(specimen({ stateProvince: 'Martinique' }), rctx)
+  assert.equal(loose.checklist.name, 'Martinique')
+})
+
+test('coordinates without geometry are not checked', async () => {
+  const bare = createContext({ checklists: recordChecklists, rules: recordRules, geometry: null, shapes: recordShapes })
+  const placement = await placeRecord(specimen({ lat: 50.4, lng: 30.5 }), bare)
+  assert.equal(placement.reason, 'coordinates not checked')
+  assert.deepEqual(sources(placement), ['TaxonWorks'])
 })

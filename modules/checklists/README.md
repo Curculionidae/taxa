@@ -199,7 +199,9 @@ checklist (or `null` and a `reason`), the part, the state, the outline to show
 engine itself stays pure (the build reads cached files, the browser fetches):
 `checklistsAt([lng, lat])` gives the ids of the checklists whose outline holds
 a point, `stateAt(checklistId, [lng, lat])` the state whose outline holds it
-(or null), and `stateNames(checklistId)` the state names of a checklist. Only
+(or null), `partAt(checklistId, [lng, lat])` the part whose outline, else
+whose `box` in the rules file, holds it (or null), and `stateNames(checklistId)`
+the state names of a checklist. Only
 records with coordinates make `placeRecord` wait for it; `placeArea` never
 calls it.
 
@@ -266,9 +268,12 @@ A specimen or field occurrence is placed by its DwC fields (`RecordInput`:
 that applies decides:
 
 1. A checklist of its own: a word of the entry's `names` is in the DwC
-   `country`, `stateProvince` or `county` (whole words, accent insensitive).
-   A specimen with country France and stateProvince French Guiana lands in
-   French Guiana. One `[manual]` step cites the entry.
+   `country`, or in the `stateProvince` or `county` when the DwC country is
+   empty or is the country the entry is filed under (`of`, France); whole
+   words, accent insensitive. A specimen with country France and
+   stateProvince French Guiana lands in French Guiana; one with country
+   United States and a county named like Martinique stays in the United
+   States. One `[manual]` step cites the entry.
 2. The DwC country. TaxonWorks computes it from the georeference (on full
    outlines) or from the collecting event's area; in the test run of
    2026-11-20 it equalled the collecting event's country in 20,329 of 20,329
@@ -287,9 +292,12 @@ that applies decides:
 4. Otherwise not placeable: `locality text only` when the record has locality
    text, else `no locality at all`.
 
-Then the part (France): a part name in `stateProvince` or `county` (Corse goes
-to Corsica), else the `rest` part (Mainland France) when either is given, else
-no part.
+Then the part (France), as the old build did: a part name in `stateProvince`
+or `county` (Corse goes to Corsica) `[manual]`; else the part whose outline, or
+`box`, holds the coordinates (`geometry.partAt`, step `coordinates <lat>,
+<lng> lie inside Corsica` `[overlap]`); else the `rest` part (Mainland France)
+when the record has a stateProvince or coordinates, as it then lies below
+country level; else no part.
 
 ### States and provinces
 

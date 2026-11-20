@@ -44,8 +44,11 @@
 //  3. no DwC country but coordinates: the checklist outline that contains
 //     them (Geometry.checklistsAt), when exactly one does
 //  4. otherwise not placeable: 'locality text only' or 'no locality at all'
-// Then the part (France: a part name in stateProvince or county, else the rest
-// part when stateProvince or county is given).
+//  Step 1 reads stateProvince and county only when the DwC country is empty
+//  or is the entry's `of` country (France), so a county abroad is never captured.
+// Then the part (France: a part name in stateProvince or county, else the part
+// holding the coordinates (Geometry.partAt), else the rest part when the record
+// has a stateProvince or coordinates).
 //
 // The state, only for checklists with `states` (placeRecord):
 //  asserted distribution: the area's name, else its parent's name, is a state
@@ -97,6 +100,9 @@ export const SEVERAL_STATES = 'spans several states'
  *   ids of the checklists whose outline contains the point [lng, lat]
  * @property {(checklistId: number|string, point: [number, number]) => Promise<string|null>} stateAt
  *   the state of that checklist whose outline contains the point, null when none
+ * @property {(checklistId: number|string, point: [number, number]) => Promise<string|null>} partAt
+ *   the part of that checklist (France: Corsica) whose outline holds the point, else
+ *   whose `box` from the rules file holds it; null when none (R19)
  * @property {(checklistId: number|string) => string[]} stateNames
  *   the state names of a checklist with `states`, [] for any other
  *
@@ -192,7 +198,7 @@ export async function placeRecord(record, ctx, area) {
   const point = pointOf(record)
   const decision = await decideRecord(record, point, ctx)
   if (!decision.checklist) return finish(decision, null, ctx)
-  decision.part = decision.part ?? recordPart(record, decision.checklist, ctx, decision.steps)
+  decision.part = decision.part ?? await recordPart(record, point, decision.checklist, ctx, decision.steps)
   const state = await recordState(record, point, decision.checklist, ctx, decision.steps)
   return finish(decision, state, ctx)
 }
@@ -419,11 +425,16 @@ function synonymLine(ctx, name, checklistName) {
 
 // The decision for a specimen or field occurrence (order at the top of the file).
 async function decideRecord(record, point, ctx) {
-  // 1. A checklist of its own, by a name in the DwC country, stateProvince or county.
-  const fields = [['country', text(record.country)], ['stateProvince', text(record.stateProvince)], ['county', text(record.county)]]
+  // 1. A checklist of its own, by a name in the DwC country, or in the
+  // stateProvince or county when the DwC country is empty or is the country the
+  // entry is filed under (`of`), so a county abroad is never captured.
+  const country = text(record.country)
   for (const entry of ctx.rules.checklists) {
     const checklist = ctx.byName.get(normalizeName(entry.name))
     if (!checklist) continue
+    const loose = !country || (entry.of && ctx.byName.get(normalizeName(entry.of)) === ctx.byName.get(normalizeName(country)))
+    const fields = [['country', country]]
+    if (loose) fields.push(['stateProvince', text(record.stateProvince)], ['county', text(record.county)])
     for (const [field, value] of fields) {
       const name = value && entry.names.find((n) => containsName(value, n))
       if (name) {
@@ -437,7 +448,6 @@ async function decideRecord(record, point, ctx) {
   }
 
   // 2. The DwC country, matched against checklist names and synonyms only.
-  const country = text(record.country)
   if (country) {
     const checklist = ctx.byName.get(normalizeName(country))
     if (!checklist) {
@@ -455,13 +465,13 @@ async function decideRecord(record, point, ctx) {
   if (point) {
     const where = `coordinates ${point.lat}, ${point.lng}`
     if (!ctx.geometry) {
-      return notPlaced('coordinates not checked', [{ text: `${where} were not checked: no outlines given`, source: 'overlap' }])
+      return notPlaced('coordinates not checked', [{ text: `${where} were not checked: no outlines given`, source: 'TaxonWorks' }])
     }
     const ids = await ctx.geometry.checklistsAt([point.lng, point.lat])
     const hits = [...new Set(ids.map((id) => ctx.byId.get(id)).filter(Boolean))]
     if (hits.length === 1) return placed(hits[0], [{ text: `${where} lie inside ${hits[0].name}`, source: 'overlap' }])
     if (hits.length > 1) {
-      const names = hits.map((checklist) => checklist.name).sort((a, b) => a.localeCompare(b)).join(', ')
+      const names = hits.map((checklist) => checklist.name).sort((a, b) => a.localeCompare(b, 'en')).join(', ')
       return notPlaced(`coordinates in several countries (${names})`, [{ text: `${where} lie inside ${names}`, source: 'overlap' }])
     }
     return notPlaced('coordinates outside every outline', [{ text: `${where} lie outside every checklist outline`, source: 'overlap' }])
@@ -474,9 +484,11 @@ async function decideRecord(record, point, ctx) {
   return notPlaced('no locality at all', [{ text: 'no DwC country, no coordinates and no locality', source: 'TaxonWorks' }])
 }
 
-// The part of a record's checklist (France), by a part name in its DwC
-// stateProvince or county, else the rest part when either is given.
-function recordPart(record, checklist, ctx, steps) {
+// The part of a record's checklist (France): a part name in its DwC
+// stateProvince or county; else the part whose outline (or box) holds its
+// coordinates (Geometry.partAt); else the rest part when it has a
+// stateProvince or coordinates (below country level). As the old build did.
+async function recordPart(record, point, checklist, ctx, steps) {
   const parts = ctx.rules.parts[checklist.name]
   if (!parts) return null
   const fields = [['stateProvince', text(record.stateProvince)], ['county', text(record.county)]]
@@ -489,10 +501,23 @@ function recordPart(record, checklist, ctx, steps) {
       }
     }
   }
-  const below = fields.find(([, value]) => value)
+  const where = point ? `coordinates ${point.lat}, ${point.lng}` : ''
+  if (point && ctx.geometry?.partAt) {
+    const name = await ctx.geometry.partAt(checklist.id, [point.lng, point.lat])
+    if (name && parts.some((part) => part.name === name)) {
+      steps.push({ text: `${where} lie inside ${name}`, source: 'overlap' })
+      return name
+    }
+  }
   const rest = parts.find((part) => part.rest)
-  if (below && rest) {
-    steps.push({ text: `DwC ${below[0]} ${below[1]} is below country level, so it goes to the part ${rest.name}`, source: 'manual', ref: rest.ref })
+  if (!rest) return null
+  const province = text(record.stateProvince)
+  if (province) {
+    steps.push({ text: `DwC stateProvince ${province} is below country level, so it goes to the part ${rest.name}`, source: 'manual', ref: rest.ref })
+    return rest.name
+  }
+  if (point) {
+    steps.push({ text: `${where} lie below country level, so they go to the part ${rest.name}`, source: 'manual', ref: rest.ref })
     return rest.name
   }
   return null

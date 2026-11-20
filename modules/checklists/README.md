@@ -936,8 +936,10 @@ Each area line (R54) reads `name (GA 237)` (a TaxonWorks link) · `n records`
 TaxonWorks country (GA 77)", "spelling synonym", "own checklist entry",
 "gazetteer ISO code NZ", "measured 100% in Russia", "manual rule") with its
 rules line as a link when there is one. The full steps and source tags stay in
-the lookup tab; the OTU table keeps its source tags (R43). A line not
-placed, or placed without any outline, is in red. Each root header gives its
+the lookup tab; the OTU table keeps its source tags (R43). An area not
+placed shows only `not placed: <reason>` in red with its rules line, no
+"because" (the reason already says it); one placed without any outline is
+red too. A wrapped line stays at its node's indentation. Each root header gives its
 number of areas and of problems.
 
 Only the top level is shown at first, and an area's children render only when

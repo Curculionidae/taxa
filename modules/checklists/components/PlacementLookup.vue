@@ -80,6 +80,13 @@
       </p>
 
       <p
+        v-if="result.differs"
+        class="text-sm font-semibold text-base-content"
+      >
+        {{ result.differs }}
+      </p>
+
+      <p
         v-for="note in result.notes"
         :key="note"
         class="text-sm text-base-content"

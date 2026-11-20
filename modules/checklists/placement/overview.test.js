@@ -1,0 +1,179 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { compileRules } from './rules.js'
+import {
+  areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, groupUnplaced, summarizeOtu,
+  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER
+} from './overview.js'
+
+const placed = (name, steps = [{ text: `x is in ${name}`, source: 'TaxonWorks' }], extra = {}) => ({
+  checklist: { key: name.toLowerCase(), name }, part: null, state: null,
+  shape: { key: 'GeographicArea/1', name }, reason: null, steps, ...extra
+})
+const unplaced = (reason, steps = [{ text: `y ${reason}`, source: 'overlap', ref: 'placement.yml:211' }]) => ({
+  checklist: null, part: null, state: null, shape: null, reason, steps
+})
+const row = (key, name, extra = {}) => ({
+  key, name, origin: 'gadm', type: 'County', tdwg: null, iso2: null, parentId: null, parentName: null,
+  records: 1, placement: placed('France'), ...extra
+})
+const stub = (key, name) => ({ ...row(key, name), origin: null, type: null, records: 0, placement: null })
+
+// French Guiana as in areas.json of 2026-11-20: GA 32253 (ne_states) under
+// France, GA 8837 Cayenne under the stub GA 78, GA 34200 (TDWG L4) under the
+// stub GA 33722; Borneo (TDWG L3) not placeable; one gazetteer.
+const AREAS = [
+  row('GA 77', 'France', { origin: 'country_names_and_code_elements', type: 'Country', parentId: 1 }),
+  stub('GA 1', 'Earth'),
+  row('GA 32253', 'French Guiana', { origin: 'ne_states', parentId: 77, placement: placed('French Guiana', [{ text: 'GA 32253 French Guiana belongs to the checklist French Guiana', source: 'manual', ref: 'placement.yml:69' }]) }),
+  stub('GA 78', 'French Guiana'),
+  row('GA 8837', 'Cayenne', { parentId: 78 }),
+  stub('GA 33722', 'French Guiana'),
+  row('GA 34200', 'French Guiana', { origin: 'tdwg_l4', type: 'TDWG Level 4', parentId: 33722 }),
+  row('GA 33639', 'Borneo', { origin: 'tdwg_l3', type: 'TDWG Level 3', parentId: 33574, placement: unplaced('spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%') }),
+  stub('GA 33574', 'Malesia'),
+  row('GZ 3549', 'Hispaniola', { origin: null, type: null, placement: unplaced('spans several countries: Dominican Republic 66%, Haiti 34%') }),
+  row('GA 210', 'Spain', { origin: 'country_names_and_code_elements', type: 'Country', parentId: 1, placement: placed('Spain', [{ text: 'Spain is a country', source: 'TaxonWorks' }, { text: 'no outline cached for Spain', source: 'TaxonWorks' }], { shape: null }) })
+]
+
+test('areaRoot: gazetteers by kind, TDWG by origin, the rest political', () => {
+  assert.equal(areaRoot(row('GZ 3549', 'Hispaniola', { origin: null })), 'Gazetteers')
+  assert.equal(areaRoot(row('GA 34200', 'x', { origin: 'tdwg_l4' })), 'TDWG')
+  assert.equal(areaRoot(row('GA 32253', 'x', { origin: 'ne_states' })), 'Political')
+  assert.equal(areaRoot(row('GA 9', 'x', { origin: null })), 'Political')
+})
+
+test('buildAreaTree: three roots, nested by parentId, stubs in the root of their children', () => {
+  const roots = buildAreaTree(AREAS)
+  assert.deepEqual(roots.map((root) => root.name), ['Political', 'TDWG', 'Gazetteers'])
+  const [political, tdwg, gazetteers] = roots
+  assert.deepEqual(political.nodes.map((node) => node.key), ['GA 1', 'GA 78'])
+  const earth = political.nodes[0]
+  assert.equal(earth.stub, true)
+  assert.deepEqual(earth.children.map((node) => node.key), ['GA 77', 'GA 210'])
+  assert.deepEqual(earth.children[0].children.map((node) => node.key), ['GA 32253'])
+  assert.deepEqual(political.nodes[1].children.map((node) => node.key), ['GA 8837'])
+  assert.deepEqual(tdwg.nodes.map((node) => node.key), ['GA 33722', 'GA 33574'])
+  assert.deepEqual(tdwg.nodes[1].children.map((node) => node.key), ['GA 33639'])
+  assert.deepEqual(gazetteers.nodes.map((node) => node.key), ['GZ 3549'])
+  assert.equal(political.count, 4)
+  assert.equal(political.problems, 1)
+  assert.equal(earth.problems, 1)
+})
+
+test('isProblem: not placeable or no outline; stubs never', () => {
+  assert.equal(isProblem(AREAS[0]), false)
+  assert.equal(isProblem(AREAS[1]), false)
+  assert.equal(isProblem(AREAS[7]), true)
+  assert.equal(isProblem(AREAS[10]), true)
+})
+
+test('filterTree: name filter keeps matches and their ancestors, opened', () => {
+  const roots = filterTree(buildAreaTree(AREAS), { text: 'cayen' })
+  assert.deepEqual(roots.map((root) => root.nodes.map((node) => node.key)), [['GA 78'], [], []])
+  assert.equal(roots[0].nodes[0].open, true)
+  assert.deepEqual(roots[0].nodes[0].children.map((node) => node.key), ['GA 8837'])
+})
+
+test('filterTree: problems only, accent insensitive text, and no filter leaves the tree', () => {
+  const tree = buildAreaTree(AREAS)
+  const problems = filterTree(tree, { problemsOnly: true })
+  assert.deepEqual(problems[0].nodes.map((node) => node.key), ['GA 1'])
+  assert.deepEqual(problems[0].nodes[0].children.map((node) => node.key), ['GA 210'])
+  assert.deepEqual(problems[1].nodes.map((node) => node.key), ['GA 33574'])
+  assert.deepEqual(problems[2].nodes.map((node) => node.key), ['GZ 3549'])
+  assert.equal(filterTree(tree, { text: 'BÓRNEO' })[1].nodes[0].children[0].key, 'GA 33639')
+  assert.equal(filterTree(tree, {}), tree)
+})
+
+test('decisionOf: checklist with part and state, the deciding step tag', () => {
+  const cayenne = placed('French Guiana', [
+    { text: 'Cayenne is a subdivision of French Guiana (GA 78)', source: 'TaxonWorks' },
+    { text: 'French Guiana (GA 78) belongs to the checklist French Guiana', source: 'manual', ref: 'placement.yml:69' }
+  ])
+  assert.deepEqual(decisionOf(cayenne), { text: 'French Guiana', tag: '[manual, placement.yml:69]', problem: false })
+  const corsica = placed('France', [{ text: 'a', source: 'TaxonWorks' }, { text: 'Corse is the part Corsica', source: 'manual', ref: 'placement.yml:159' }], { part: 'Corsica', state: 'X' })
+  assert.deepEqual(decisionOf(corsica), { text: 'France, part Corsica, state X', tag: '[TaxonWorks]', problem: false })
+  assert.deepEqual(decisionOf(AREAS[7].placement), {
+    text: 'not placeable: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%', tag: '[overlap, placement.yml:211]', problem: true
+  })
+  assert.deepEqual(decisionOf(AREAS[10].placement), { text: 'Spain, no outline', tag: '[TaxonWorks]', problem: true })
+  assert.equal(decisionOf(null), null)
+  assert.deepEqual(decisionOf(unplaced('distribution has no area', [])), { text: 'not placeable: distribution has no area', tag: '', problem: true })
+})
+
+test('reasonKind groups the variants of one reason', () => {
+  assert.equal(reasonKind('spans several countries: Indonesia 72%, Malaysia 28%'), 'spans several countries')
+  assert.equal(reasonKind('no checklist for Kosovo'), 'no checklist for a country')
+  assert.equal(reasonKind('coordinates in several countries (Russia, Ukraine)'), 'coordinates in several countries')
+  assert.equal(reasonKind('lies on the border of Czech Republic and Poland'), 'lies on the border of Czech Republic and Poland')
+  assert.equal(reasonKind('locality text only'), 'locality text only')
+})
+
+test('groupUnplaced: one section per kind, largest first, variants with counts', () => {
+  const sections = groupUnplaced({
+    'locality text only': [['CO', 1], ['CO', 2], ['FO', 3]],
+    'spans several countries: Indonesia 51%, Papua New Guinea 49%': [['AD', 10]],
+    'spans several countries: Dominican Republic 66%, Haiti 34%': [['AD', 11], ['AD', 12]]
+  })
+  assert.deepEqual(sections.map((section) => [section.kind, section.count]), [['locality text only', 3], ['spans several countries', 3]])
+  assert.deepEqual(sections[1].variants, [
+    { reason: 'spans several countries: Dominican Republic 66%, Haiti 34%', count: 2 },
+    { reason: 'spans several countries: Indonesia 51%, Papua New Guinea 49%', count: 1 }
+  ])
+  assert.deepEqual(sections[1].records[0], { kind: 'AD', id: 11, reason: 'spans several countries: Dominican Republic 66%, Haiti 34%' })
+  assert.deepEqual(sections[0].variants, [{ reason: 'locality text only', count: 3 }])
+})
+
+test('summarizeOtu: by kind, placed, checklists, not placed by kind, left out', () => {
+  const rows = [
+    { kind: 'AD', placement: placed('France') }, { kind: 'AD', placement: placed('France') }, { kind: 'CO', placement: placed('Spain') },
+    { kind: 'AD', placement: unplaced('spans several countries: A 60%, B 40%') },
+    { kind: 'AD', placement: unplaced('spans several countries: C 60%, D 40%') },
+    { kind: 'FO', placement: unplaced('locality text only') },
+    { kind: 'AD', leftOut: 'absent', placement: placed('Italy') }
+  ]
+  assert.equal(summarizeOtu(rows), '7 records (5 AD, 1 CO, 1 FO): 3 placed in 2 checklists, 3 not placed (2 spans several countries, 1 locality text only), 1 not in checklists (1 absent)')
+  assert.equal(summarizeOtu([{ kind: 'CO', placement: placed('France') }]), '1 record (1 CO): 1 placed in 1 checklist')
+  assert.equal(summarizeOtu([]), 'No records.')
+})
+
+test('cachedPlacement and differsFromCache', () => {
+  const records = [{ dwc_occurrence_object_type: 'AssertedDistribution', dwc_occurrence_object_id: '556796', state: 'X' }]
+  const unplacedFile = { 'locality text only': [['CO', 5]] }
+  const cache = { checklistName: 'France', records, unplaced: unplacedFile }
+  assert.deepEqual(cachedPlacement({ kind: 'AD', id: 556796 }, cache), { checklist: 'France', part: null, state: 'X' })
+  assert.deepEqual(cachedPlacement({ kind: 'CO', id: 5 }, cache), { reason: 'locality text only' })
+  assert.equal(cachedPlacement({ kind: 'CO', id: 6 }, cache), null)
+
+  const live = placed('France', undefined, { state: 'X' })
+  assert.equal(differsFromCache(live, { checklist: 'France', part: null, state: 'X' }), false)
+  assert.equal(differsFromCache(live, { checklist: 'France', part: null, state: null }), true)
+  assert.equal(differsFromCache(live, { reason: 'not measured yet' }), true)
+  assert.equal(differsFromCache(live, null), true)
+  assert.equal(differsFromCache(unplaced('not measured yet'), { reason: 'not measured yet' }), false)
+  assert.equal(differsFromCache(unplaced('not measured yet'), { checklist: 'France' }), true)
+})
+
+test('ruleSections: every rule of the rules file with its ref', () => {
+  const rules = compileRules(readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8'))
+  const sections = ruleSections(rules)
+  assert.deepEqual(sections.map((section) => section.name), [
+    'Checklists of their own', 'Synonyms', 'Parts', 'State countries', 'Ignored name words', 'Manual rules', 'Overlap rules'
+  ])
+  const byName = Object.fromEntries(sections.map((section) => [section.name, section]))
+  assert.equal(byName['Overlap rules'].collapsed, true)
+  assert.equal(byName['Overlap rules'].rows.length, rules.overlap.length)
+  assert.equal(byName['Manual rules'].rows.length, rules.manual.length)
+  const guiana = byName['Checklists of their own'].rows.find((row) => row.action.startsWith('checklist French Guiana'))
+  assert.match(guiana.ref, /^placement\.yml:\d+$/)
+  assert.match(guiana.match, /GA 78/)
+  assert.match(byName['State countries'].rows[0].match, /United States/)
+  assert.match(byName['Ignored name words'].rows[0].match, /oblast/)
+  assert.ok(sections.every((section) => section.rows.every((row) => row.ref && row.match && row.action)))
+  const borneo = byName['Overlap rules'].rows.find((row) => row.match === 'TDWG 42BOR')
+  assert.equal(borneo.action, 'not placeable: spans several countries')
+  assert.match(borneo.why, /^measured Indonesia/)
+  assert.equal(DECISION_ORDER.length, 6)
+})

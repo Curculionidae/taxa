@@ -4,7 +4,8 @@
 // Input:  formatPlacement gets the subject (what was placed) and the Placement
 //         the engine returned (engine.js). parseLookup gets the typed text.
 // Output: formatPlacement returns a multi-line string, formatStep one line
-//         (a step and its source tag), formatExplanation the --explain text,
+//         (a step and its source tag), sourceTag the tag alone, decidingStep
+//         the step that decided, formatExplanation the --explain text,
 //         parseLookup returns { kind, id } or null. The same text is printed by the build's
 //         --verbose and --explain output and shown on the curator page.
 // Pure and browser-safe: no imports, no network, no file system.
@@ -23,12 +24,29 @@ const row = (name, text) => `  ${name.padEnd(LABEL_WIDTH)}${text}`
  * @param {import('./engine.js').Step} step
  * @returns {string}
  */
-function sourceTag(step) {
+export function sourceTag(step) {
   if (step.source === 'TaxonWorks') return '[TaxonWorks]'
   if (step.source === 'Natural Earth') return '[Natural Earth]'
   if (step.source === 'manual') return `[manual, ${step.ref}]`
   const share = step.pct !== undefined ? ` ${step.pct}%${step.pctOf ? ` ${step.pctOf}` : ''}` : ''
   return `[overlap${share}${step.ref ? `, ${step.ref}` : ''}]`
+}
+
+// Steps after the checklist decision: the part, the state, the outline.
+const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached/
+
+/**
+ * The step that decided the checklist of a placed record: the last step before
+ * the part, state and outline steps (Cayenne: the manual line that gives GA 78
+ * its own checklist). For a record not placed, the last step (the one that
+ * gives the reason). The build's summary counts placed records by its source,
+ * compare.mjs groups by it and the curator page tags each decision with it.
+ * @param {import('./engine.js').Placement} placement
+ * @returns {import('./engine.js').Step|null}  null when there are no steps
+ */
+export function decidingStep(placement) {
+  const steps = placement.steps.filter((step) => !AFTER_DECISION.test(step.text))
+  return steps.at(-1) ?? placement.steps[0] ?? null
 }
 
 /**

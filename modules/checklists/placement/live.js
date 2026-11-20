@@ -11,6 +11,8 @@
 // Requests (through `request`, makeAPIRequest by default: an axios instance
 // with the TaxonWorks base URL and project token)
 //   AD       GET /asserted_distributions/:id, extend[]=asserted_distribution_shape
+//            (a distribution without area is returned without one; placeLive
+//            then gives the build's 'distribution has no area')
 //   CO       GET /collection_objects/:id/dwc
 //   FO       GET /field_occurrences/:id/dwc
 //   GA, GZ   GET /asserted_distributions, geo_shape_id[]=<id>, geo_shape_type[]=
@@ -18,15 +20,22 @@
 //            TaxonWorks has no area endpoint, so an area is read from any
 //            distribution on it; an area no distribution uses cannot be looked up.
 // Output: { subject, area?, record, ... } or { error } (see lookupLive).
+// For the curator page's lists: fromDistribution and fromDwcRow turn fetched
+// records into the same form, placeLive places any of them as the build does,
+// fetchOtuDistributions, fetchOtuSpecimens and fetchDistributionsByIds fetch
+// in bulk (requests in their JSDoc).
 // The label of a specimen is its DwC scientificName, as in the build. The
 // label of a distribution is the name of its OTU (or association) from its
 // object_tag; the build takes the DwC scientificName of the same OTU, which
 // is normally the same text.
 import { toArea } from './areas.js'
+import { placeRecord } from './engine.js'
+import { parseTsv } from '../data/tsv.js'
 
 const SUPERFAMILY = 'Curculionoidea'
 const RANKS = new Set(['species', 'subspecies'])
 const TYPE_OF_KIND = { AD: 'AssertedDistribution', CO: 'CollectionObject', FO: 'FieldOccurrence' }
+const KIND_OF_TYPE = { AssertedDistribution: 'AD', CollectionObject: 'CO', FieldOccurrence: 'FO' }
 
 /**
  * @typedef {{ get: (url: string, config?: { params?: Object }) => Promise<{ data: any }> }} Request
@@ -69,16 +78,7 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
   try {
     if (kind === 'AD') {
       const { data: ad } = await request.get(`/asserted_distributions/${id}`, { params: { extend: ['asserted_distribution_shape'] } })
-      const label = plainLabel(ad.asserted_distribution_object?.object_tag) || `AD ${id}`
-      if (!ad.asserted_distribution_shape) return { error: `AD ${id} has no area` }
-      const area = toArea(ad.asserted_distribution_shape_type, ad.asserted_distribution_shape)
-      return {
-        subject: { kind, id, label, area },
-        area,
-        record: { type: 'AssertedDistribution', id },
-        absent: Boolean(ad.is_absent),
-        ...(ad.asserted_distribution_object_type === 'Otu' ? { otuId: ad.asserted_distribution_object_id } : {})
-      }
+      return fromDistribution(ad)
     }
     if (kind === 'CO' || kind === 'FO') {
       const path = kind === 'CO' ? `/collection_objects/${id}/dwc` : `/field_occurrences/${id}/dwc`
@@ -107,6 +107,162 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
     if (status) return { error: `TaxonWorks answered ${status} for ${kind} ${id}` }
     return { error: `could not reach TaxonWorks: ${error?.message || error}` }
   }
+}
+
+/**
+ * A distribution as TaxonWorks returns it (with extend[]=asserted_distribution_shape),
+ * in the form lookupLive returns. Without an area the subject has none and
+ * placeLive gives the build's 'distribution has no area'.
+ * @param {Object} ad  one asserted distribution
+ * @returns {LiveResult}
+ */
+export function fromDistribution(ad) {
+  const id = Number(ad.id)
+  const label = plainLabel(ad.asserted_distribution_object?.object_tag) || `AD ${id}`
+  const area = ad.asserted_distribution_shape ? toArea(ad.asserted_distribution_shape_type, ad.asserted_distribution_shape) : null
+  return {
+    subject: { kind: 'AD', id, label, ...(area ? { area } : {}) },
+    ...(area ? { area } : {}),
+    record: { type: 'AssertedDistribution', id },
+    absent: Boolean(ad.is_absent),
+    ...(ad.asserted_distribution_object_type === 'Otu' ? { otuId: ad.asserted_distribution_object_id } : {})
+  }
+}
+
+/** The build's placement of a distribution without area (buildContext.mjs, placementOf). */
+const NO_AREA = Object.freeze({ checklist: null, part: null, state: null, shape: null, reason: 'distribution has no area', steps: Object.freeze([]) })
+
+/**
+ * Place what lookupLive (or fromDistribution, fromDwcRow) returned, as the
+ * build does: placeRecord, except for a distribution without area, which is
+ * 'not placeable: distribution has no area' with no steps.
+ * @param {LiveResult} live
+ * @param {import('./engine.js').Context} ctx
+ * @returns {Promise<import('./engine.js').Placement>}
+ */
+export async function placeLive(live, ctx) {
+  if (live.record.type === 'AssertedDistribution' && !live.area) return { ...NO_AREA, steps: [] }
+  return placeRecord(live.record, ctx, live.area)
+}
+
+/**
+ * A specimen or field occurrence from its DwC row, in the form lookupLive returns.
+ * @param {Object} dwc  a DwC row with dwc_occurrence_object_type and _id
+ * @returns {LiveResult}
+ */
+export function fromDwcRow(dwc) {
+  const type = dwc.dwc_occurrence_object_type
+  const kind = KIND_OF_TYPE[type]
+  const id = Number(dwc.dwc_occurrence_object_id)
+  return { subject: { kind, id, label: dwc.scientificName || '' }, record: recordFromDwc(type, id, dwc), dwc }
+}
+
+/**
+ * Why the build leaves a DwC record out of every checklist (buildContext.mjs,
+ * screenRow): 'rank genus', 'recorded as absent', 'not in Curculionoidea (X)';
+ * null when it counts.
+ * @param {Object} dwc
+ * @returns {string|null}
+ */
+export function leftOutReason(dwc) {
+  if (!RANKS.has(dwc.taxonRank)) return `rank ${dwc.taxonRank || 'none'}`
+  if (String(dwc.occurrenceStatus ?? '').trim().toLowerCase() === 'absent') return 'recorded as absent'
+  if (dwc.superfamily && dwc.superfamily !== SUPERFAMILY) return `not in ${SUPERFAMILY} (${dwc.superfamily})`
+  return null
+}
+
+/**
+ * Why the build leaves out the asserted distributions of an OTU, from the OTU
+ * itself (the build reads taxonRank and superfamily from the DwC row of each
+ * distribution, which TaxonWorks fills from the OTU's taxon name): 'rank
+ * family', 'not in Curculionoidea', or null when they count.
+ * @param {{ rank: string|null, parentNames: string[] }} otu  the rank of its taxon name
+ *   (GET /taxon_names/:id `rank`) and the names of its parents
+ *   (GET /otus/:id?extend[]=parents, the keys of `parents`)
+ * @returns {string|null}
+ */
+export function otuLeftOut({ rank, parentNames }) {
+  if (!RANKS.has(rank)) return `rank ${rank || 'none'}`
+  if (!parentNames.includes(SUPERFAMILY)) return `not in ${SUPERFAMILY}`
+  return null
+}
+
+/**
+ * Every asserted distribution of one OTU (its own only: no synonyms, no
+ * subordinate taxa; distributions of an association it is part of included,
+ * as TaxonWorks returns them for otu_id), page by page.
+ * GET /asserted_distributions, otu_id[]=<id>, extend[]=asserted_distribution_shape,
+ * per, page; stops when a page is short or pagination-total-pages is reached.
+ * @param {number} otuId
+ * @param {Request} [request]
+ * @param {{ per?: number, onProgress?: (loaded: number, total: number|null) => void }} [options]
+ * @returns {Promise<Object[]>}  the distributions as TaxonWorks returns them
+ */
+export async function fetchOtuDistributions(otuId, request = defaultRequest, { per = 500, onProgress = () => {} } = {}) {
+  const all = []
+  for (let page = 1; ; page++) {
+    const response = await request.get('/asserted_distributions', {
+      params: { otu_id: [otuId], extend: ['asserted_distribution_shape'], per, page }
+    })
+    const data = Array.isArray(response.data) ? response.data : []
+    all.push(...data)
+    const total = Number(response.headers?.['pagination-total']) || null
+    const pages = Number(response.headers?.['pagination-total-pages']) || null
+    onProgress(all.length, total)
+    if (data.length < per || (pages && page >= pages)) return all
+  }
+}
+
+/**
+ * Asserted distributions by id, in batches of 50 (one request each):
+ * GET /asserted_distributions, asserted_distribution_id[]=..., per=50,
+ * extend[]=asserted_distribution_shape.
+ * @param {number[]} ids
+ * @param {Request} [request]
+ * @returns {Promise<Map<number, Object>>}  by id; ids TaxonWorks no longer has are missing
+ */
+export async function fetchDistributionsByIds(ids, request = defaultRequest) {
+  const byId = new Map()
+  for (let start = 0; start < ids.length; start += 50) {
+    const batch = ids.slice(start, start + 50)
+    const { data } = await request.get('/asserted_distributions', {
+      params: { asserted_distribution_id: batch, per: batch.length, extend: ['asserted_distribution_shape'] }
+    })
+    for (const ad of data ?? []) byId.set(Number(ad.id), ad)
+  }
+  return byId
+}
+
+/**
+ * The specimens and field occurrences of one OTU, from the DwC index, as the
+ * build reads them. The DwC index has no OTU filter that works
+ * (/dwc_occurrences?otu_id[] returns nothing), so the rows are asked for by the
+ * OTU's taxon name, which includes its subordinate taxa, and only the rows
+ * whose otu_id is this OTU are kept. Per kind:
+ *   GET /dwc_occurrences, taxon_name_id[]=<id>, dwc_occurrence_object_type=
+ *       CollectionObject|FieldOccurrence, per=500
+ *   and when that has more than one page, GET /dwc_occurrences.csv with the
+ *   same filter (tab separated, every row in one answer; the paged list can
+ *   repeat and miss rows, as it has no fixed order).
+ * @param {{ id: number, taxonNameId: number|null }} otu  an OTU without taxon name has no DwC rows
+ * @param {Request} [request]
+ * @returns {Promise<Object[]>}  DwC rows (CSV rows carry strings, '' for empty)
+ */
+export async function fetchOtuSpecimens({ id, taxonNameId }, request = defaultRequest) {
+  if (!taxonNameId) return []
+  const rows = []
+  for (const type of ['CollectionObject', 'FieldOccurrence']) {
+    const params = { taxon_name_id: [taxonNameId], dwc_occurrence_object_type: type }
+    const response = await request.get('/dwc_occurrences', { params: { ...params, per: 500 } })
+    const pages = Number(response.headers?.['pagination-total-pages']) || 1
+    let found = Array.isArray(response.data) ? response.data : []
+    if (pages > 1) {
+      const csv = await request.get('/dwc_occurrences.csv', { params, responseType: 'text' })
+      found = parseTsv(String(csv.data ?? ''))
+    }
+    rows.push(...found.filter((row) => Number(row.otu_id) === Number(id) && row.dwc_occurrence_object_type === type))
+  }
+  return rows
 }
 
 // 'used by no record', with the children when areas.json lists the area as a
@@ -179,11 +335,8 @@ export function cacheStatus({ kind, id, dwc = null, absent = false }, { checklis
   for (const [reason, ids] of Object.entries(unplaced ?? {})) {
     if (ids.some(([k, i]) => k === kind && Number(i) === Number(id))) return { listed: false, text: `not listed: ${reason}` }
   }
-  if (dwc) {
-    if (!RANKS.has(dwc.taxonRank)) return { listed: false, text: `not listed: rank ${dwc.taxonRank || 'none'}` }
-    if (String(dwc.occurrenceStatus ?? '').trim().toLowerCase() === 'absent') return { listed: false, text: 'not listed: recorded as absent' }
-    if (dwc.superfamily && dwc.superfamily !== SUPERFAMILY) return { listed: false, text: `not listed: not in ${SUPERFAMILY} (${dwc.superfamily})` }
-  }
+  const leftOut = dwc && leftOutReason(dwc)
+  if (leftOut) return { listed: false, text: `not listed: ${leftOut}` }
   if (absent) return { listed: false, text: 'not listed: distribution is absent' }
   return { listed: false, text: 'not listed in the cache' }
 }

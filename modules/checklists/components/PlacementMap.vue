@@ -16,7 +16,8 @@
   since Leaflet needs literal colour strings; the legend uses the matching
   bg-map-* utilities. Leaflet is loaded the way ChecklistMap.vue loads it
   (dynamic import, tiles from the site configuration, so dark mode filters
-  the tiles as on every other map). The view fits both layers.
+  the tiles as on every other map). The view fits both layers. The layers
+  are redrawn in the new colours when the theme changes (dark class on <html>).
 -->
 <template>
   <div class="flex flex-col gap-2">
@@ -66,6 +67,7 @@ let leaflet
 let mapObject
 let layerGroup
 let disposed = false
+let themeObserver = null
 
 const POINT_TOKEN = { CollectionObject: '--tp-map-collection-object', FieldOccurrence: '--tp-map-field-occurrence' }
 
@@ -82,7 +84,8 @@ function cssVar(name) {
 // GeoJSON geometry of a list of polygons.
 const multiPolygon = (polygons) => ({ type: 'MultiPolygon', coordinates: polygons })
 
-function draw() {
+// fit: move the view to the layers (not when only the theme changed).
+function draw({ fit = true } = {}) {
   if (!mapObject || disposed) return
   layerGroup?.remove()
   layerGroup = leaflet.featureGroup().addTo(mapObject)
@@ -104,6 +107,7 @@ function draw() {
       radius: 7, color: cssVar('--tp-base-foreground'), weight: 2, fillColor: color, fillOpacity: 1
     }).addTo(layerGroup)
   }
+  if (!fit) return
   const bounds = layerGroup.getBounds()
   if (bounds.isValid()) mapObject.fitBounds(bounds, { padding: [20, 20], maxZoom: 9 })
   else mapObject.setView([15, 0], 1)
@@ -118,12 +122,16 @@ onMounted(async () => {
   const tiles = makeTileFromConfiguration(L, { maxZoom: 18, minZoom: 0, className: 'map-tiles' })
   Object.values(tiles)[0]?.addTo(mapObject)
   draw()
+  // Leaflet holds literal colours, so redraw when the dark-mode class flips.
+  themeObserver = new MutationObserver(() => draw({ fit: false }))
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] })
 })
 
-watch(() => [props.own, props.assigned], draw)
+watch(() => [props.own, props.assigned], () => draw())
 
 onBeforeUnmount(() => {
   disposed = true
+  themeObserver?.disconnect()
   mapObject?.remove()
   mapObject = undefined
 })

@@ -18,8 +18,9 @@
  *   - ./typeMaterialSpecimen.js
  *   - ../PanelMapV2/store/useDistributionStore.js
  *   - ../PanelSpecimenOccurrences/components/SingleSpeciesOccurrences.vue
+ *   - ../../modules/checklists/components/UnplacedList.vue
  *
- * If you change this file, sanity-check all six call sites.
+ * If you change this file, sanity-check all seven call sites.
  */
 
 /**

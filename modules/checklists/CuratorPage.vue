@@ -1,26 +1,39 @@
 <!--
   Curator page of the country checklists (route checklists-curator,
-  /checklists/curator): look up one record or area and see where it lands,
-  how, and both outlines on a map.
+  /checklists/curator): where records land, why, and what the build made.
 
   Shown in curator mode only (panels/_shared/curatorMode/, ?curator=1);
-  otherwise a short note. The lookup is in the route query, ?lookup=AD%20556796,
-  so a lookup can be linked and reloaded (works with and without hash mode).
+  otherwise a short note. Five tabs, the active one in ?tab= (none for the
+  lookup), each starting with one line on what it is based on (the build
+  date is index.json `updated`):
+    Record or area  (no ?tab)      look up one record or area (below); live
+    OTU             ?tab=otu       every record of one OTU, placed live
+                                   (components/OtuPlacements.vue, ?otu=<id>)
+    Area tree       ?tab=areas     areas.json as a tree (components/AreaTree.vue)
+    Not placed      ?tab=unplaced  unplaced.json by reason (components/UnplacedList.vue)
+    Rules           ?tab=rules     rules.json (components/RulesView.vue)
+  A row clicked in the OTU, tree or unplaced list opens the lookup tab with
+  ?lookup=<KIND> <id>. The cache files are fetched once per visit and shared
+  with the tabs through `cache`.
+
+  The lookup is in the route query, ?lookup=AD%20556796, so a lookup can be
+  linked and reloaded (works with and without hash mode).
 
   How a lookup runs
     1. parseLookup (placement/format.js) reads the text; anything else gives a
        plain message naming the accepted forms.
     2. lookupLive (placement/live.js) fetches the record from TaxonWorks.
-    3. placeRecord (placement/engine.js) places it with the engine context made
-       from the cache files only (placement/geometry-browser.js,
-       loadCacheContext: context.json and rules.json), so the decision equals
-       the build's; formatExplanation writes it as the build's --explain does.
+    3. placeLive (placement/live.js, placeRecord of placement/engine.js)
+       places it with the engine context made from the cache files only
+       (placement/geometry-browser.js, loadCacheContext: context.json and
+       rules.json), so the decision equals the build's; formatExplanation
+       writes it as the build's --explain does.
     4. The cache is asked whether it lists the record (the checklist file of the
        result, else unplaced.json; live.js cacheStatus). For an area, its row
-       in areas.json.
+       in areas.json. When the live result differs from the cache
+       (overview.js differsFromCache), a line says to rebuild.
     5. PlacementMap shows the record's own outline (or point) and the outline
        the placement chose.
-  Cache files are fetched once per visit; outlines only when needed.
 -->
 <template>
   <main class="min-h-screen bg-base-background text-base-content">
@@ -50,41 +63,114 @@
       </p>
 
       <template v-else>
-        <div class="rounded-lg border border-base-border bg-base-foreground p-4">
-          <PlacementLookup
-            :initial="lookupText"
-            :busy="busy"
-            :result="result"
-            @find="find"
-          />
+        <div
+          class="flex flex-wrap border-b border-base-border/60"
+          role="tablist"
+          aria-label="Curator views"
+          @keydown="onTabKey"
+        >
+          <button
+            v-for="item in TABS"
+            :id="`curator-tab-${item.id}`"
+            :key="item.id"
+            :ref="(el) => { if (el) tabButtons[item.id] = el }"
+            class="border-b-2 px-3 py-2 text-sm font-medium"
+            :class="tab === item.id ? 'border-secondary text-base-content' : 'border-transparent text-base-content/60 hover:text-base-content'"
+            type="button"
+            role="tab"
+            :aria-selected="tab === item.id"
+            :tabindex="tab === item.id ? 0 : -1"
+            :aria-controls="`curator-panel-${item.id}`"
+            @click="selectTab(item.id)"
+          >
+            {{ item.label }}
+          </button>
         </div>
 
-        <div
-          v-if="result && !result.error"
-          class="rounded-lg border border-base-border bg-base-foreground p-4"
+        <section
+          :id="`curator-panel-${tab}`"
+          role="tabpanel"
+          :aria-labelledby="`curator-tab-${tab}`"
+          class="flex min-w-0 flex-col gap-4"
         >
-          <PlacementMap
-            :own="mapLayers.own"
-            :assigned="mapLayers.assigned"
-            :own-kind="mapLayers.ownKind"
-          />
-        </div>
+          <p
+            v-if="basis"
+            class="text-sm text-base-soft"
+          >
+            {{ basis }}
+          </p>
+
+          <template v-if="tab === 'lookup'">
+            <div class="rounded-lg border border-base-border bg-base-foreground p-4">
+              <PlacementLookup
+                :initial="lookupText"
+                :busy="busy"
+                :result="result"
+                @find="find"
+              />
+            </div>
+
+            <div
+              v-if="result && !result.error"
+              class="rounded-lg border border-base-border bg-base-foreground p-4"
+            >
+              <PlacementMap
+                :own="mapLayers.own"
+                :assigned="mapLayers.assigned"
+                :own-kind="mapLayers.ownKind"
+              />
+            </div>
+          </template>
+
+          <div
+            v-else
+            class="rounded-lg border border-base-border bg-base-foreground p-4"
+          >
+            <OtuPlacements
+              v-if="tab === 'otu'"
+              :otu-id="otuId"
+              :cache="cache"
+              :built="built"
+              @select-otu="selectOtu"
+              @lookup="lookUp"
+            />
+            <AreaTree
+              v-else-if="tab === 'areas'"
+              :load-areas="cache.areas"
+              @lookup="lookUp"
+            />
+            <UnplacedList
+              v-else-if="tab === 'unplaced'"
+              :load-unplaced="cache.unplaced"
+              @lookup="lookUp"
+            />
+            <RulesView
+              v-else-if="tab === 'rules'"
+              :load-rules="cache.rules"
+            />
+          </div>
+        </section>
       </template>
     </div>
   </main>
 </template>
 
 <script setup>
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { parseLookup, formatExplanation } from './placement/format.js'
-import { placeRecord } from './placement/engine.js'
 import { loadCacheContext, siteFetchJson } from './placement/geometry-browser.js'
-import { lookupLive, cacheStatus } from './placement/live.js'
+import { lookupLive, cacheStatus, placeLive, otuLeftOut } from './placement/live.js'
+import { makeAPIRequest } from '@/utils/request'
+import { cachedPlacement, differsFromCache } from './placement/overview.js'
 import { expandChecklist } from './data/compact.js'
 import { useCuratorMode, twEditUrl, twRecordUrl, twOtuUrl } from '../../panels/_shared/curatorMode/curatorMode.js'
 import PlacementLookup from './components/PlacementLookup.vue'
 import PlacementMap from './components/PlacementMap.vue'
+import OtuPlacements from './components/OtuPlacements.vue'
+import AreaTree from './components/AreaTree.vue'
+import UnplacedList from './components/UnplacedList.vue'
+import RulesView from './components/RulesView.vue'
 
 const { base_url = '/' } = __APP_ENV__
 
@@ -98,6 +184,53 @@ const result = shallowRef(null)
 const mapLayers = shallowRef({ own: null, assigned: null, ownKind: null })
 const lookupText = computed(() => String(route.query.lookup ?? ''))
 
+// Tabs: the active one is ?tab= (the lookup when absent), like ?lookup=.
+const TABS = [
+  { id: 'lookup', label: 'Record or area' },
+  { id: 'otu', label: 'OTU' },
+  { id: 'areas', label: 'Area tree' },
+  { id: 'unplaced', label: 'Not placed' },
+  { id: 'rules', label: 'Rules' }
+]
+const tab = computed(() => (TABS.some((item) => item.id === route.query.tab) ? route.query.tab : 'lookup'))
+const otuId = computed(() => (/^\d+$/.test(String(route.query.otu ?? '')) ? Number(route.query.otu) : null))
+const tabButtons = {}
+
+function selectTab(id) {
+  const query = { ...route.query, tab: id === 'lookup' ? undefined : id }
+  router.push({ query })
+}
+
+// Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern).
+function onTabKey(event) {
+  const index = TABS.findIndex((item) => item.id === tab.value)
+  const moves = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 }
+  if (!(event.key in moves)) return
+  event.preventDefault()
+  const next = TABS[(moves[event.key] + TABS.length) % TABS.length].id
+  selectTab(next)
+  nextTick(() => tabButtons[next]?.focus())
+}
+
+function selectOtu(id) {
+  router.push({ query: { ...route.query, otu: String(id) } })
+}
+
+// A row clicked in any list: look it up in the lookup tab.
+function lookUp(text) {
+  router.push({ query: { ...route.query, tab: undefined, lookup: text } })
+  if (typeof window !== 'undefined') window.scrollTo({ top: 0 })
+}
+
+// The build date (index.json updated) and what each tab is based on.
+const built = ref('')
+const basis = computed(() => {
+  if (!built.value) return ''
+  return tab.value === 'lookup' || tab.value === 'otu'
+    ? `Live from TaxonWorks, placed with the rules and data of the build of ${built.value}.`
+    : `As built on ${built.value}.`
+})
+
 // Cache files, each fetched once per visit.
 const once = new Map()
 const load = (key, fn) => {
@@ -109,6 +242,21 @@ const indexFile = () => load('index', () => fetchJson('checklists/index.json'))
 const unplacedFile = () => load('unplaced', () => fetchJson('checklists/unplaced.json'))
 const areasFile = () => load('areas', () => fetchJson('checklists/areas.json'))
 const countryRecords = (file) => load(`country:${file}`, async () => expandChecklist(await fetchJson(`checklists/countries/${file}`)))
+const rulesFile = () => load('rules', () => fetchJson('checklists/rules.json'))
+
+// The cache files for the tabs, each a function giving a promise.
+const cache = {
+  context: cacheContext,
+  index: indexFile,
+  unplaced: unplacedFile,
+  areas: areasFile,
+  rules: rulesFile,
+  countryRecords
+}
+
+watch(isCuratorMode, (on) => {
+  if (on && !built.value) indexFile().then((index) => { built.value = index.updated ?? '' }).catch(() => {})
+}, { immediate: true })
 
 const INVALID = 'Type a kind and an id: GA, GZ, AD, CO or FO, for example AD 556796, GZ 10453 or CO 1385165.'
 const SHAPE_KIND = { GA: 'GeographicArea', GZ: 'Gazetteer' }
@@ -145,14 +293,16 @@ async function runLookup(text) {
       result.value = errorResult(parsed, live)
       return
     }
-    const placement = await placeRecord(live.record, ctx, live.area)
-    const status = areaLookup ? areaStatus(areas, live.area) : await recordStatus(parsed, live, placement)
+    const placement = await placeLive(live, ctx)
+    const status = areaLookup ? areaStatus(areas, live.area, placement) : await recordStatus(parsed, live, placement)
+    const index = await indexFile()
     const layers = await layersOf(live, placement, ctx, context)
     if (current !== run) return
     result.value = {
       text: formatExplanation(live.subject, placement),
       links: linksOf(parsed, live),
       status,
+      differs: status.differs ? `Differs from the cache (built ${index.updated}): rebuild the checklists to update.` : '',
       notes: layers.notes
     }
     mapLayers.value = layers
@@ -174,24 +324,49 @@ function errorResult({ kind, id }, live) {
   return { error: live.error }
 }
 
-// What the cache says about a record: its checklist file, else unplaced.json.
+// What the cache says about a record: its checklist file, else unplaced.json;
+// and whether the live placement differs from it. A record the build leaves
+// out (absent, rank genus) never differs.
 async function recordStatus({ kind, id }, live, placement) {
   const [index, unplaced] = await Promise.all([indexFile(), unplacedFile()])
   const name = placement.checklist?.name ?? null
   const entry = name ? index.countries.find((country) => country.name === name) : null
   const records = entry ? await countryRecords(entry.file) : null
-  return cacheStatus({ kind, id, dwc: live.dwc ?? null, absent: live.absent }, { checklistName: name, records, unplaced })
+  let status = cacheStatus({ kind, id, dwc: live.dwc ?? null, absent: live.absent }, { checklistName: name, records, unplaced })
+  // A distribution the cache does not list may belong to an OTU the build
+  // leaves out (a genus, a host plant): ask TaxonWorks for its rank and parents.
+  if (kind === 'AD' && !status.listed && status.text === 'not listed in the cache' && live.otuId) {
+    const reason = await otuReason(live.otuId)
+    if (reason) status = { listed: false, text: `not listed: ${reason}` }
+  }
+  const leftOut = live.absent || /^not listed: (rank|recorded as absent|not in |distribution is absent)/.test(status.text)
+  const differs = !leftOut && differsFromCache(placement, cachedPlacement({ kind, id }, { checklistName: name, records, unplaced }))
+  return { ...status, differs }
 }
 
-// What the cache says about an area: its row in areas.json.
-function areaStatus(areas, area) {
+// Why the build leaves out the distributions of an OTU (live.js otuLeftOut), or null.
+async function otuReason(otuId) {
+  try {
+    const { data } = await makeAPIRequest.get(`/otus/${otuId}`, { params: { extend: ['parents'] } })
+    const rank = data.taxon_name_id ? (await makeAPIRequest.get(`/taxon_names/${data.taxon_name_id}`)).data.rank ?? null : null
+    return otuLeftOut({ rank, parentNames: Object.keys(data.parents ?? {}) })
+  } catch {
+    return null
+  }
+}
+
+// What the cache says about an area: its row in areas.json, and whether the
+// live placement differs from it.
+function areaStatus(areas, area, placement) {
   const row = areas?.find((entry) => entry.key === area.key)
   if (!row?.placement) return { listed: false, text: 'not in the cache (no record used this area when it was built)' }
   const { checklist, part, state } = row.placement
   const count = `${row.records} ${row.records === 1 ? 'record' : 'records'} on this area`
-  if (!checklist) return { listed: false, text: `not listed: ${row.placement.reason} (${count})` }
+  const cached = checklist ? { checklist: checklist.name, part, state: null } : { reason: row.placement.reason }
+  const differs = differsFromCache({ ...placement, state: null }, cached)
+  if (!checklist) return { listed: false, text: `not listed: ${row.placement.reason} (${count})`, differs }
   const extra = [part && `part ${part}`, state && `state ${state}`].filter(Boolean)
-  return { listed: true, text: `listed in ${checklist.name}${extra.length ? `, ${extra.join(', ')}` : ''} (${count})` }
+  return { listed: true, text: `listed in ${checklist.name}${extra.length ? `, ${extra.join(', ')}` : ''} (${count})`, differs }
 }
 
 function linksOf({ kind, id }, live) {
@@ -217,6 +392,8 @@ async function layersOf(live, placement, ctx, context) {
     const polygons = ctx.shapes.has(key) ? await geometry.outlinePolygons(key) : null
     if (polygons?.length) own = { label: `${live.area.name} (${live.area.key}), the record's area`, polygons }
     else notes.push(`No outline cached for ${live.area.name} (${live.area.key}).`)
+  } else if (live.record.type === 'AssertedDistribution') {
+    notes.push('The distribution has no area to show on the map.')
   } else {
     const lat = Number(live.record.lat)
     const lng = Number(live.record.lng)

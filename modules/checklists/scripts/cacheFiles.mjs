@@ -13,7 +13,9 @@
 // context.json, which holds the engine's own checklists (ids included) for the
 // curator page (cacheContext).
 import { normalizeName } from '../placement/areas.js'
-import { formatStep } from '../placement/format.js'
+import { formatStep, decidingStep } from '../placement/format.js'
+
+export { decidingStep }
 
 /** The rules file, as the country file header names it. */
 export const RULES_PATH = 'modules/checklists/rules/placement.yml'
@@ -246,29 +248,14 @@ export function publicPlacement(placement, keys) {
   return { ...placement, checklist: checklist ? { key: keys.get(checklist.id), name: checklist.name } : null }
 }
 
-// Steps after the checklist decision: the part, the state, the outline.
-const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached/
-
 /**
  * The source that decided the checklist of a placed record, for the build's
- * summary: the source of the last step before the part, state and outline
- * steps (Cayenne: the manual line that gives GA 78 its own checklist).
+ * summary: the source of decidingStep (format.js).
  * @param {import('../placement/engine.js').Placement} placement  a placed one
  * @returns {'TaxonWorks'|'manual'|'overlap'|null}
  */
 export function decidingSource(placement) {
   return decidingStep(placement)?.source ?? null
-}
-
-/**
- * The step that decided the checklist of a placed record (see decidingSource);
- * compare.mjs groups newly placed records by it.
- * @param {import('../placement/engine.js').Placement} placement  a placed one
- * @returns {import('../placement/engine.js').Step|null}
- */
-export function decidingStep(placement) {
-  const steps = placement.steps.filter((step) => !AFTER_DECISION.test(step.text))
-  return steps.at(-1) ?? placement.steps[0] ?? null
 }
 
 /**

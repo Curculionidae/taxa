@@ -18,8 +18,10 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
-- `CuratorPage.vue` (route `checklists-curator`, `/checklists/curator`), `components/PlacementLookup.vue`, `components/PlacementMap.vue`: the curator page (see "Curator page: looking up a record").
-- `placement/live.js`: fetches one record or area from TaxonWorks for the curator page, and says whether the cache lists it; tested in `live.test.js`.
+- `CuratorPage.vue` (route `checklists-curator`, `/checklists/curator`), `components/PlacementLookup.vue`, `components/PlacementMap.vue`, `components/OtuPlacements.vue`, `components/AreaTree.vue` (+ `AreaTreeNode.vue`), `components/UnplacedList.vue`, `components/RulesView.vue`: the curator page (see "Curator page").
+- `placement/overview.js`: the curator page's lists from the cache files (area tree, unplaced reasons, OTU summary, rules as rows, live result against the cache); tested in `overview.test.js`.
+- `data/tsv.js`: reads the tab separated `/dwc_occurrences.csv` (build and curator page).
+- `placement/live.js`: fetches records and areas from TaxonWorks for the curator page (one by lookup, or all of an OTU), places them as the build does (`placeLive`), and says whether the cache lists them; tested in `live.test.js`.
 - `placement/geometry.js`: the point tests (point in polygon, coast distance, R22), shared by `scripts/geometry-node.mjs` (the build) and `placement/geometry-browser.js` (the curator page, which also makes the engine context from the cache files); `scripts/browserContext.test.js` checks the browser context reproduces the cache.
 - `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
 - `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`, `format.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `format.js` writes a decision as text.
@@ -584,7 +586,7 @@ What the build writes to `public/checklists/`:
   included), `outlines` (per checklist with an outline: `id`, `outline`,
   `GeographicArea/<id>` or `fallback/<feature name>`, and its `bbox`) and
   `shapes` (every cached outline id the build saw, `{ GeographicArea: [...],
-  Gazetteer: [...] }`). See "Curator page: looking up a record".
+  Gazetteer: [...] }`). See "Curator page".
 - `areas.json`: every area some distribution uses, `{ key, name, origin, type,
   tdwg, iso2, parentId, parentName, records, placement }`, where `records`
   counts the build's records on the area (Curculionoidea, species, present;
@@ -711,15 +713,133 @@ How it works:
   `modules/checklists/.cache/compare-questions.md`; its text is added at the
   end of `compare.md` on every run.
 
-## Curator page: looking up a record
+## Curator page
 
-`/checklists/curator` (in hash mode `/#/checklists/curator`) shows, for one
-record or area, which checklist it lands in, every step of the decision with
-its source, whether the cache lists it, and both outlines on a map. It is
-for curators: open it with `?curator=1` (curator mode, see
+`/checklists/curator` (in hash mode `/#/checklists/curator`) is for curators:
+open it with `?curator=1` (curator mode, see
 `panels/_shared/curatorMode/readme.md`), or follow "How records are placed"
 on the checklists page in curator mode. Without curator mode it shows only
-"Open this page with ?curator=1".
+"Open this page with ?curator=1". It is for finding problems and fixing them
+in TaxonWorks or in the rules file.
+
+Five tabs; the active one is in the address (`?tab=otu`, `areas`,
+`unplaced`, `rules`; none for the lookup), so every view can be linked:
+
+| Tab | Address | Shows | Based on |
+|---|---|---|---|
+| Record or area | `?lookup=AD%20556796` | one record or area: its explanation, the cache line, links, a map | live from TaxonWorks |
+| OTU | `?tab=otu&otu=731160` | every record of one OTU, placed | live from TaxonWorks |
+| Area tree | `?tab=areas` | every area of `areas.json` and its decision | the cache |
+| Not placed | `?tab=unplaced` | `unplaced.json` by reason | the cache |
+| Rules | `?tab=rules` | the decision order and every rule of `rules.json` | the cache |
+
+Each tab starts with one line saying which: "Live from TaxonWorks, placed
+with the rules and data of the build of 2026-11-20." (lookup and OTU: the
+records come from TaxonWorks now, the engine context from the cache files of
+that build) or "As built on 2026-11-20." (tree, not placed, rules: the cache
+files as they are). The date is `updated` of `index.json`.
+
+Clicking a row in the OTU table, an area name in the tree or a row of the
+unplaced lists opens the lookup tab with that record (`?lookup=AD 287565`,
+`?lookup=GA 32253`), where its full explanation and map are. Links on a row
+(the record's edit page, the area's page in TaxonWorks) open TaxonWorks
+instead.
+
+When a live result differs from the cache (another checklist, part or state,
+or the cache does not list a record the live placement places, or lists one
+it does not place; `overview.js` `differsFromCache`), the lookup says
+"Differs from the cache (built 2026-11-20): rebuild the checklists to
+update." and the OTU table marks the row "differs" and counts such rows
+under the summary. Records the build leaves out of every checklist (absent,
+rank above species, outside Curculionoidea) never differ.
+
+### OTU
+
+An OTU search (the site's OTU name autocomplete, the `Autocomplete` global
+component with the same settings as `AutocompleteOtu`), then the OTU's own
+records only: no synonyms, no subordinate taxa. The page loads:
+
+- `GET /otus/:id?extend[]=parents` and `GET /taxon_names/:id`: the name, and
+  whether the build counts the OTU's distributions (`live.js` `otuLeftOut`:
+  species or subspecies, below Curculionoidea, as the DwC rank and
+  superfamily of its distributions say).
+- Asserted distributions: `GET /asserted_distributions`, `otu_id[]=<id>`,
+  `extend[]=asserted_distribution_shape`, `per=500`, page by page with a
+  progress line (`fetchOtuDistributions`).
+- Specimens and field occurrences, from the DwC index, as the build reads them
+  (`fetchOtuSpecimens`): `GET /dwc_occurrences` with `taxon_name_id[]=<the OTU's
+  taxon name>` and `dwc_occurrence_object_type=CollectionObject` (then
+  `FieldOccurrence`), `per=500`; when there is more than one page,
+  `GET /dwc_occurrences.csv` with the same filter instead (the paged list has
+  no fixed order and can repeat and miss rows). `otu_id[]` returns nothing on
+  `/dwc_occurrences`, and a taxon name includes its subordinate taxa, so only
+  rows whose `otu_id` is this OTU are kept. Not loaded for an OTU above
+  species (the DwC index of a family is the whole family; the build leaves
+  those records out anyway).
+
+Every record is placed with `placeLive` in the engine context of the cache
+files, as in the lookup, so the result equals the build's. The summary
+counts records by kind and result, e.g. `85 records (62 AD, 23 CO): 83 placed
+in 34 checklists, 2 not placed (1 locality text only, 1 spans several
+countries)` (`overview.js` `summarizeOtu`; not placed counted by the kind of
+reason). The table: the record (`AD 287565`, a link to its edit page), its
+place (the area with its key, linked to TaxonWorks; for a specimen its DwC
+country, state, county and locality and coordinates), the checklist with part
+and state, or the reason in red, the source tag of the deciding step
+(`format.js` `decidingStep`, as in the text form), and "differs". Rows not
+placed come first. An absent distribution, or a record the build leaves out,
+reads e.g. "absent (not in checklists)", "rank family (not in checklists)".
+
+### Area tree
+
+`areas.json` as a tree (`overview.js` `buildAreaTree`): three roots,
+Political, TDWG and Gazetteers. Gazetteers are the GZ areas, TDWG the areas
+whose TaxonWorks `data_origin` starts with `tdwg`, Political the rest. Within
+a root, areas nest by their TaxonWorks parent; a parent known only as a
+parent (a stub, `records: 0`, no placement) appears muted with "used by no
+record" in every root that has one of its children (GA 78 French Guiana
+under Political as the parent of Cayenne; GA 33722 French Guiana under TDWG
+as the parent of GA 34200). Each area: name, key (link to
+`/geographic_areas/:id` or `/gazetteers/:id`), record count, its decision in
+one line (`French Guiana`, `France, part Corsica`, `Spain, no outline`, or
+`not placeable: <reason>` in red) and the deciding source tag. Each root
+header gives its number of areas and of problems.
+
+Only the top level is shown at first, and an area's children render only when
+it is opened, so the 2,600 areas stay fast. The filter box keeps areas whose
+name contains the text (accent and case insensitive, or an exact key such as
+`GA 78`); "Problems only" keeps areas not placeable (any reason, also `not
+measured yet` and `no outline`) or placed without outline. Both keep the
+ancestors of what matches, opened.
+
+### Not placed
+
+`unplaced.json` grouped by kind of reason (`overview.js` `groupUnplaced`,
+`reasonKind`): the text before `:` or `(` (`spans several countries`,
+`coordinates in several countries`), `no checklist for a country` for every
+`no checklist for <name>`, else the reason. A section lists its exact reasons
+with counts when there are several. Its records load only when it is opened,
+50 at a time ("Load more"): distributions in one request per 50 (`GET
+/asserted_distributions?asserted_distribution_id[]=…&extend[]=asserted_distribution_shape`,
+`fetchDistributionsByIds`), specimens and field occurrences one by one
+(`/collection_objects/:id/dwc`, `/field_occurrences/:id/dwc`, at most 6 at
+once). Each row: the record (edit link), its name, its area or DwC place, and
+its exact reason when the section has several.
+
+### Rules
+
+The decision order for an area (the list of "How a record is placed") and
+every rule of `rules.json` by section (`overview.js` `ruleSections`):
+checklists of their own, synonyms, parts, state countries, ignored name
+words, manual rules, overlap rules (closed at first, with its count). Each
+rule: its line (`placement.yml:69`, the line to edit), what it matches, what
+it does, and its `why` or `measured`.
+
+### Record or area (the lookup)
+
+The first tab shows, for one record or area, which checklist it lands in,
+every step of the decision with its source, whether the cache lists it, and
+both outlines on a map.
 
 Input: a kind and an id, as `parseLookup` reads them (see "Reading an
 explanation"): `GA`, `GZ`, `AD`, `CO` or `FO`, any case, with or without a
@@ -780,6 +900,8 @@ Limits:
   record's DwC index.
 - The label of a distribution is the OTU's name from TaxonWorks (`object_tag`);
   the build prints the DwC `scientificName` of the same OTU, normally the same text.
+- A distribution without area gives `not placeable: distribution has no area`,
+  as in the build (`live.js` `placeLive`).
 
 ## Updating
 

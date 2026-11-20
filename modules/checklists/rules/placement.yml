@@ -9,13 +9,13 @@
 #   modules/checklists/placement/rules.js. Every explanation of a decision cites
 #   the line of the rule that made it, as placement.yml:<line>.
 #
-# The four sources of a decision (shown in square brackets in explanations)
+# The three sources of a decision (shown in square brackets in explanations)
 #   [TaxonWorks]  what TaxonWorks says: the country of a political area, the ISO
 #                 code of a gazetteer, the DwC country and stateProvince of a specimen.
-#   [Natural Earth]  another name of a state from the Natural Earth state outlines
-#                 (public/checklists/subdivisions.geojson, `aliases`): Moskva for Moscow.
+#   (Natural Earth is geometry only: country and state outlines. No name from it
+#                 decides anything; its state aliases are not read.)
 #   [manual]      a line in this file written by hand (manual section, checklists,
-#                 synonyms, parts, ignored_name_words).
+#                 synonyms, parts, ignored_name_words, coastal_tolerance_degrees).
 #   [overlap]     a line in the overlap section: which country outlines the shape
 #                 of an area falls in, measured on the cached shapes.
 #   Manual lines win over overlap lines.
@@ -120,9 +120,9 @@ checklists:
     why: own checklist by user decision 2026-11-20
 
 # Checklists that can be browsed by state or province. Their records get a
-# state, and the page shows a state drill-down. The state outlines and their
-# other names come from Natural Earth (public/checklists/subdivisions.geojson,
-# features whose country is the checklist name).
+# state, and the page shows a state drill-down. The state names and outlines
+# come from Natural Earth (public/checklists/subdivisions.geojson, features
+# whose country is the checklist name; their aliases are not used).
 state_countries: [United States, Canada, Australia, China, Russia]
 
 synonyms:

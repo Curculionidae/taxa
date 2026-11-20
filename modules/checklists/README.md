@@ -18,7 +18,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
-- `CuratorPage.vue` (route `checklists-curator`, `/checklists/curator`), `components/PlacementLookup.vue`, `components/PlacementMap.vue`, `components/OtuPlacements.vue`, `components/AreaTree.vue` (+ `AreaTreeNode.vue`), `components/UnplacedList.vue`, `components/RulesView.vue`: the curator page (see "Curator page").
+- `CuratorPage.vue` (route `checklists-curator`, `/checklists/curator`), `components/PlacementLookup.vue`, `components/PlacementMap.vue`, `components/OtuPlacements.vue`, `components/AreaTree.vue` (+ `AreaTreeNode.vue`), `components/UnplacedList.vue`, `components/RulesView.vue`, `components/RefText.vue` (rules line links), `components/CopyId.vue` (copy a record id): the curator page (see "Curator page").
 - `placement/overview.js`: the curator page's lists from the cache files (area tree, unplaced reasons, OTU summary, rules as rows, live result against the cache); tested in `overview.test.js`.
 - `data/tsv.js`: reads the tab separated `/dwc_occurrences.csv` (build and curator page).
 - `placement/live.js`: fetches records and areas from TaxonWorks for the curator page (one by lookup, or all of an OTU), places them as the build does (`placeLive`), and says whether the cache lists them; tested in `live.test.js`.
@@ -91,25 +91,30 @@ states from `public/checklists/subdivisions.geojson` (Natural Earth) and the
 parts of France from their cached outlines. Which state or part a record
 belongs to is not worked out on the page: the region dropdown and its counts
 read the `part` or `state` the build wrote into each record (the part for
-France, the state for the six state countries), so the page and the
+France, the state for the five state countries), so the page and the
 explanations of curator mode always agree. A record without one counts for
 the country only. The CSV download writes the DwC `stateProvince` of the
 record. The page no longer loads `rules.json`.
 
-Where Natural Earth data enters, and where it does not:
+Where Natural Earth data enters, and where it does not: Natural Earth is
+geometry only. No name from it decides anything (R51).
 
 - `fallback-shapes.geojson` (1:10m admin-0 outlines): country outlines for
-  checklists without a cached TaxonWorks outline, as above. It plays no part in
-  deciding a record's checklist, except that `measure-overlap.mjs` measures
-  against it when a checklist has no cached outline.
-- `subdivisions.geojson` (from the Fleas of the World port): the list of states
-  of each state country, their outlines (for `stateAt` and the drill-down) and
-  their name aliases, which the engine uses as `[Natural Earth]` steps.
-- The United Kingdom has four "states" there (England, Scotland, Wales,
-  Northern Ireland). They are groupings of Natural Earth counties, whose names
-  are stored as aliases, so a county such as Cornwall is matched to England
-  with a `[Natural Earth]` step. This grouping lives in the outline file, not
-  in the rules file (see "Known limits and open decisions").
+  checklists without a cached TaxonWorks outline, as above, and for a
+  checklist whose rules entry says `outline: natural_earth` (Norfolk Island,
+  whose TDWG outline also covers Lord Howe Island). The placement says so
+  (`shape` `fallback/Norfolk Island`, a cited step). `measure-overlap.mjs`
+  measures against these outlines too.
+- `subdivisions.geojson` (from the Fleas of the World port): the list of
+  states of each state country (their names are the state names the engine
+  matches) and their outlines (for `stateAt`, the measuring script and the
+  drill-down). Its `aliases` (other names of a state, such as Moskva for
+  Moscow) are not read by the engine: an area known only by such a name gets
+  its state from an overlap or manual rule.
+- The file also groups Natural Earth counties into four United Kingdom
+  "states" (England, Scotland, Wales, Northern Ireland). Since the United
+  Kingdom is no longer browsed by state (R50), that grouping is used for
+  nothing; the file is kept unchanged for the other five countries.
 
 ## How checklists are formed
 
@@ -161,8 +166,8 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   every synonym of it. Gazetteers are placed by ISO code, so without this a
   Solomon Islands gazetteer (ISO SB) would find no checklist.
 - `states` is true for the checklists named in the rules file's
-  `state_countries` list (`placement.yml:120`: United States, Canada,
-  Australia, China, Russia, United Kingdom), the countries browsed by state. `parts` holds the part names
+  `state_countries` list (United States, Canada, Australia, China, Russia),
+  the countries browsed by state. `parts` holds the part names
   from the `parts` section of the rules file (France: Corsica, Mainland France).
 
 ## The rules file
@@ -172,28 +177,49 @@ TaxonWorks cannot say by itself, and the placement engine reads it through
 `placement/rules.js` (`compileRules`), which turns it into plain data and notes
 the line of every rule. Every explanation of a decision cites the rule that
 made it as `placement.yml:<line>`, so the line number in an explanation is the
-line to open and change. The header comment of the file describes every key;
-in short:
+line to open and change. On the curator page every `placement.yml:N` links to
+that line of the file (Rules tab). The line numbers quoted in this README are
+examples of 2026-11-20: they shift whenever lines are added above, so follow
+the links on the curator page rather than these numbers. The header comment
+of the file describes every key; in short:
 
-- Sources of a decision: `[TaxonWorks]` (what TaxonWorks states), `[Natural
-  Earth]` (another name of a state from `subdivisions.geojson`), `[manual]` (a
+- Sources of a decision: `[TaxonWorks]` (what TaxonWorks states), `[manual]` (a
   hand-written line: the `manual` section, a checklist, a synonym, a part, the
-  ignored name words), `[overlap]` (the `overlap` section). Manual lines win
-  over overlap lines.
+  ignored name words, the coastal tolerance, an outline choice), `[overlap]`
+  (the `overlap` section, or a point tested against the outlines). Manual
+  lines win over overlap lines.
 - `checklists`: checklists of their own that TaxonWorks files under another
   country (French Guiana, Guadeloupe, Martinique, Réunion, Mayotte, Northern
   Mariana Islands), and checklists the user decided to keep apart (Kosovo,
-  ISO XK; Norfolk Island, ISO NF, TDWG 50NFK). Norfolk Island has one
-  exception: TDWG 50NFK-LH (Lord Howe I.) has Norfolk Island as its TDWG
-  parent, but Lord Howe Island belongs to New South Wales, so a manual rule
-  keeps it in Australia (state Lord Howe Island comes from an overlap rule).
+  ISO XK; Norfolk Island, ISO NF, TDWG 50NFK). Norfolk Island lists GA 33700
+  (TDWG 50NFK) and GZ 10458 "Australia: Norfolk Island", a gazetteer that
+  TaxonWorks gives the ISO code AU: the entry's `areas` are checked before a
+  gazetteer's ISO code (step 2 before step 4 below), so its records land in
+  Norfolk Island (R49). Its outline is the Natural Earth one
+  (`outline: natural_earth`), because the TDWG outline of 50NFK also covers
+  Lord Howe Island. TDWG 50NFK-LH (Lord Howe I.) has Norfolk Island as its
+  TDWG parent, but Lord Howe Island belongs to New South Wales, so a manual
+  rule keeps it in Australia (state Lord Howe Island comes from an overlap
+  rule), and a point on Lord Howe lies in the Australia outline only.
   Keys: `name`, `iso2`, `of`, `areas` (`GA 78`, `GZ 10453`),
   `names` (words in a DwC country, province or place), `box` (west, south,
-  east, north), `why`.
+  east, north), `outline` (`natural_earth`: take the Natural Earth outline
+  even when an area outline is cached), `why`.
 - `state_countries`: the checklists browsed by state or province (United
-  States, Canada, Australia, China, Russia, United Kingdom); their state
-  outlines and other state names come from Natural Earth
-  (`subdivisions.geojson`). The engine has no list of its own.
+  States, Canada, Australia, China, Russia; the United Kingdom was removed by
+  R50, so its records follow TaxonWorks' hierarchy and get no state, e.g.
+  GA 32348 Cornwall is United Kingdom, no state). Their state outlines and
+  state names come from `subdivisions.geojson`. The engine has no list of its own.
+- `coastal_tolerance_degrees` (0.05, about 5 km): a point outside every
+  outline but this close to one counts for that outline (coasts are
+  simplified). Steps that used it say "within about 5 km of the coast of"
+  and cite the line.
+- Validation: once the checklists are derived, `validateRules` (rules.js)
+  stops the build with `placement.yml:N: unknown country "X"` (and the like)
+  for a rule naming an unknown country, part or state, a state of a country
+  not in `state_countries`, an unknown `parts` or `state_countries` name, or a
+  synonym list whose first name is no checklist; `rest` must be true or false.
+  A rule that matches no area in use is printed as a warning.
 - `synonyms`: spellings of one country; the first name is the checklist name,
   e.g. `[Tanzania, United Republic of Tanzania]`. Anything looked up by
   checklist name tries every name of its synonym list too, such as the
@@ -226,9 +252,15 @@ as `subdivison_of`.
 
 `placement/engine.js` decides which checklist a record belongs to. It is pure
 (no network, no file system), so the cache build and the curator page run the
-same code. `createContext({ checklists, rules, geometry, shapes })` builds the
-lookups once (`shapes` is the set of cached outline keys such as
-`GeographicArea/32253`). `placeArea(area, ctx)` places the area an asserted
+same code. `createContext({ checklists, rules, geometry, shapes, unusable,
+outlines, stateAreas })` builds the lookups once (`shapes` is the set of
+cached outline keys such as `GeographicArea/32253`; `unusable` those of them
+that hold no polygon, such as the Point gazetteer GZ 10497; `outlines` the
+outline key standing for each checklist, `GeographicArea/<id>` or
+`fallback/<name>`; `stateAreas` the areas of the cache placed in each
+checklist with states, for specimens, see "States and provinces"). The build
+computes these from the cached files and writes them to `context.json`, so
+the curator page decides with exactly the same data. `placeArea(area, ctx)` places the area an asserted
 distribution points to, without its state; `await placeRecord(record, ctx,
 area?)` places a record (an asserted distribution with its area, a specimen or
 a field occurrence) and finds its state. The answer is a `Placement`: the
@@ -238,12 +270,13 @@ checklist (or `null` and a `reason`), the part, the state, the outline to show
 
 `geometry` answers the questions that need outlines; it is passed in, so the
 engine itself stays pure (the build reads cached files, the browser fetches):
-`checklistsAt([lng, lat])` gives the ids of the checklists whose outline holds
-a point, `stateAt(checklistId, [lng, lat])` the state whose outline holds it
-(or null), `partAt(checklistId, [lng, lat])` the part whose outline, else
-whose `box` in the rules file, holds it (or null), and `stateNames(checklistId)`
-the states of a checklist as `{ name, aliases }`, the aliases being the
-Natural Earth names of `subdivisions.geojson` (`[]` when none). Only
+`checklistsAt([lng, lat])` gives `{ ids, near }`, the checklists whose
+outline holds a point, else those within the coastal tolerance (`near`
+true); `stateAt(checklistId, [lng, lat])` `{ name, near }` for the state
+whose outline holds it, else the only one within the tolerance (or null);
+`partAt(checklistId, [lng, lat])` `{ name, by }` for the part whose outline
+(`by: 'outline'`), else whose `box` in the rules file (`by: 'box'`), holds it
+(or null); and `stateNames(checklistId)` the state names of a checklist. Only
 records with coordinates make `placeRecord` wait for it; `placeArea` never
 calls it.
 
@@ -251,10 +284,6 @@ Every step is one short sentence with its source:
 
 - `TaxonWorks`: what TaxonWorks says (the country of a political area, the
   parent of an area, the ISO code of a gazetteer). Fix it in TaxonWorks.
-- `Natural Earth`: a state found through one of its Natural Earth names
-  (`aliases` in `public/checklists/subdivisions.geojson`), e.g. `DwC
-  stateProvince Moskva is a Natural Earth name of the state Moscow`. These
-  names are data, not rules; overrule a wrong one with a manual rule.
 - `manual`: a hand-written line of the rules file (a checklist of its own, a
   synonym, a part, a manual rule), cited as `placement.yml:<line>`. Fix it there.
 - `overlap`: a measured line of the overlap section, with its line and the
@@ -277,16 +306,20 @@ Decision order for an area; the first that applies decides:
 5. An overlap rule for the area.
 6. Otherwise not placeable. Reasons: `spans several countries: <shares>` (from
    a `not_placeable` rule), `no checklist for <country or ISO code>`,
-   `not measured yet` (an outline is cached but no rule measured it yet), or
-   `no outline` (nothing to measure).
+   `outside every checklist outline` (measured: no land in any outline),
+   `not measured yet` (an outline is cached but no rule measured it yet),
+   `no usable outline (no polygon)` (the cached outline is a point or a line,
+   so there is nothing to measure), or `no outline` (none cached).
 
 Then the part, for a checklist with parts (France): the part that lists the
 area or its parent in `areas`, or whose `names` appear in the area's or its
 parent's name; else the `rest` part (Mainland France) when the area lies below
 country level; else none. A manual rule may name the part itself. Last, the
-outline: the first cached area of the part, else of the checklist. When none
-is cached the record is still placed and a last step says `no outline cached
-for <checklist>`.
+outline: the first cached area of the part, else the checklist's outline
+(its first cached area, else its Natural Earth fallback outline, `shape`
+`fallback/<name>`; an entry with `outline: natural_earth` takes the fallback
+first and a step cites that line). When there is none the record is still
+placed and a last step says `no outline cached for <checklist>`.
 
 Two worked examples (as the curator page shows them):
 
@@ -339,9 +372,12 @@ Source tags:
   and the country (or state) it refers to.
 - `[overlap, placement.yml:N]`: an overlap rule without a share.
 - `[overlap]`: a live coordinate step (a point tested against the cached outlines), no rule line.
+- `[overlap, placement.yml:N]` on a coordinate step: the point lay outside
+  every outline but within the coastal tolerance; N is the line of
+  `coastal_tolerance_degrees`.
 
 The lookup box takes a kind and an id: `GA`, `GZ`, `AD`, `CO` or `FO`, in any
-case, with or without a space (`ad 556796`, `AD556796`, `GZ 10453`).
+case, with any number of spaces or none (`ad 556796`, `AD556796`, `GZ  10453`).
 `parseLookup(text)` returns `{ kind, id }`; a bare number or any other kind
 gives `null`.
 
@@ -368,9 +404,13 @@ that applies decides:
    (and so for any other country text without a checklist), even when coordinates exist.
 3. No DwC country, but coordinates: `geometry.checklistsAt`. One checklist
    holds the point: placed, step `coordinates <lat>, <lng> lie inside
-   <name>` `[overlap]` (measured live, no line, no share). Several:
-   `coordinates in several countries (Russia, Ukraine)`, names sorted. None:
-   `coordinates outside every outline`. This fallback is for the few records
+   <name>` `[overlap]` (measured live, no line, no share). None holds it but
+   one lies within the coastal tolerance (`coastal_tolerance_degrees`, 0.05
+   degrees): placed, step `coordinates <lat>, <lng> lie within about 5 km of
+   the coast of <name>` `[overlap, placement.yml:N]` citing that line (CO
+   1383195 on the Crimean coast). Several: `coordinates in several countries
+   (Russia, Ukraine)`, names sorted. None: `coordinates outside every
+   outline`. This fallback is for the few records
    (252 in the test run) where TaxonWorks gives coordinates but no country;
    our outlines are simplified, so they never overrule a DwC country.
 4. Otherwise not placeable: `locality text only` when the record has locality
@@ -379,23 +419,23 @@ that applies decides:
 Then the part (France), as the old build did: a part name in `stateProvince`
 or `county` (Corse goes to Corsica) `[manual]`; else the part whose outline, or
 `box`, holds the coordinates (`geometry.partAt`, step `coordinates <lat>,
-<lng> lie inside Corsica` `[overlap]`); else the `rest` part (Mainland France)
+<lng> lie inside Corsica` `[overlap]`, or `lie inside the rough box of the part
+Mainland France` `[manual]` citing the part); else the `rest` part (Mainland France)
 when the record has a stateProvince or coordinates, as it then lies below
 country level; else no part.
 
 ### States and provinces
 
-Only checklists with `states` (the rules file's `state_countries`,
-`placement.yml:120`: United States, Canada, Australia, China, Russia, United
-Kingdom) get a state; any other has none and no state step.
+Only checklists with `states` (the rules file's `state_countries`: United
+States, Canada, Australia, China, Russia) get a state; any other has none and
+no state step (the United Kingdom since R50).
 State names are matched with `placement/states.js` (`matchSubdivision`) and
 only against the states of the chosen checklist: first the state's own name
-`[TaxonWorks]` or one of its Natural Earth names (`aliases` in
-`subdivisions.geojson`: Moskva for Moscow, Xinjiang Uygur for Xinjiang)
-`[Natural Earth]`; then either of them with the rules file's
-`ignored_name_words` left out (`DwC stateProvince "Krasnoyarsk Krai" matches
-the state Krasnoyarsk (ignoring "krai")`, `[manual]` with the line of that
-list). A state's own name wins over another state's alias. Country names never meet
+`[TaxonWorks]`; then that name with the rules file's `ignored_name_words`
+left out (`DwC stateProvince "Krasnoyarsk Krai" matches the state
+Krasnoyarsk (ignoring "krai")`, `[manual]` with the line of that list). Other
+names of a state (the Natural Earth `aliases` of `subdivisions.geojson`,
+Moskva for Moscow) decide nothing (R51). Country names never meet
 state names: the US state Georgia stays a state of the United States, and a
 specimen with DwC country Georgia and stateProvince Georgia lands in the
 country Georgia, which has no states.
@@ -404,8 +444,7 @@ For an asserted distribution, the first that applies:
 
 1. A manual rule for the area gives `subdivision_of: { country, state }`
    (`[manual]`, with its line). Manual rules win over names, as they do for
-   countries: GA 20379 Chukot is Chukotka although Natural Earth lists Chukot
-   among the names of Sakha.
+   countries: GA 20379 Chukot is Chukotka, whatever its outline says.
 2. The area's own name is a state of the checklist, but only when the area is
    a state itself: TaxonWorks' state test (`GeographicArea#categorize`,
    `isStateArea` in `placement/areas.js`): a state-level type (State,
@@ -420,21 +459,35 @@ For an asserted distribution, the first that applies:
 4. An overlap rule for the area gives `subdivision_of: { country, state }`
    (`[overlap]`, with its line and share). This covers what names cannot:
    Hawaiian gazetteers (state Hawaii), IBRA bioregions (Australian states),
-   renamed units (Evenk to Krasnoyarsk, TDWG Yakutskiya to Sakha). The
-   measuring script writes these lines.
+   renamed units (Evenk to Krasnoyarsk, TDWG Yakutskiya to Sakha) and areas
+   whose TaxonWorks name is not the state name (GA 20330 Primor'ye to
+   Primorsky Krai, GA 32013 Inner Mongol to Inner Mongolia). The measuring
+   script writes these lines.
 5. No state, with a last step `no state: <reason>`: `record is for the whole
    country` (the area is one of the checklist's country areas), `spans several
    states: <shares>` (from an overlap or manual line `not_placeable: spans
    several states`; such a line only speaks about the state and never decides
-   the country), or `not measured yet`.
+   the country), `outside every state outline` (an overlap line written when
+   no part of the outline lies in a state outline, GZ 10454 Hawai'i: Lana'i;
+   it too never decides the country), `no usable outline (no polygon)`, `no
+   outline to measure` (none cached), or `not measured yet`.
 
-For a specimen or field occurrence: the DwC `stateProvince` (TaxonWorks'
-state) is a state of the checklist `[TaxonWorks]` (or through a Natural Earth
-name or ignored words, as above); else the state outline
-holding its coordinates (`geometry.stateAt`, `[overlap]`); else no state, with
-the reason (`no state: Atlantis is not a state of United States`, `no state:
-no DwC stateProvince and no coordinates`, or that the coordinates lie in no
-state outline).
+For a specimen or field occurrence, the first that applies:
+
+1. The DwC `stateProvince` (TaxonWorks' first-level area name) is a state of
+   the checklist `[TaxonWorks]` (or after leaving out ignored words, as above).
+2. It is the name of exactly one TaxonWorks area of the same checklist in the
+   cache (`context.json` `stateAreas`, exact after normalizing; a name two
+   areas share is ignored): that area's own state decision gives the state,
+   with one step naming both and carrying that decision's source, e.g. `DwC
+   stateProvince Primor'ye is TaxonWorks area GA 20330, which lies in the
+   state Primorsky Krai` `[overlap 100% Primorsky Krai, placement.yml:N]`.
+3. The state outline holding its coordinates (`geometry.stateAt`, `[overlap]`),
+   else the only one within the coastal tolerance (`within about 5 km of the
+   coast of the state X`, citing the tolerance line).
+4. No state, with the reason (`no state: Atlantis is not a state of United
+   States`, `no state: no DwC stateProvince and no coordinates`, or that the
+   coordinates lie in no state outline).
 
 Three more worked examples:
 
@@ -468,11 +521,11 @@ The Tanzania specimen has a DwC country that is not a checklist name, but
 the synonym line names it, so the second step cites that line. The Hawaiian
 gazetteer finds its country by its ISO code, and its name is no state name, so
 the state comes from the overlap line the measuring script wrote for it.
-Central European Russia gets its country from one overlap line (line 201,
-Russia 100%); a second line (521), `not_placeable: spans several states`,
-tells why it has no state: no state holds even a fifth of it. The line
-numbers are those of the rules file on 2026-11-20; they shift when lines are
-added above.
+Central European Russia gets its country from one overlap line (Russia
+100%); a second line, `not_placeable: spans several states`, tells why it has
+no state: no state holds even a fifth of it. The line numbers above are
+examples of 2026-11-20; they shift when lines are added above (the curator
+page links every one to the current line).
 
 ## Measuring overlap
 
@@ -481,7 +534,8 @@ added above.
 the outline of an area is shared among other outlines, and appends one rule
 per area. The build never measures; it only reads the rules.
 
-When to run it: after a build reports areas as `not measured yet` (new TDWG
+When to run it: after a build reports areas as `not measured yet` or
+`no state: not measured yet` (new TDWG
 areas or gazetteers without ISO code in TaxonWorks, or new areas in a country
 with states whose name is no state name), and after the cached outlines
 changed a lot. It reads the TaxonWorks data the build saved
@@ -508,8 +562,11 @@ the placement engine says which):
 How: `scripts/geometry-node.mjs` (`measureShares`) lays a grid of 24 by 24
 points over the area's bounding box and keeps the points inside the area; with
 fewer than 30 inside, a grid of 80 by 80; with none inside (tiny islands), the
-area's vertices, where a point up to 0.05 degrees (about 5 km) off a
-simplified coast counts for the nearest outline. Each point is tested against
+area's vertices, where a point within the coastal tolerance of the rules file
+(`coastal_tolerance_degrees`, 0.05 degrees, about 5 km) off a simplified
+coast counts for the nearest outline. Outlines are read as Polygon,
+MultiPolygon or GeometryCollection (its polygons; GZ 3614 New Guinea is a
+polygon and a line). Each point is tested against
 the outlines whose bounding box holds it. Points in no outline (sea, or land
 without outline) do not count, so the shares are shares of land. A point in an
 own checklist and in the country it is filed under (Réunion and France, whose
@@ -524,9 +581,14 @@ four shares, rounded, and the local date, and a comment with the area, its
 TDWG code and how many distributions use it. TDWG areas are matched by their
 TDWG code, all others by their area key. Rules are appended at the end of the
 `overlap` section; no other line changes, so line references stay valid.
-Areas without a cached outline, or outside every outline, get no rule and are
-listed at the end of the run. `--dry-run` prints the rules instead of writing
-them.
+An area with no land point in any outline gets a rule that says so:
+`not_placeable: outside every checklist outline` for the country, or
+`not_placeable: outside every state outline` for the state (which never
+decides the country), with `measured: "no sample in any outline (date)"`.
+Areas without a cached outline, or whose outline holds no polygon (a Point
+gazetteer), get no rule and are listed at the end of the run; the engine
+gives them `no outline` or `no usable outline (no polygon)` by itself.
+`--dry-run` prints the rules instead of writing them.
 
 `--recheck` re-measures every existing overlap rule and lists those whose top
 share moved by more than 5 points (for example after the cached outlines
@@ -592,7 +654,7 @@ What the build writes to `public/checklists/`:
   France is GA 34185, TDWG 12FRA-FR, whose outline leaves out the Channel
   Islands that TDWG 12FRA includes; the build warns about a part without
   cached outline, as the page skips it),
-  `states` (true for the six countries browsed by state), `taxa` and
+  `states` (true for the five countries browsed by state), `taxa` and
   `records`), and `unplaced` (records and taxa left out).
 - `countries/<key>.json`: one checklist, a `checklist` header and then its
   records in the compact form of `data/compact.js`. Records carry `part` and
@@ -683,22 +745,31 @@ without any outline.
 
 Every visible change to the checklists needs the curator's approval before a
 new cache is committed. `compare.mjs` compares a new cache with an earlier one
-record by record and writes a report to read before approving:
+record by record and writes a report to read before approving. From the
+project folder (the folder with `package.json`):
 
 ```
+mkdir -p modules/checklists/.cache/old
+git archive HEAD public/checklists | tar -x --strip-components=2 -C modules/checklists/.cache/old
 npm run checklists -- --from                          # build the new cache from the saved data
-node modules/checklists/scripts/compare.mjs .cache/old public/checklists
+node modules/checklists/scripts/compare.mjs modules/checklists/.cache/old public/checklists
 ```
 
 Arguments: the old cache (default `modules/checklists/.cache/old`), the new
-cache (default `public/checklists`) and `--from <dir>`, the saved TaxonWorks
-data the new cache was built from (default `modules/checklists/.cache/data`).
-A folder is read relative to the working directory, else to
-`modules/checklists/`. The new cache must come from that data and the current
-rules file, because the explanations are made again from them.
+cache (default `public/checklists`), `--from <dir>`, the saved TaxonWorks
+data the new cache was built from (default `modules/checklists/.cache/data`),
+and `--out <file>` for the report (default
+`modules/checklists/.cache/compare.md`). A folder is read relative to the
+working directory, else to `modules/checklists/`. The new cache must come
+from that data and the current rules file, because the explanations are made
+again from them. Either cache may be in the old build's format (country files
+`<id>.json`, no stored states) or the engine's (`file` in index.json, `state`
+on records): `compareCaches.mjs` `cacheEntries` reads both, using
+`record.state` when it is stored. Changes of the explanation text alone never
+count; only checklist, part and state.
 
-It writes `modules/checklists/.cache/compare.md` and `compare-full.md` (not
-committed). The report gives the counts (same checklist, moved, newly placed,
+It writes `modules/checklists/.cache/compare.md` and `compare-full.md` beside
+it (`<out>-full.md` with `--out`; not committed). The report gives the counts (same checklist, moved, newly placed,
 no longer placed, gone from TaxonWorks, part changed, state changed), then the
 moves by "from checklist to checklist", the newly placed records by the step
 that decided their checklist, the records no longer placed by reason, the part
@@ -717,9 +788,10 @@ How it works:
   so a renamed checklist is not a move.
 - The explanations use the build's own code: `buildContext.mjs` creates the
   engine context from the saved data exactly as the build does.
-- The old cache stored no states; its page worked them out while showing a
-  country. `compareCaches.mjs` (`oldState`) reproduces that: for the United
-  States, Canada, Australia, China, Russia and the United Kingdom, the
+- The old build's cache stored no states; its page worked them out while
+  showing a country. For such a cache `compareCaches.mjs` (`oldState`)
+  reproduces that: for the United States, Canada, Australia, China, Russia
+  and the United Kingdom (the six state countries of that time), the
   record's stateProvince, then the place name of its distribution, then its
   county, matched against the old `subdivisions.geojson` with its aliases
   and the old page's word list (`OLD_IGNORED_WORDS`, kept fixed there so the
@@ -729,16 +801,24 @@ How it works:
   is "new in TaxonWorks", one updated after it "edited in TaxonWorks"; a
   record of the old cache that is nowhere in the new data is "gone from
   TaxonWorks".
+- Two groups are named after the ruling that causes them: a checklist no
+  longer browsed by state (R50, the United Kingdom) lists all its dropped
+  states as one group, and states that were decided by a Natural Earth name
+  in the old engine cache (R51: a `Natural Earth` step in its `areas.json`,
+  or a specimen whose stateProvince matched only an alias) are grouped
+  separately for asserted distributions and for specimens.
 - Questions for the curator that the report should carry go into
   `modules/checklists/.cache/compare-questions.md`; its text is added at the
-  end of `compare.md` on every run.
+  end of `compare.md` when the old cache is the old build's.
 
 ## Curator page
 
 `/checklists/curator` (in hash mode `/#/checklists/curator`) is for curators:
 open it with `?curator=1` (curator mode, see
-`panels/_shared/curatorMode/readme.md`), or follow "How records are placed"
-on the checklists page in curator mode. Without curator mode it shows only
+`panels/_shared/curatorMode/readme.md`), or follow the red button "How
+records are placed (curator)" right of the "Distribution data is generally
+incomplete" note on the checklists page (shown in curator mode only, in the
+red of "Leave curator mode"). Without curator mode it shows only
 "Open this page with ?curator=1". It is for finding problems and fixing them
 in TaxonWorks or in the rules file.
 
@@ -751,7 +831,7 @@ Five tabs; the active one is in the address (`?tab=otu`, `areas`,
 | OTU | `?tab=otu&otu=731160` | every record of one OTU, placed | live from TaxonWorks |
 | Area tree | `?tab=areas` | every area of `areas.json` and its decision | the cache |
 | Not placed | `?tab=unplaced` | `unplaced.json` by reason | the cache |
-| Rules | `?tab=rules` | the decision order and every rule of `rules.json` | the cache |
+| Rules | `?tab=rules&line=120` | the decision order, every rule of `rules.json`, and `placement.yml` with line numbers | the cache |
 
 Each tab starts with one line saying which: "Live from TaxonWorks, placed
 with the rules and data of the build of 2026-11-20." (lookup and OTU: the
@@ -763,7 +843,10 @@ Clicking a row in the OTU table, an area name in the tree or a row of the
 unplaced lists opens the lookup tab with that record (`?lookup=AD 287565`,
 `?lookup=GA 32253`), where its full explanation and map are. Links on a row
 (the record's edit page, the area's page in TaxonWorks) open TaxonWorks
-instead.
+instead. Every `placement.yml:N` on the page (in an explanation, a source
+tag, the tree, the rules list) links to that line on the Rules tab
+(`components/RefText.vue`, `?tab=rules&line=N`; only the query changes,
+never the URL hash, so it works in hash mode).
 
 When a live result differs from the cache (another checklist, part or state,
 or the cache does not list a record the live placement places, or lists one
@@ -808,11 +891,15 @@ files, as in the lookup, so the result equals the build's. The summary
 counts records by kind and result, e.g. `85 records (62 AD, 23 CO): 83 placed
 in 34 checklists, 2 not placed (1 locality text only, 1 spans several
 countries)` (`overview.js` `summarizeOtu`; not placed counted by the kind of
-reason). The table: the record (`AD 287565`, a link to its edit page), its
-place (the area with its key, linked to TaxonWorks; for a specimen its DwC
-country, state, county and locality and coordinates), the checklist with part
-and state, or the reason in red, the source tag of the deciding step
-(`format.js` `decidingStep`, as in the text form), and "differs". Rows not
+reason). The table: the record (`AD 287565`, a link to its edit page, with a
+copy button that copies `AD 287565` to the clipboard and says "Copied", or
+selects the text when the clipboard is not available), its place (the area
+with its key, linked to TaxonWorks; for a specimen its DwC country, state,
+county and locality and coordinates), the checklist with part and state, or
+the reason in red, every source that contributed to the placement (country,
+part, state, outline; `overview.js` `sourceTags`, e.g. `[TaxonWorks]
+[overlap 100% Primorsky Krai, placement.yml:N]`, each line a link), and
+"differs". Rows not
 placed come first. An absent distribution, or a record the build leaves out,
 reads e.g. "absent (not in checklists)", "rank family (not in checklists)".
 
@@ -820,12 +907,20 @@ reads e.g. "absent (not in checklists)", "rank family (not in checklists)".
 
 `areas.json` as a tree (`overview.js` `buildAreaTree`): three roots,
 Political, TDWG and Gazetteers. Gazetteers are the GZ areas, TDWG the areas
-whose TaxonWorks `data_origin` starts with `tdwg`, Political the rest. Within
-a root, areas nest by their TaxonWorks parent; a parent known only as a
-parent (a stub, `records: 0`, no placement) appears muted with "used by no
-record" in every root that has one of its children (GA 78 French Guiana
-under Political as the parent of Cayenne; GA 33722 French Guiana under TDWG
-as the parent of GA 34200). Each area: name, key (link to
+whose TaxonWorks `data_origin` starts with `tdwg`, Political the rest. Where
+an area sits is compiled by the build from TaxonWorks data in the cache and
+written to `areas.json` as `ancestors` (`cacheFiles.mjs` `areaPositions`,
+R44); the tree only shows it. Political areas sit under their `level0_id`,
+`level1_id` and `level2_id` areas, then their parent ("Earth" left out): GA
+26688 Alabama, used by no record, is known from its counties (level0 GA 237,
+level1 GA 26688) and sits under GA 237 United States. TDWG areas sit under
+their TDWG code's levels (L4 under L3 under L2 under L1, `12FRA-FR` under
+`12FRA` under `12` under `1`) where that level is in the cache, as a used
+area or as the parent of one; otherwise at the top of the TDWG root.
+Gazetteers carry no levels and are grouped by their ISO code (`ISO AU`, `No
+ISO code`). An area known only as an ancestor (a stub, `records: 0`, no
+placement) appears muted with "used by no record" in every root that has one
+of its descendants. Each area: name, key (link to
 `/geographic_areas/:id` or `/gazetteers/:id`), record count, its decision in
 one line (`French Guiana`, `France, part Corsica`, `Spain, no outline`, or
 `not placeable: <reason>` in red) and the deciding source tag. Each root
@@ -835,8 +930,9 @@ Only the top level is shown at first, and an area's children render only when
 it is opened, so the 2,600 areas stay fast. The filter box keeps areas whose
 name contains the text (accent and case insensitive, or an exact key such as
 `GA 78`); "Problems only" keeps areas not placeable (any reason, also `not
-measured yet` and `no outline`) or placed without outline. Both keep the
-ancestors of what matches, opened.
+measured yet` and `no outline`) or placed without any outline (a Natural
+Earth fallback outline counts as an outline). Both keep the ancestors of
+what matches, opened.
 
 ### Not placed
 
@@ -844,7 +940,15 @@ ancestors of what matches, opened.
 `reasonKind`): the text before `:` or `(` (`spans several countries`,
 `coordinates in several countries`), `no checklist for a country` for every
 `no checklist for <name>`, else the reason. A section lists its exact reasons
-with counts when there are several. Its records load only when it is opened,
+with counts when there are several. Within a section the records are grouped
+by what they point to (`overview.js` `groupByPointer`, R45): each geographic
+area (GA), then each gazetteer (GZ), then the collecting events of specimens
+and field occurrences, each with its count (an area name opens it in the
+lookup tab); `unplaced.json` keeps the area of each asserted distribution as
+a third element (`["AD", 669847, "GZ 3614"]`). The reasons `locality text
+only` and `no locality at all` come last, closed, after one note: their
+collecting events have no georeference or area; fix them in TaxonWorks when
+convenient. Its records load only when it is opened,
 50 at a time ("Load more"): distributions in one request per 50 (`GET
 /asserted_distributions?asserted_distribution_id[]=…&extend[]=asserted_distribution_shape`,
 `fetchDistributionsByIds`), specimens and field occurrences one by one
@@ -854,12 +958,20 @@ its exact reason when the section has several.
 
 ### Rules
 
-The decision order for an area (the list of "How a record is placed") and
-every rule of `rules.json` by section (`overview.js` `ruleSections`):
-checklists of their own, synonyms, parts, state countries, ignored name
-words, manual rules, overlap rules (closed at first, with its count). Each
-rule: its line (`placement.yml:69`, the line to edit), what it matches, what
-it does, and its `why` or `measured`.
+The decision order for an area (the list of "How a record is placed"),
+continued by numbered steps for what follows once the checklist is known:
+the part (France only: Corsica or Mainland France), the state or province
+(only for the checklists of `state_countries`, named) and the outline (the
+part's, else the checklist's) (`overview.js` `afterDecisionSteps`); a short
+paragraph for specimens and field occurrences (DwC country, else
+coordinates, with the coastal tolerance and its line). Then every rule of
+`rules.json` by section (`overview.js` `ruleSections`): checklists of their
+own, synonyms, parts, state countries, ignored name words, manual rules,
+overlap rules (closed at first, with its count). Each rule: its line (a link
+to the line below), what it matches, what it does, and its `why` or
+`measured`. Last, `placement.yml` itself as the build copied it to
+`public/checklists/placement.yml`, with line numbers; each line has the id
+`L<N>` and its number links to it; `?line=N` scrolls to that line and marks it.
 
 ### Record or area (the lookup)
 
@@ -871,6 +983,7 @@ Input: a kind and an id, as `parseLookup` reads them (see "Reading an
 explanation"): `GA`, `GZ`, `AD`, `CO` or `FO`, any case, with or without a
 space, spaces around ignored (`AD 556796`, `ad 556796`, `AD556796`,
 `GZ 10453`, `CO 1385165`). Anything else gives a message naming these forms.
+Every `placement.yml:N` in the explanation links to that line (Rules tab).
 The lookup is part of the address, `?lookup=AD%20556796`
 (`/#/checklists/curator?curator=1&lookup=AD%20556796`), so a lookup can be
 linked and reloaded.
@@ -896,7 +1009,7 @@ What it shows:
   (`No outline cached for Cayenne (GA 8837).`). Colours are the map tokens
   of the taxon pages (area `--tp-map-asserted`, specimen point
   `--tp-map-collection-object` or `--tp-map-field-occurrence`, assigned
-  outline `--tp-map-aggregate`).
+  outline `--tp-map-aggregate`). A Natural Earth outline is labelled so.
 
 Why it equals the build: the page fetches the record from TaxonWorks
 (`placement/live.js`: AD `GET /asserted_distributions/:id` with
@@ -912,7 +1025,9 @@ lookup) and runs the same point tests as the build (`placement/geometry.js`).
 checks it reproduces every area of `areas.json` (2458 of 2458 on 2026-11-20)
 and 200 specimens of the country files (100 of them placed by their
 coordinates), and the coordinate reasons of `unplaced.json`. It needs the
-saved data (`--save`) and is skipped without it. The explanation can differ
+saved data (`--save`, in `modules/checklists/.cache/data`) and a cache built
+from it, and is skipped without them (so a fresh checkout runs `npm test`
+without this check). The explanation can differ
 from the cache only when TaxonWorks changed since the build (or the rules
 file, before the next build); the cache line then shows the old result.
 
@@ -928,6 +1043,11 @@ Limits:
   the build prints the DwC `scientificName` of the same OTU, normally the same text.
 - A distribution without area gives `not placeable: distribution has no area`,
   as in the build (`live.js` `placeLive`).
+- The browser fetches outlines from `public/map-shapes/`, which a map-shapes
+  refresh (`npm run map-shapes`) can change after the checklist build. A
+  missing outline file (404) then counts as no outline, so the page still
+  shows what exists, but a coordinate lookup can then differ from the build.
+  Build the checklists again after refreshing the map shapes.
 
 ## Maintenance
 
@@ -940,9 +1060,10 @@ When to run what:
 - `npm run checklists:measure`: when the build reports `not measured yet`
   areas, or the cached outlines changed a lot (`--recheck` lists measurements
   that moved). Then build again.
-- `node modules/checklists/scripts/compare.mjs .cache/old public/checklists`:
-  before committing a new cache, to see every record that moved. Copy the
-  cache you compare against to `modules/checklists/.cache/old` first.
+- `node modules/checklists/scripts/compare.mjs modules/checklists/.cache/old public/checklists`,
+  run from the project folder: before committing a new cache, to see every
+  record that moved. Copy the cache you compare against to
+  `modules/checklists/.cache/old` first (see "Comparing two caches").
 
 Adding a rule: see "The rules file" (right section, one action per rule, a
 `why`), run `node --test modules/checklists/placement/rules.test.js`, build
@@ -955,17 +1076,18 @@ source and the rule line to change.
 
 When TaxonWorks has a wrong outline or fact: fix it in TaxonWorks if you can.
 Until it is fixed, add a manual rule with a `why` that says so. Example: the
-cached outline of GA 20379 Chukot also covers Yakutia, so the manual rule at
-`placement.yml:179` places it in Russia, state Chukchi Autonomous Okrug, and
+cached outline of GA 20379 Chukot also covers Yakutia, so a manual rule
+places it in Russia, state Chukchi Autonomous Okrug, and
 its `why` says to fix the shape in TaxonWorks. Remove the rule once TaxonWorks
 is right.
 
 ## Known limits and open decisions
 
-- The United Kingdom grouping of Natural Earth counties into England,
-  Scotland, Wales and Northern Ireland, and the county aliases, live in
-  `subdivisions.geojson`, not in the rules file. Whether they should move into
-  the rules file is a decision pending with the curator.
+- The United Kingdom is not browsed by state (R50): the grouping of Natural
+  Earth counties into England, Scotland, Wales and Northern Ireland in
+  `subdivisions.geojson` is no longer used. The Natural Earth state outlines
+  of the other five countries remain in use as geometry; their `aliases`
+  decide nothing (R51).
 - Králický Sněžník is not placeable (it lies on the Czech and Polish border)
   pending the curator's review.
 - A specimen without any locality (no country, no coordinates, no locality

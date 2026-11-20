@@ -162,17 +162,32 @@ these places (the README describes what exists):
   Rules), addressed by `?tab=`. The OTU tab, which places every record of one OTU
   live, was not in the design.
 - `public/checklists/context.json` is an extra cache file: the engine's
-  checklists, outline ids and cached shape ids, so the curator page rebuilds the
-  engine context exactly as the build had it.
+  checklists, the outline standing for each checklist, the cached shape ids,
+  those holding no polygon (`unusable`), and the areas of each state country
+  (`stateAreas`), so the curator page rebuilds the engine context exactly as
+  the build had it. The build also copies `placement.yml` into the cache for
+  the Rules tab, and `areas.json` carries each area's tree position
+  (`ancestors`, compiled from TaxonWorks level ids and TDWG codes).
 - Files are named by the checklist key (the slug of its name,
   `countries/french-guiana.json`), not by a numeric id.
-- A fourth step source, `[Natural Earth]`, marks a state found through a Natural
-  Earth alias of `subdivisions.geojson`.
-- The rules file has two more keys than designed: `state_countries` (which
-  checklists are browsed by state) and `ignored_name_words` (words left out when
-  comparing place names with state names). The engine has no lists of its own.
+- Natural Earth is geometry only (R51): country fallback outlines and state
+  outlines. No Natural Earth name decides anything; the `[Natural Earth]` step
+  source that marked a state found through an alias was removed again. Areas
+  known only by such a name get their state from overlap rules. A specimen's
+  stateProvince that names exactly one TaxonWorks area of the checklist takes
+  that area's state decision.
+- The rules file has more keys than designed: `state_countries` (which
+  checklists are browsed by state), `ignored_name_words` (words left out when
+  comparing place names with state names), `coastal_tolerance_degrees` (the
+  coastal tolerance, cited by every step that used it) and, on a checklist
+  entry, `outline: natural_earth`. The engine has no lists or numbers of its
+  own. The compiled rules are validated against the derived checklists
+  (unknown country, part or state stops the build with its line).
+- Measured rules can also say `outside every checklist outline` and
+  `outside every state outline`; outlines that hold no polygon give the reason
+  `no usable outline (no polygon)`.
 - Kosovo and Norfolk Island became checklists of their own (the Defaults above
-  left Kosovo unplaced).
-- The United Kingdom's four "states" are groupings of Natural Earth counties kept
-  in `subdivisions.geojson`, not in the rules file; see the README, "Known limits
-  and open decisions".
+  left Kosovo unplaced). Norfolk Island also owns GZ 10458 and is drawn from
+  its Natural Earth outline, which leaves out Lord Howe Island (R49).
+- The United Kingdom is not browsed by state (R50); state countries are the
+  United States, Canada, Australia, China and Russia.

@@ -495,3 +495,17 @@ export function groupByPointer(records, areaNames = new Map()) {
 
 /** Reason kinds of records with nothing to place them by, shown last and closed (R45). */
 export const LOCALITY_REASONS = ['locality text only', 'no locality at all']
+
+/**
+ * The route to line N of the rules file on the curator page's Rules tab: the
+ * current query with tab=rules (an older ?line= dropped) and the route hash
+ * #L<N>. A route hash, not a query, because the framework's scrollBehavior
+ * scrolls to the element of a route hash and to the top on any other
+ * navigation (which undid a query-only link). In hash mode the address reads
+ * /#/checklists/curator?curator=1&tab=rules#L120.
+ * @param {{ query: Object }} route  the current route
+ * @returns {(line: number) => { query: Object, hash: string }}
+ */
+export function lineLink(route) {
+  return (line) => ({ query: { ...route.query, tab: 'rules', line: undefined }, hash: `#L${line}` })
+}

@@ -831,7 +831,7 @@ Five tabs; the active one is in the address (`?tab=otu`, `areas`,
 | OTU | `?tab=otu&otu=731160` | every record of one OTU, placed | live from TaxonWorks |
 | Area tree | `?tab=areas` | every area of `areas.json` and its decision | the cache |
 | Not placed | `?tab=unplaced` | `unplaced.json` by reason | the cache |
-| Rules | `?tab=rules&line=120` | the decision order, every rule of `rules.json`, and `placement.yml` with line numbers | the cache |
+| Rules | `?tab=rules#L120` | the decision order, every rule of `rules.json`, and `placement.yml` with line numbers | the cache |
 
 Each tab starts with one line saying which: "Live from TaxonWorks, placed
 with the rules and data of the build of 2026-11-20." (lookup and OTU: the
@@ -845,8 +845,13 @@ unplaced lists opens the lookup tab with that record (`?lookup=AD 287565`,
 (the record's edit page, the area's page in TaxonWorks) open TaxonWorks
 instead. Every `placement.yml:N` on the page (in an explanation, a source
 tag, the tree, the rules list) links to that line on the Rules tab
-(`components/RefText.vue`, `?tab=rules&line=N`; only the query changes,
-never the URL hash, so it works in hash mode).
+(`components/RefText.vue`): the link is the route `?tab=rules` with the
+route hash `#L<N>` (in hash mode `/#/checklists/curator?curator=1&tab=rules#L120`;
+the router keeps the second `#` as the route's hash, and the framework's
+scrollBehavior scrolls to the line). A query-only link was scrolled back to
+the top by that scrollBehavior, which is why the first version's links did
+nothing when clicked on the Rules tab. A click on such a link inside a table
+row does not also open the row's lookup.
 
 When a live result differs from the cache (another checklist, part or state,
 or the cache does not list a record the live placement places, or lists one
@@ -970,8 +975,15 @@ own, synonyms, parts, state countries, ignored name words, manual rules,
 overlap rules (closed at first, with its count). Each rule: its line (a link
 to the line below), what it matches, what it does, and its `why` or
 `measured`. Last, `placement.yml` itself as the build copied it to
-`public/checklists/placement.yml`, with line numbers; each line has the id
-`L<N>` and its number links to it; `?line=N` scrolls to that line and marks it.
+`public/checklists/placement.yml`, at full length in the page (no scroll box
+of its own, long lines wrap), with line numbers and YAML colours
+(`placement/yamlTokens.js`, a small tokenizer: comments, keys, quoted
+strings, numbers and booleans, list dashes, brackets; rendered token by
+token, colours from theme tokens and `--pp-yaml-*` in
+`data/checklist-tokens.css`). Each line has the id `L<N>` and its number
+links to it; the route hash `#L<N>` marks the line and scrolls to it. The
+file exists only in a built cache: until `public/checklists/` is rebuilt and
+committed, the tab says it could not load `placement.yml`.
 
 ### Record or area (the lookup)
 

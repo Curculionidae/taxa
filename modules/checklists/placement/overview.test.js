@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
 import {
   areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, groupUnplaced, summarizeOtu,
-  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, groupByPointer, splitRefs, sourceTags, afterDecisionSteps
+  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, groupByPointer, splitRefs, sourceTags, afterDecisionSteps, lineLink
 } from './overview.js'
 
 const placed = (name, steps = [{ text: `x is in ${name}`, source: 'TaxonWorks' }], extra = {}) => ({
@@ -228,4 +228,9 @@ test('ruleSections: every rule of the rules file with its ref', () => {
   assert.equal(borneo.action, 'not placeable: spans several countries')
   assert.match(borneo.why, /^measured Indonesia/)
   assert.equal(DECISION_ORDER.length, 6)
+})
+
+test('lineLink: the Rules tab with the route hash #L<N>, the rest of the query kept', () => {
+  const to = lineLink({ query: { curator: '1', lookup: 'CO 1383195', line: '5' } })(168)
+  assert.deepEqual(to, { query: { curator: '1', lookup: 'CO 1383195', tab: 'rules', line: undefined }, hash: '#L168' })
 })

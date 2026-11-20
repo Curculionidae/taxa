@@ -7,11 +7,14 @@
 
   Each rule shows its line (placement.yml:N, a link to that line below), what
   it matches, what it does, and its why or measured share. The overlap
-  section is long and starts closed. Every line of the file has the id L<N>
-  and a number that links to it; ?line=N in the address (set by every
-  placement.yml:N link on the curator page, RefText.vue) scrolls to that line
-  and marks it. Only the query changes, never the URL hash, so this works
-  with and without hash mode.
+  section is long and starts closed. The file is shown at full length (the
+  page scrolls, no scroll box of its own) with YAML colours
+  (placement/yamlTokens.js, rendered token by token, no v-html). Every line
+  has the id L<N> and a number that links to it. Every placement.yml:N link
+  on the curator page (RefText.vue) goes to ?tab=rules with the route hash
+  #L<N> (a route hash, so it works in hash mode: /#/checklists/curator?...#L120);
+  the framework's scrollBehavior scrolls to that element, this view marks the
+  line and scrolls to it itself when the file loads later.
 
   Props
     loadRules      () => Promise<rules.json>
@@ -124,17 +127,18 @@
       <h3 class="px-3 py-2 font-semibold">
         placement.yml <span class="font-normal">as built ({{ fileLines.length }} lines)</span>
       </h3>
+      <!-- The whole file at full length: no scroll box of its own, the page
+           scrolls. Long lines wrap inside the block. -->
       <div
-        class="max-h-[32rem] overflow-auto border-t border-base-border font-mono text-xs leading-relaxed"
+        class="yaml-view border-t border-base-border pb-2 font-mono text-xs leading-relaxed"
         role="region"
         aria-label="placement.yml with line numbers"
-        tabindex="0"
       >
         <div
-          v-for="(line, index) in fileLines"
+          v-for="(tokens, index) in fileLines"
           :id="`L${index + 1}`"
           :key="index"
-          class="flex"
+          class="flex scroll-mt-4"
           :class="marked === index + 1 ? 'bg-base-muted font-semibold' : ''"
         >
           <RouterLink
@@ -144,7 +148,11 @@
           >
             {{ index + 1 }}
           </RouterLink>
-          <span class="whitespace-pre pr-3">{{ line || ' ' }}</span>
+          <span class="min-w-0 whitespace-pre-wrap break-words pr-3"><span
+            v-for="(token, position) in tokens"
+            :key="position"
+            :class="`yaml-${token.kind}`"
+          >{{ token.text }}</span>{{ tokens.length ? '' : ' ' }}</span>
         </div>
       </div>
     </div>
@@ -160,8 +168,10 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ruleSections, afterDecisionSteps, DECISION_ORDER } from '../placement/overview.js'
+import { ruleSections, afterDecisionSteps, lineLink, DECISION_ORDER } from '../placement/overview.js'
 import RefText from './RefText.vue'
+import { tokenizeYaml } from '../placement/yamlTokens.js'
+import '../data/checklist-tokens.css'
 
 const props = defineProps({
   loadRules: { type: Function, required: true },
@@ -180,17 +190,27 @@ const tolerance = computed(() => {
 const error = ref('')
 const fileLines = shallowRef(null)
 const fileError = ref('')
-const marked = computed(() => (/^\d+$/.test(String(route.query.line ?? '')) ? Number(route.query.line) : null))
+// The marked line: the route hash #L120 (overview.js lineLink); ?line=120
+// from older links still works.
+const marked = computed(() => {
+  const found = /^#L(\d+)$/.exec(route.hash ?? '') ?? /^(\d+)$/.exec(String(route.query.line ?? ''))
+  return found ? Number(found[1]) : null
+})
 
-function toLine(line) {
-  return { query: { ...route.query, tab: 'rules', line: String(line) } }
-}
+const toLine = lineLink(route)
 
-// Scroll the marked line into view once the file is shown.
+// Scroll the marked line into view. A click on a line link is a navigation,
+// and the framework's scrollBehavior then scrolls to the element of the route
+// hash (or to the top without one); this runs after it, on the next frame,
+// and only when the line is still out of view (the file loaded later, or the
+// router scrolled before it was there).
 async function scrollToMarked() {
   if (!marked.value || !fileLines.value || typeof document === 'undefined') return
   await nextTick()
-  document.getElementById(`L${marked.value}`)?.scrollIntoView({ block: 'center' })
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  const element = document.getElementById(`L${marked.value}`)
+  const box = element?.getBoundingClientRect()
+  if (box && (box.top < 0 || box.bottom > window.innerHeight)) element.scrollIntoView({ block: 'center' })
 }
 watch([marked, fileLines], scrollToMarked)
 
@@ -202,9 +222,23 @@ onMounted(async () => {
   }
   if (!props.loadRulesText) return
   try {
-    fileLines.value = String(await props.loadRulesText()).replace(/\n$/, '').split('\n')
+    fileLines.value = tokenizeYaml(await props.loadRulesText())
   } catch (failure) {
     fileError.value = `Could not load placement.yml: ${failure?.message || failure}`
   }
 })
 </script>
+
+<style scoped>
+/* YAML colours: theme tokens and the module's --pp-yaml-* tokens
+   (data/checklist-tokens.css), readable in light and dark mode. */
+.yaml-key { color: var(--tp-secondary); }
+.yaml-comment { color: var(--pp-yaml-comment); font-style: italic; }
+.yaml-string { color: var(--pp-yaml-string); }
+.yaml-number,
+.yaml-boolean { color: var(--pp-yaml-number); }
+.yaml-dash,
+.yaml-colon,
+.yaml-bracket { color: var(--tp-base-lighter); }
+.yaml-text { color: var(--tp-base-content); }
+</style>

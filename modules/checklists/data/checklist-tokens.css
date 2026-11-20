@@ -6,6 +6,10 @@
    Leaflet needs literal colour strings, so the page reads these with
    getComputedStyle() at style time (cssVar() in ChecklistsPage.vue). */
 :root {
+  /* YAML colours of the rules file on the curator page (components/RulesView.vue). */
+  --pp-yaml-comment: #6b7280;
+  --pp-yaml-string: #15803d;
+  --pp-yaml-number: #b45309;
   --pp-checklist-0: #e2e8f0;  /* slate-200, same as --tp-base-muted */
   --pp-checklist-1: #e3f1e5;
   --pp-checklist-2: #a8d5b0;
@@ -14,6 +18,9 @@
 }
 
 .dark {
+  --pp-yaml-comment: #a3a3a3;
+  --pp-yaml-string: #86efac;
+  --pp-yaml-number: #fcd34d;
   --pp-checklist-0: #303030;  /* --tp-base-muted */
   /* Same direction as light: few species greenish white, many dark green. */
   --pp-checklist-1: #e3f1e5;

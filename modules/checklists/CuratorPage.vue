@@ -12,9 +12,10 @@
     Area tree       ?tab=areas     areas.json as a tree (components/AreaTree.vue)
     Not placed      ?tab=unplaced  unplaced.json by reason (components/UnplacedList.vue)
     Rules           ?tab=rules     rules.json and the copy of placement.yml
-                                   (components/RulesView.vue); ?line=N marks a
-                                   line, the target of every placement.yml:N
-                                   link on the page (components/RefText.vue)
+                                   (components/RulesView.vue); the route hash
+                                   #L<N> marks a line, the target of every
+                                   placement.yml:N link on the page
+                                   (components/RefText.vue)
   A row clicked in the OTU, tree or unplaced list opens the lookup tab with
   ?lookup=<KIND> <id>. The cache files are fetched once per visit and shared
   with the tabs through `cache`.

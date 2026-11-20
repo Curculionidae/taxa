@@ -88,6 +88,32 @@ only through a record using it, so those come from
 countries that have neither. The state/province drill-down still uses
 `public/checklists/subdivisions.geojson` (Natural Earth).
 
+## How checklists are formed
+
+The list of checklists comes from `placement/checklists.js` (`deriveChecklists`),
+which reads the areas that asserted distributions use (`placement/areas.js`,
+`toArea`) and the rules file.
+
+- Country areas come from TaxonWorks. A country area is a geographic area whose
+  id equals its `level0_id`. Each becomes a checklist, named after the area.
+- Merging by synonyms: TaxonWorks has several country-level areas for some
+  countries (for example "Bosnia and Herz." and "Bosnia and Herzegovina"). Areas
+  whose names are listed together in `synonyms`, or are the same after
+  normalizing (accents, case and punctuation ignored, see `normalizeName`),
+  become one checklist. Its name is the first synonym and its `areaIds` list
+  every merged area.
+- Own checklists: every entry of `checklists` in the rules file is a checklist
+  of its own, even when TaxonWorks files it under another country (`of:`). An
+  area id listed there is removed from the country checklist it would have
+  belonged to, so no checklist owns an area id twice.
+- Ids: a merged country has the id of its area with an ISO code (else the first
+  area), the same as before, because country files are named `<id>.json`. An
+  own checklist has the numeric id of its first listed GA area (French Guiana:
+  32253), or its ISO code when it lists none (Northern Mariana Islands: `MP`).
+- `states` is true for United States, Canada, Australia, China, Russia and
+  United Kingdom, the countries browsed by state. `parts` holds the part names
+  from the `parts` section of the rules file (France: Corsica, Mainland France).
+
 ## The rules file
 
 `modules/checklists/rules/placement.yml` is hand-edited. It holds what

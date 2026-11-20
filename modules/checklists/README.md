@@ -12,6 +12,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/build.mjs`: builds the cache (`npm run checklists`); `scripts/data/country-iso.json` holds extra ISO codes it uses.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
+- `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `states.js` also serves the page's state drill-down.
 - `DESIGN.md`, `PLAN.md`: design and implementation plan.
 
 ## Data
@@ -186,10 +187,21 @@ as `subdivison_of`.
 (no network, no file system), so the cache build and the curator page run the
 same code. `createContext({ checklists, rules, geometry, shapes })` builds the
 lookups once (`shapes` is the set of cached outline keys such as
-`GeographicArea/32253`); `placeArea(area, ctx)` places the area an asserted
-distribution points to. The answer is a `Placement`: the checklist (or `null`
-and a `reason`), the part, the state (filled for records later), the outline
-to show (`shape`) and the `steps` of the decision.
+`GeographicArea/32253`). `placeArea(area, ctx)` places the area an asserted
+distribution points to, without its state; `await placeRecord(record, ctx,
+area?)` places a record (an asserted distribution with its area, a specimen or
+a field occurrence) and finds its state. The answer is a `Placement`: the
+checklist (or `null` and a `reason`), the part, the state, the outline to show
+(`shape`, the checklist's or the part's outline, never the state's) and the
+`steps` of the decision.
+
+`geometry` answers the questions that need outlines; it is passed in, so the
+engine itself stays pure (the build reads cached files, the browser fetches):
+`checklistsAt([lng, lat])` gives the ids of the checklists whose outline holds
+a point, `stateAt(checklistId, [lng, lat])` the state whose outline holds it
+(or null), and `stateNames(checklistId)` the state names of a checklist. Only
+records with coordinates make `placeRecord` wait for it; `placeArea` never
+calls it.
 
 Every step is one short sentence with its source:
 
@@ -246,6 +258,97 @@ French Guiana entry of the rules file, so step 2 decides before the country
 step. Borneo is a TDWG area with no country; the measuring script found it in
 three countries and wrote a `not_placeable` overlap line, whose shares become
 the reason.
+
+### Specimens and field occurrences
+
+A specimen or field occurrence is placed by its DwC fields (`RecordInput`:
+`country`, `stateProvince`, `county`, `locality`, `lat`, `lng`). The first
+that applies decides:
+
+1. A checklist of its own: a word of the entry's `names` is in the DwC
+   `country`, `stateProvince` or `county` (whole words, accent insensitive).
+   A specimen with country France and stateProvince French Guiana lands in
+   French Guiana. One `[manual]` step cites the entry.
+2. The DwC country. TaxonWorks computes it from the georeference (on full
+   outlines) or from the collecting event's area; in the test run of
+   2026-11-20 it equalled the collecting event's country in 20,329 of 20,329
+   specimens, so it is trusted. It is compared with checklist names and the
+   `synonyms` lines only, never with state names. A spelling that is not the
+   checklist name gets a second, `[manual]` step citing the synonym line. A
+   country without a checklist is not placeable: `no checklist for Kosovo`
+   (and so for any other country text), even when coordinates exist.
+3. No DwC country, but coordinates: `geometry.checklistsAt`. One checklist
+   holds the point: placed, step `coordinates <lat>, <lng> lie inside
+   <name>` `[overlap]` (measured live, no line, no share). Several:
+   `coordinates in several countries (Russia, Ukraine)`, names sorted. None:
+   `coordinates outside every outline`. This fallback is for the few records
+   (252 in the test run) where TaxonWorks gives coordinates but no country;
+   our outlines are simplified, so they never overrule a DwC country.
+4. Otherwise not placeable: `locality text only` when the record has locality
+   text, else `no locality at all`.
+
+Then the part (France): a part name in `stateProvince` or `county` (Corse goes
+to Corsica), else the `rest` part (Mainland France) when either is given, else
+no part.
+
+### States and provinces
+
+Only checklists with `states` (United States, Canada, Australia, China,
+Russia, United Kingdom) get a state; any other has none and no state step.
+State names are matched with `placement/states.js` (`resolveSubdivision`:
+exact name, then the name without words such as Oblast, Krai, Republic of)
+and only against the states of the chosen checklist. Country names never meet
+state names: the US state Georgia stays a state of the United States, and a
+specimen with DwC country Georgia and stateProvince Georgia lands in the
+country Georgia, which has no states.
+
+For an asserted distribution, the first that applies:
+
+1. The area's name, else its parent's name, is a state of the checklist
+   `[TaxonWorks]`. In the test run this agreed with the outline overlap in
+   8,847 of 8,847 areas.
+2. A manual or overlap rule for the area gives `subdivision_of: { country,
+   state }` (`[manual]` or `[overlap]`, with its line and share). This covers
+   what names cannot: Hawaiian gazetteers (state Hawaii), IBRA bioregions
+   (Australian states), renamed units (Evenk to Krasnoyarsk, TDWG Yakutskiya
+   to Sakha). The measuring script writes these lines.
+3. No state, with a last step `no state: <reason>`: `record is for the whole
+   country` (the area is one of the checklist's country areas), `spans several
+   states: <shares>` (from an overlap or manual line `not_placeable: spans
+   several states`; such a line only speaks about the state and never decides
+   the country), or `not measured yet`.
+
+For a specimen or field occurrence: the DwC `stateProvince` (TaxonWorks'
+state) is a state of the checklist `[TaxonWorks]`; else the state outline
+holding its coordinates (`geometry.stateAt`, `[overlap]`); else no state, with
+the reason (`no state: Atlantis is not a state of United States`, `no state:
+no DwC stateProvince and no coordinates`, or that the coordinates lie in no
+state outline).
+
+Three more worked examples:
+
+```
+CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
+  DwC country is United Republic of Tanzania                     [TaxonWorks]
+  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:110]
+
+GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
+  Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
+  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap, placement.yml:<line>, 100%]
+
+GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
+  Central European Russia (TDWG 14RUC) lies in Russia            [overlap, placement.yml:150, 100%]
+  no state: spans several states: Moscow Oblast 18%, ...         [overlap, placement.yml:<line>, 18%]
+```
+
+The Tanzania specimen has a DwC country that is not a checklist name, but
+the synonym line names it, so the second step cites that line. The Hawaiian
+gazetteer finds its country by its ISO code, and its name is no state name, so
+the state comes from a measured overlap line for gazetteers starting with
+"Hawai'i". Central European Russia gets its country from one overlap line;
+a second line, `not_placeable: spans several states`, tells why it has no
+state. (The shares and the state lines are illustrations until the measuring
+script writes them.)
 
 ## Updating
 

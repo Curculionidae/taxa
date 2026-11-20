@@ -3,20 +3,24 @@
 // Purpose: one implementation of the placement decisions, used by the cache
 // build (Node) and by the curator page (browser). Every decision comes with
 // steps that name their source, so a curator can see whether to fix something
-// in TaxonWorks or in the rules file. This file places an AREA, the place an
-// asserted distribution points to (placeArea). Specimens, field occurrences
-// and states are added by placeRecord (Task 5).
+// in TaxonWorks or in the rules file. placeArea places an AREA, the place an
+// asserted distribution points to, without its state. placeRecord places a
+// record: an asserted distribution by its area, a specimen or field occurrence
+// by its DwC country, else by its coordinates; and then finds its state.
 //
-// Input:  an Area (areas.js, toArea) and a Context made once by createContext
-//         from the checklists (checklists.js, deriveChecklists), the compiled
-//         rules file (rules.js, compileRules), a Geometry (used for records
-//         with coordinates, not by placeArea) and the set of cached outline
-//         keys ('GeographicArea/32253').
+// Input:  an Area (areas.js, toArea) or a RecordInput (see the typedef), and a
+//         Context made once by createContext from the checklists
+//         (checklists.js, deriveChecklists), the compiled rules file (rules.js,
+//         compileRules), a Geometry (point lookups on outlines, see the typedef)
+//         and the set of cached outline keys ('GeographicArea/32253').
 // Output: a Placement (see the typedef): the checklist or null with a reason,
-//         the part (France: Corsica, Mainland France), the outline to show,
-//         and the steps of the decision.
+//         the part (France: Corsica, Mainland France), the state, the outline
+//         to show, and the steps of the decision.
 // Purity: no network, no file system, no Node-only APIs, no hidden state. The
 //         same input always gives the same Placement, in Node and in the browser.
+//         Everything that needs outlines goes through the injected Geometry
+//         (which may fetch in the browser), so placeRecord is async; placeArea
+//         never calls the Geometry and stays synchronous.
 //
 // Decision order for an area (the first that applies decides):
 //  1. a manual rule for the area (rules file, manual section)
@@ -30,7 +34,41 @@
 //  5. an overlap rule for the area (rules file, overlap section)
 //  6. otherwise not placeable, with the reason
 // Then the part of the checklist (France) and the outline.
+//
+// Decision order for a specimen or field occurrence (placeRecord):
+//  1. a checklist of its own: a word of its `names` is in the DwC country,
+//     stateProvince or county (France + stateProvince French Guiana)
+//  2. the DwC country (TaxonWorks computes it from the georeference or the
+//     collecting event's area), through the synonyms of the rules file; a DwC
+//     country without checklist is not placeable ('no checklist for Kosovo')
+//  3. no DwC country but coordinates: the checklist outline that contains
+//     them (Geometry.checklistsAt), when exactly one does
+//  4. otherwise not placeable: 'locality text only' or 'no locality at all'
+// Then the part (France: a part name in stateProvince or county, else the rest
+// part when stateProvince or county is given).
+//
+// The state, only for checklists with `states` (placeRecord):
+//  asserted distribution: the area's name, else its parent's name, is a state
+//    of the checklist [TaxonWorks]; else a manual or overlap rule for the area
+//    gives `state`; else no state, with the reason as a step 'no state: ...'
+//    (record is for the whole country, spans several states: <shares>, not
+//    measured yet). Never calls the Geometry for outlines, only for the names.
+//  specimen: the DwC stateProvince is a state [TaxonWorks]; else the state
+//    outline that contains the coordinates (Geometry.stateAt) [overlap]; else
+//    no state, with the reason.
+// State names are matched only against the states of the chosen checklist
+// (states.js), never against countries, so the US state Georgia never meets
+// the country Georgia.
 import { normalizeName, containsName, isCountryArea } from './areas.js'
+import { stateIndex, resolveSubdivision } from './states.js'
+
+/**
+ * Start of a `not_placeable` text that speaks about states, not countries: a
+ * rule with it (written by the measuring script for an area that lies in one
+ * country but several of its states) never decides the country, it only gives
+ * the reason for no state ('spans several states: Moscow Oblast 18%, ...').
+ */
+export const SEVERAL_STATES = 'spans several states'
 
 /**
  * @typedef {Object} Step  one sentence of an explanation
@@ -43,14 +81,36 @@ import { normalizeName, containsName, isCountryArea } from './areas.js'
  * @typedef {Object} Placement
  * @property {{ id: number|string, name: string } | null} checklist  null when not placeable
  * @property {string|null} part   part of the checklist (France: 'Corsica'), else null
- * @property {string|null} state  state or province; always null from placeArea (Task 5)
+ * @property {string|null} state  state or province (only for checklists with `states`);
+ *   always null from placeArea, filled by placeRecord
  * @property {{ key: string, name: string } | null} shape  cached outline to show,
  *   key 'GeographicArea/32253'; null when not placeable or when no outline is cached
  * @property {string|null} reason  why it is not placeable ('no outline', 'not measured
- *   yet', 'no checklist for Kosovo', 'spans several countries: ...'), null when placed
+ *   yet', 'no checklist for Kosovo', 'spans several countries: ...', 'coordinates in
+ *   several countries (Russia, Ukraine)', 'coordinates outside every outline', 'locality
+ *   text only', 'no locality at all'), null when placed
  * @property {Step[]} steps  the decision, in order
  *
- * @typedef {Object} Geometry  point lookups on outlines (implemented in Task 7 and 11)
+ * @typedef {Object} Geometry  lookups on cached outlines, injected so the engine stays
+ *   pure (the build reads files, the browser fetches; implemented in Task 7 and 11)
+ * @property {(point: [number, number]) => Promise<Array<number|string>>} checklistsAt
+ *   ids of the checklists whose outline contains the point [lng, lat]
+ * @property {(checklistId: number|string, point: [number, number]) => Promise<string|null>} stateAt
+ *   the state of that checklist whose outline contains the point, null when none
+ * @property {(checklistId: number|string) => string[]} stateNames
+ *   the state names of a checklist with `states`, [] for any other
+ *
+ * @typedef {Object} RecordInput  one record as placeRecord sees it (DwC fields as
+ *   TaxonWorks exports them; empty text counts as missing)
+ * @property {'AssertedDistribution'|'CollectionObject'|'FieldOccurrence'} type
+ * @property {number} id
+ * @property {string} [country]        DwC country
+ * @property {string} [stateProvince]  DwC stateProvince
+ * @property {string} [county]         DwC county
+ * @property {string} [locality]       DwC verbatimLocality, only to tell 'locality
+ *   text only' from 'no locality at all'
+ * @property {number|string} [lat]     DwC decimalLatitude
+ * @property {number|string} [lng]     DwC decimalLongitude
  *
  * @typedef {Object} Context  lookups made once, shared by every placement
  * @property {import('./checklists.js').Checklist[]} checklists
@@ -60,6 +120,9 @@ import { normalizeName, containsName, isCountryArea } from './areas.js'
  * @property {Map<number, import('./checklists.js').Checklist>} byAreaId  GA id to checklist
  * @property {Map<string, import('./checklists.js').Checklist>} byIso  upper case ISO code to checklist
  * @property {Map<string, import('./checklists.js').Checklist>} byName  normalized name or synonym to checklist
+ * @property {Map<number|string, import('./checklists.js').Checklist>} byId  checklist id to checklist
+ * @property {Map<number|string, import('./states.js').SubdivisionIndex>} stateIndexes  state name
+ *   index per checklist id, filled on first use from Geometry.stateNames
  */
 
 /**
@@ -67,7 +130,7 @@ import { normalizeName, containsName, isCountryArea } from './areas.js'
  * @param {Object} input
  * @param {import('./checklists.js').Checklist[]} input.checklists  from deriveChecklists
  * @param {import('./rules.js').CompiledRules} input.rules  from compileRules
- * @param {Geometry|null} [input.geometry]  point lookups, used for records (Task 5)
+ * @param {Geometry|null} [input.geometry]  outline lookups, used by placeRecord
  * @param {Set<string>} [input.shapes]  keys of cached outlines, 'GeographicArea/32253'
  * @returns {Context}
  */
@@ -75,7 +138,9 @@ export function createContext({ checklists, rules, geometry = null, shapes = new
   const byAreaId = new Map()
   const byIso = new Map()
   const byName = new Map()
+  const byId = new Map()
   for (const checklist of checklists) {
+    if (!byId.has(checklist.id)) byId.set(checklist.id, checklist)
     for (const id of checklist.areaIds) if (!byAreaId.has(id)) byAreaId.set(id, checklist)
     if (checklist.iso2 && !byIso.has(checklist.iso2.toUpperCase())) byIso.set(checklist.iso2.toUpperCase(), checklist)
     byName.set(normalizeName(checklist.name), checklist)
@@ -86,29 +151,72 @@ export function createContext({ checklists, rules, geometry = null, shapes = new
     if (!checklist) continue
     for (const name of names) if (!byName.has(normalizeName(name))) byName.set(normalizeName(name), checklist)
   }
-  return { checklists, rules, geometry, shapes, byAreaId, byIso, byName }
+  return { checklists, rules, geometry, shapes, byAreaId, byIso, byName, byId, stateIndexes: new Map() }
 }
 
 /**
- * Place an area (the place an asserted distribution points to).
+ * Place an area (the place an asserted distribution points to), without its
+ * state. Synchronous; never calls the Geometry.
  * @param {import('./areas.js').Area} area
  * @param {Context} ctx
- * @returns {Placement}
+ * @returns {Placement}  state is always null
  */
 export function placeArea(area, ctx) {
+  return finish(decideArea(area, ctx), null, ctx)
+}
+
+/**
+ * Place a record: its checklist, part and state, with the steps of the decision.
+ * An asserted distribution is placed by its area (as placeArea) and then gets
+ * its state from the area's name or a rule. A specimen or field occurrence is
+ * placed by its DwC fields, else by its coordinates (Geometry.checklistsAt), and
+ * gets its state from DwC stateProvince, else from its coordinates
+ * (Geometry.stateAt). See the decision orders at the top of this file.
+ * @param {RecordInput} record
+ * @param {Context} ctx
+ * @param {import('./areas.js').Area} [area]  the area of an asserted distribution (required for one)
+ * @returns {Promise<Placement>}
+ * @throws {Error} for an asserted distribution without its area
+ * @example
+ *   await placeRecord({ type: 'CollectionObject', id: 5, country: 'United Republic of Tanzania' }, ctx)
+ *   // checklist Tanzania; steps: 'DwC country is United Republic of Tanzania' [TaxonWorks],
+ *   // 'United Republic of Tanzania is a spelling of Tanzania' [manual, placement.yml:110]
+ */
+export async function placeRecord(record, ctx, area) {
+  if (record.type === 'AssertedDistribution') {
+    if (!area) throw new Error(`placeRecord: asserted distribution ${record.id} needs its area`)
+    const decision = decideArea(area, ctx)
+    const state = decision.checklist ? areaState(area, decision.checklist, ctx, decision.steps) : null
+    return finish(decision, state, ctx)
+  }
+  const point = pointOf(record)
+  const decision = await decideRecord(record, point, ctx)
+  if (!decision.checklist) return finish(decision, null, ctx)
+  decision.part = decision.part ?? recordPart(record, decision.checklist, ctx, decision.steps)
+  const state = await recordState(record, point, decision.checklist, ctx, decision.steps)
+  return finish(decision, state, ctx)
+}
+
+// The checklist and part of an area, with steps.
+function decideArea(area, ctx) {
   const decision = decide(area, ctx)
+  if (decision.checklist) decision.part = decision.part ?? choosePart(area, decision.checklist, ctx, decision.steps)
+  return decision
+}
+
+// A decision turned into a Placement: the outline, and its step when none is cached.
+function finish(decision, state, ctx) {
   const steps = decision.steps
   if (!decision.checklist) {
     return { checklist: null, part: null, state: null, shape: null, reason: decision.reason, steps }
   }
-  const checklist = decision.checklist
-  const part = decision.part ?? choosePart(area, checklist, ctx, steps)
+  const { checklist, part } = decision
   const shape = chooseShape(checklist, part, ctx)
   if (!shape) steps.push({ text: `no outline cached for ${checklist.name}`, source: 'TaxonWorks' })
   return {
     checklist: { id: checklist.id, name: checklist.name },
     part,
-    state: null,
+    state: state || null,
     shape,
     reason: null,
     steps
@@ -153,31 +261,49 @@ function decide(area, ctx) {
   }])
 }
 
-// First rule of a section whose every match field fits the area.
+// First rule of a section that decides the country of the area (rules that
+// only say "spans several states" never do).
 function findRule(rules, area) {
-  return rules.find(({ match }) => {
-    if (match.area && match.area !== area.key) return false
-    if (match.tdwg && match.tdwg !== area.tdwg) return false
-    if (match.iso2 && match.iso2.toUpperCase() !== (area.iso2 ?? '').toUpperCase()) return false
-    if (match.gazetteerPrefix &&
-      !(area.kind === 'GZ' && normalizeName(area.name).startsWith(normalizeName(match.gazetteerPrefix)))) return false
-    return true
-  }) ?? null
+  return rules.find((rule) => !isStateRule(rule) && ruleMatches(rule, area)) ?? null
+}
+
+// Does every match field of the rule fit the area?
+function ruleMatches({ match }, area) {
+  if (match.area && match.area !== area.key) return false
+  if (match.tdwg && match.tdwg !== area.tdwg) return false
+  if (match.iso2 && match.iso2.toUpperCase() !== (area.iso2 ?? '').toUpperCase()) return false
+  if (match.gazetteerPrefix &&
+    !(area.kind === 'GZ' && normalizeName(area.name).startsWith(normalizeName(match.gazetteerPrefix)))) return false
+  return true
+}
+
+function isStateRule(rule) {
+  return normalizeName(rule.action.notPlaceable).startsWith(SEVERAL_STATES)
+}
+
+// A step citing a rule: its line, and for an overlap rule its measured share.
+function ruleStep(rule, source, text) {
+  return {
+    text,
+    source,
+    ref: rule.ref,
+    ...(source === 'overlap' && rule.pct !== undefined ? { pct: rule.pct } : {})
+  }
+}
+
+// 'Indonesia 72%, Malaysia 28%': the measured shares without the date.
+function sharesOf(rule) {
+  return rule.measured ? rule.measured.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '') : ''
 }
 
 // A manual or overlap rule turned into a decision. `suffix` ends the step text.
 function applyRule(rule, source, area, ctx, suffix) {
-  const step = (text) => ({
-    text: text + suffix,
-    source,
-    ref: rule.ref,
-    ...(source === 'overlap' && rule.pct !== undefined ? { pct: rule.pct } : {})
-  })
+  const step = (text) => ruleStep(rule, source, text + suffix)
   const why = rule.why ? ` (${rule.why})` : ''
   const { action } = rule
 
   if (action.notPlaceable) {
-    const shares = rule.measured ? rule.measured.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '') : ''
+    const shares = sharesOf(rule)
     const reason = shares ? `${action.notPlaceable}: ${shares}` : action.notPlaceable
     return notPlaced(reason, [step(`${area.name} ${reason}${why}`)])
   }
@@ -266,9 +392,7 @@ function byTaxonWorksCountry(area, ctx) {
     }
     const country = { text: `${area.name} (GA ${area.id}) is a country`, source: 'TaxonWorks' }
     if (normalizeName(area.name) === normalizeName(checklist.name)) return placed(checklist, [country])
-    const synonym = ctx.rules.synonyms.find(({ names }) =>
-      names.some((n) => normalizeName(n) === normalizeName(area.name)) &&
-      names.some((n) => normalizeName(n) === normalizeName(checklist.name)))
+    const synonym = synonymLine(ctx, area.name, checklist.name)
     if (synonym) {
       return placed(checklist, [country,
         { text: `${area.name} is a spelling of ${checklist.name}`, source: 'manual', ref: synonym.ref }])
@@ -284,6 +408,184 @@ function byTaxonWorksCountry(area, ctx) {
     text: `${area.name} is a subdivision of ${area.parentName} (GA ${area.parentId})${which}`,
     source: 'TaxonWorks'
   }])
+}
+
+// The synonym line of the rules file that lists both names, or null.
+function synonymLine(ctx, name, checklistName) {
+  return ctx.rules.synonyms.find(({ names }) =>
+    names.some((n) => normalizeName(n) === normalizeName(name)) &&
+    names.some((n) => normalizeName(n) === normalizeName(checklistName))) ?? null
+}
+
+// The decision for a specimen or field occurrence (order at the top of the file).
+async function decideRecord(record, point, ctx) {
+  // 1. A checklist of its own, by a name in the DwC country, stateProvince or county.
+  const fields = [['country', text(record.country)], ['stateProvince', text(record.stateProvince)], ['county', text(record.county)]]
+  for (const entry of ctx.rules.checklists) {
+    const checklist = ctx.byName.get(normalizeName(entry.name))
+    if (!checklist) continue
+    for (const [field, value] of fields) {
+      const name = value && entry.names.find((n) => containsName(value, n))
+      if (name) {
+        return placed(checklist, [{
+          text: `DwC ${field} ${value} contains the name ${name} of the checklist ${checklist.name}`,
+          source: 'manual',
+          ref: entry.ref
+        }])
+      }
+    }
+  }
+
+  // 2. The DwC country, matched against checklist names and synonyms only.
+  const country = text(record.country)
+  if (country) {
+    const checklist = ctx.byName.get(normalizeName(country))
+    if (!checklist) {
+      return notPlaced(`no checklist for ${country}`, [{ text: `DwC country is ${country}, which has no checklist`, source: 'TaxonWorks' }])
+    }
+    const steps = [{ text: `DwC country is ${country}`, source: 'TaxonWorks' }]
+    if (normalizeName(country) !== normalizeName(checklist.name)) {
+      const synonym = synonymLine(ctx, country, checklist.name)
+      steps.push({ text: `${country} is a spelling of ${checklist.name}`, source: 'manual', ...(synonym ? { ref: synonym.ref } : {}) })
+    }
+    return placed(checklist, steps)
+  }
+
+  // 3. The coordinates, inside exactly one checklist outline.
+  if (point) {
+    const where = `coordinates ${point.lat}, ${point.lng}`
+    if (!ctx.geometry) {
+      return notPlaced('coordinates not checked', [{ text: `${where} were not checked: no outlines given`, source: 'overlap' }])
+    }
+    const ids = await ctx.geometry.checklistsAt([point.lng, point.lat])
+    const hits = [...new Set(ids.map((id) => ctx.byId.get(id)).filter(Boolean))]
+    if (hits.length === 1) return placed(hits[0], [{ text: `${where} lie inside ${hits[0].name}`, source: 'overlap' }])
+    if (hits.length > 1) {
+      const names = hits.map((checklist) => checklist.name).sort((a, b) => a.localeCompare(b)).join(', ')
+      return notPlaced(`coordinates in several countries (${names})`, [{ text: `${where} lie inside ${names}`, source: 'overlap' }])
+    }
+    return notPlaced('coordinates outside every outline', [{ text: `${where} lie outside every checklist outline`, source: 'overlap' }])
+  }
+
+  // 4. Nothing to place it by.
+  if (text(record.locality)) {
+    return notPlaced('locality text only', [{ text: 'no DwC country and no coordinates, only locality text', source: 'TaxonWorks' }])
+  }
+  return notPlaced('no locality at all', [{ text: 'no DwC country, no coordinates and no locality', source: 'TaxonWorks' }])
+}
+
+// The part of a record's checklist (France), by a part name in its DwC
+// stateProvince or county, else the rest part when either is given.
+function recordPart(record, checklist, ctx, steps) {
+  const parts = ctx.rules.parts[checklist.name]
+  if (!parts) return null
+  const fields = [['stateProvince', text(record.stateProvince)], ['county', text(record.county)]]
+  for (const part of parts) {
+    for (const [field, value] of fields) {
+      const name = value && part.names.find((n) => containsName(value, n))
+      if (name) {
+        steps.push({ text: `DwC ${field} ${value} carries the name ${name} of the part ${part.name}`, source: 'manual', ref: part.ref })
+        return part.name
+      }
+    }
+  }
+  const below = fields.find(([, value]) => value)
+  const rest = parts.find((part) => part.rest)
+  if (below && rest) {
+    steps.push({ text: `DwC ${below[0]} ${below[1]} is below country level, so it goes to the part ${rest.name}`, source: 'manual', ref: rest.ref })
+    return rest.name
+  }
+  return null
+}
+
+// The state of an asserted distribution's area, adding its step; null when none.
+function areaState(area, checklist, ctx, steps) {
+  if (!checklist.states) return null
+  const index = statesOf(checklist, ctx)
+  const own = resolveSubdivision(index, area.name)
+  if (own) {
+    steps.push({ text: `${label(area)} is the state ${own}`, source: 'TaxonWorks' })
+    return own
+  }
+  const fromParent = area.parentName ? resolveSubdivision(index, area.parentName) : ''
+  if (fromParent) {
+    const parentKey = area.parentId != null ? ` (GA ${area.parentId})` : ''
+    steps.push({ text: `${area.name} is a subdivision of ${area.parentName}${parentKey}, the state ${fromParent}`, source: 'TaxonWorks' })
+    return fromParent
+  }
+  const sections = [[ctx.rules.manual, 'manual'], [ctx.rules.overlap, 'overlap']]
+  for (const [rules, source] of sections) {
+    for (const rule of rules) {
+      const sub = rule.action.subdivisionOf
+      if (!sub?.state || !ruleMatches(rule, area) || ctx.byName.get(normalizeName(sub.country)) !== checklist) continue
+      const state = resolveSubdivision(index, sub.state) || sub.state
+      const why = rule.why ? ` (${rule.why})` : ''
+      steps.push(ruleStep(rule, source, `${label(area)} ${source === 'overlap' ? 'lies in' : 'counts as'} the state ${state}${why}`))
+      return state
+    }
+  }
+  if (area.kind === 'GA' && checklist.areaIds.includes(area.id)) {
+    steps.push({ text: 'no state: record is for the whole country', source: 'TaxonWorks' })
+    return null
+  }
+  for (const [rules, source] of sections) {
+    const spans = rules.find((rule) => isStateRule(rule) && ruleMatches(rule, area))
+    if (spans) {
+      const shares = sharesOf(spans)
+      steps.push(ruleStep(spans, source, `no state: ${SEVERAL_STATES}${shares ? `: ${shares}` : ''}`))
+      return null
+    }
+  }
+  steps.push({ text: 'no state: not measured yet', source: 'TaxonWorks' })
+  return null
+}
+
+// The state of a specimen or field occurrence, adding its step; null when none.
+async function recordState(record, point, checklist, ctx, steps) {
+  if (!checklist.states) return null
+  const province = text(record.stateProvince)
+  const named = province ? resolveSubdivision(statesOf(checklist, ctx), province) : ''
+  if (named) {
+    steps.push({ text: `DwC stateProvince ${province} is the state ${named}`, source: 'TaxonWorks' })
+    return named
+  }
+  if (point && ctx.geometry) {
+    const where = `coordinates ${point.lat}, ${point.lng}`
+    const state = await ctx.geometry.stateAt(checklist.id, [point.lng, point.lat])
+    if (state) {
+      steps.push({ text: `${where} lie inside the state ${state}`, source: 'overlap' })
+      return state
+    }
+    steps.push({ text: `no state: ${where} lie in no state outline of ${checklist.name}`, source: 'overlap' })
+    return null
+  }
+  steps.push({
+    text: province ? `no state: ${province} is not a state of ${checklist.name}` : 'no state: no DwC stateProvince and no coordinates',
+    source: 'TaxonWorks'
+  })
+  return null
+}
+
+// The state name index of a checklist, built once per context.
+function statesOf(checklist, ctx) {
+  if (!ctx.stateIndexes.has(checklist.id)) {
+    ctx.stateIndexes.set(checklist.id, stateIndex(ctx.geometry?.stateNames(checklist.id) ?? []))
+  }
+  return ctx.stateIndexes.get(checklist.id)
+}
+
+// { lat, lng } as numbers when the record has both, else null.
+function pointOf(record) {
+  const lat = text(record.lat)
+  const lng = text(record.lng)
+  if (!lat || !lng) return null
+  const point = { lat: Number(lat), lng: Number(lng) }
+  return Number.isFinite(point.lat) && Number.isFinite(point.lng) ? point : null
+}
+
+// Trimmed text, '' for null and undefined.
+function text(value) {
+  return value == null ? '' : String(value).trim()
 }
 
 // The part of a checklist with parts (France), adding its step; null when none fits.

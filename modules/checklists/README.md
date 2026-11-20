@@ -19,7 +19,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
 - `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
-- `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`, `format.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `states.js` also serves the page's state drill-down, `format.js` writes a decision as text.
+- `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`, `format.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `format.js` writes a decision as text.
 - `DESIGN.md`, `PLAN.md`: design and implementation plan.
 
 ## Data
@@ -81,8 +81,14 @@ serves the checklist Saint Barthélemy; index.json `fallback` names the feature
 the page draws. The script lists countries that have neither. A checklist filed under another country
 (index.json `of`: French Guiana under France) is cut out of that country's
 outline on the world map: polygons of the country whose centre lies in the
-own checklist's `bbox` are dropped. The state/province drill-down still uses
-`public/checklists/subdivisions.geojson` (Natural Earth).
+own checklist's `bbox` are dropped. The state/province drill-down draws the
+states from `public/checklists/subdivisions.geojson` (Natural Earth) and the
+parts of France from their cached outlines. Which state or part a record
+belongs to is not worked out on the page: the region dropdown, its counts and
+the downloads read the `state` and `part` the build wrote into each record,
+so the page and the explanations of curator mode always agree. A record
+without one counts for the country only. The page no longer loads
+`rules.json`.
 
 ## How checklists are formed
 

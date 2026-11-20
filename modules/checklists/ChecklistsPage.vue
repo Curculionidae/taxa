@@ -596,7 +596,6 @@
 // as --pp-checklist-* tokens in the aggregate-map green (modules/checklists/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { buildSubdivisionIndex, resolveSubdivision } from './placement/states.js'
 import { expandChecklist } from './data/compact.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
@@ -677,7 +676,6 @@ const mapError = ref('')
 const selectedCountry = ref('')
 const selectedRegion = ref('')
 const subdivisionGeoJson = ref(null)
-const ignoredNameWords = ref([])
 let subdivisionLayer = null
 let subdivisionLayerCountryKey = ''
 const subdivisionsShown = ref(false)
@@ -1371,17 +1369,11 @@ const countrySubdivisions = computed(() => {
   return subdivisionGeoJson.value.features.filter((feature) => countryKey(feature.properties.country) === key)
 })
 
-const subdivisionIndex = computed(() => (
-  !countryParts.value && countrySubdivisions.value.length
-    ? buildSubdivisionIndex(countrySubdivisions.value, ignoredNameWords.value)
-    : null
-))
-
+// The part (France) or state the placement engine decided, written into the
+// cache; the page does no name matching of its own. A record without one
+// counts for the country only.
 function recordRegion(record) {
-  if (countryParts.value) return record.part || ''
-  if (!subdivisionIndex.value) return ''
-  const shapeName = distributionPlacesByOccurrence.value.get(occurrenceKey(record))
-  return resolveSubdivision(subdivisionIndex.value, record.stateProvince, shapeName, record.county)
+  return (countryParts.value ? record.part : record.state) || ''
 }
 
 const scopedRows = computed(() => (
@@ -1432,12 +1424,6 @@ const displayedSpeciesCount = computed(() => {
 
 async function loadSubdivisions() {
   if (subdivisionGeoJson.value) return
-  // The words a state name may carry beyond the state's own name (rules file
-  // ignored_name_words, in rules.json); without them only exact names and
-  // Natural Earth aliases match.
-  fetchJson(`${base_url}checklists/rules.json`)
-    .then((rules) => { ignoredNameWords.value = rules.ignoredNameWords?.words ?? [] })
-    .catch(() => {})
   try {
     const response = await fetch(`${base_url}checklists/subdivisions.geojson`)
     if (!response.ok) throw new Error('Could not load subdivision boundaries.')
@@ -1857,7 +1843,7 @@ function distributionPlace(record) {
   const country = String(record.country || mapSelectionName.value).trim()
   const shapeName = plainText(distributionPlacesByOccurrence.value.get(occurrenceKey(record)) || '')
   // A distribution asserted for a biological association names it, in the
-  // label only (the place stays the lookup key for the region):
+  // label only:
   // "Greece (egg: Lixus bidens collected from stem: Opopanax)".
   if (record.association) return `${shapeName || country} (${plainText(record.association)})`
   if (shapeName && countryKey(shapeName) !== countryKey(country)) return shapeName

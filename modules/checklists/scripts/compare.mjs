@@ -9,7 +9,12 @@
 //   <new dir>   the cache of the placement engine (default public/checklists)
 //   --from      the saved TaxonWorks data the new cache was built from
 //               (default modules/checklists/.cache/data)
+//   --out <f>   the report file (default modules/checklists/.cache/compare.md);
+//               the full list goes beside it as <f without .md>-full.md
 //   A folder is read relative to the working directory, else to modules/checklists/.
+//   Either cache may be in the old format (country files <id>.json, no states)
+//   or the engine's (index.json `file`, records with `state`):
+//   compareCaches.mjs cacheEntries reads both.
 //
 // Inputs: both caches (index.json and countries/*.json; the old one also
 // subdivisions.geojson, the new one unplaced.json), the saved TaxonWorks data
@@ -17,8 +22,8 @@
 // data with that rules file (npm run checklists -- --from), so the
 // explanations here are the ones that put the records where they are.
 //
-// Outputs: modules/checklists/.cache/compare.md (counts, every group of
-// changes, at most 20 records per group with their placement text) and
+// Outputs: modules/checklists/.cache/compare.md (or --out; counts, every group
+// of changes, at most 20 records per group with their placement text) and
 // compare-full.md beside it (every changed record, every file rename).
 //
 // How records are compared: by "<dwc_occurrence_object_type>:<id>". A
@@ -34,10 +39,11 @@
 // prints the steps. A record no longer placed shows the reason from
 // unplaced.json, or why the build leaves it out (screenRow).
 //
-// How old states are reproduced: the old cache stored no state; its page
-// worked one out while showing a country (oldState in compareCaches.mjs: the
-// record's stateProvince, the place of its distribution, then its county,
-// matched against the old subdivisions.geojson). That is compared with the
+// How old states are reproduced: the old build's cache stored no state; its
+// page worked one out while showing a country (oldState in compareCaches.mjs:
+// the record's stateProvince, the place of its distribution, then its county,
+// matched against the old subdivisions.geojson). An engine cache as the old
+// side stores `state`, which is used as is. Either is compared with the
 // `state` the new cache stores.
 //
 // How TaxonWorks edits are told apart from rule changes: the old data was
@@ -54,20 +60,22 @@ import { formatPlacement } from '../placement/format.js'
 import { loadBuildContext, KIND } from './buildContext.mjs'
 import { decidingStep } from './cacheFiles.mjs'
 import {
-  oldStateIndexes, oldState, recordKey, pairEntries, classifyPair, oldToNewNames, changedInTaxonWorks, groupBy
+  oldStateIndexes, oldState, pairEntries, classifyPair, oldToNewNames, changedInTaxonWorks, groupBy, cacheEntries
 } from './compareCaches.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const MODULE = join(ROOT, 'modules/checklists/')
-const OUT = join(MODULE, '.cache/compare.md')
-const OUT_FULL = join(MODULE, '.cache/compare-full.md')
+const outIndex = process.argv.indexOf('--out')
+const OUT = outIndex >= 0 ? resolve(process.argv[outIndex + 1]) : join(MODULE, '.cache/compare.md')
+const OUT_FULL = OUT.replace(/\.md$/, '') + '-full.md'
 const CAP = 20
 const TYPE = Object.fromEntries(Object.entries(KIND).map(([type, kind]) => [kind, type]))
 
 const args = process.argv.slice(2)
 const fromIndex = args.indexOf('--from')
 const dataArg = fromIndex >= 0 ? args[fromIndex + 1] : '.cache/data'
-const positional = args.filter((arg, index) => !arg.startsWith('--') && (fromIndex < 0 || index !== fromIndex + 1))
+const valueIndexes = new Set([fromIndex, args.indexOf('--out')].filter((index) => index >= 0).map((index) => index + 1))
+const positional = args.filter((arg, index) => !arg.startsWith('--') && !valueIndexes.has(index))
 const folder = (path) => (existsSync(resolve(path)) ? resolve(path) : join(MODULE, path))
 const oldDir = folder(positional[0] ?? '.cache/old')
 const newDir = positional[1] ? folder(positional[1]) : join(ROOT, 'public/checklists')
@@ -76,7 +84,9 @@ const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'))
 
 // The old cache.
 const oldIndex = readJson(join(oldDir, 'index.json'))
-const stateIndexes = oldStateIndexes(readJson(join(oldDir, 'subdivisions.geojson')).features)
+// Needed only for an old-format cache (no stored states).
+const oldSubdivisions = join(oldDir, 'subdivisions.geojson')
+const stateIndexes = oldStateIndexes(existsSync(oldSubdivisions) ? readJson(oldSubdivisions).features : [])
 const oldDownload = new Date(`${oldIndex.updated}T00:00:00`) // local start of the old download day
 
 // The new cache and the build context it came from.
@@ -95,27 +105,14 @@ const slot = (key) => {
   if (!byKey.has(key)) byKey.set(key, { olds: [], news: [] })
   return byKey.get(key)
 }
-for (const country of oldIndex.countries) {
-  const file = `${country.id}.json`
-  for (const record of expandChecklist(readJson(join(oldDir, 'countries', file)))) {
-    const key = recordKey(record)
-    slot(key).olds.push({
-      key,
-      otu: record.otu_id,
-      oldName: country.name,
-      checklist: nameMap.get(country.name) ?? `${country.name} (no longer a checklist)`,
-      part: record.part || '',
-      state: oldState(record, country.name, stateIndexes, Boolean(country.parts)),
-      record
-    })
-  }
-}
-for (const country of newIndex.countries) {
-  for (const record of expandChecklist(readJson(join(newDir, 'countries', country.file)))) {
-    const key = recordKey(record)
-    slot(key).news.push({ key, otu: record.otu_id, checklist: country.name, part: record.part || '', state: record.state || '', record })
-  }
-}
+// Either cache format (compareCaches.mjs cacheEntries): the old build's files
+// are <id>.json without states, the engine's are named in `file` and store `state`.
+const recordsIn = (dir) => (file) => expandChecklist(readJson(join(dir, 'countries', file)))
+for (const entry of cacheEntries(oldIndex, recordsIn(oldDir), {
+  checklistOf: (name) => nameMap.get(name) ?? `${name} (no longer a checklist)`,
+  oldStateOf: (record, country) => oldState(record, country.name, stateIndexes, Boolean(country.parts))
+})) slot(entry.key).olds.push(entry)
+for (const entry of cacheEntries(newIndex, recordsIn(newDir))) slot(entry.key).news.push(entry)
 
 // Classify every pair.
 const counts = { same: 0, moved: 0, 'newly placed': 0, 'no longer placed': 0, gone: 0, partChanged: 0, stateChanged: 0, newInTw: 0 }
@@ -273,10 +270,15 @@ const oldInputNote = (items) => {
 
 const total = (status) => counts[status]
 md.push('# Country checklists: old cache and new cache compared', '')
+const oldIsEngine = oldIndex.countries.some((country) => country.file)
 md.push(
-  `This report compares, record by record, the country checklists as they are online now (the old cache, built by the old hard-coded build from TaxonWorks data downloaded on ${oldIndex.updated} and committed on 2026-11-19) with the checklists the new placement engine builds (from TaxonWorks data downloaded on ${dataDate}, with the rules in modules/checklists/rules/placement.yml).`,
+  oldIsEngine
+    ? `This report compares, record by record, two caches of the placement engine: the old one (built on ${oldIndex.updated}) and the new one (from TaxonWorks data downloaded on ${dataDate}, with the rules in modules/checklists/rules/placement.yml as they are now). Both store their states, so states are compared as stored. Changes of the explanation text alone do not count; only the checklist, part and state of a record do.`
+    : `This report compares, record by record, the country checklists as they are online now (the old cache, built by the old hard-coded build from TaxonWorks data downloaded on ${oldIndex.updated} and committed on 2026-11-19) with the checklists the new placement engine builds (from TaxonWorks data downloaded on ${dataDate}, with the rules in modules/checklists/rules/placement.yml).`,
   '',
-  'A record is one asserted distribution, specimen or field occurrence. For each one the report says whether it stays in the same checklist, moves to another, is newly placed, or is no longer placed; for France whether its part (Corsica, Mainland France) changed; for the six countries with states whether its state changed. The old page worked states out while showing a country; that old result is reproduced here and compared with the state the new cache stores.',
+  oldIsEngine
+    ? 'A record is one asserted distribution, specimen or field occurrence. For each one the report says whether it stays in the same checklist, moves to another, is newly placed, or is no longer placed; for France whether its part changed; for the checklists with states whether its state changed.'
+    : 'A record is one asserted distribution, specimen or field occurrence. For each one the report says whether it stays in the same checklist, moves to another, is newly placed, or is no longer placed; for France whether its part (Corsica, Mainland France) changed; for the six countries with states whether its state changed. The old page worked states out while showing a country; that old result is reproduced here and compared with the state the new cache stores.',
   '',
   `Not every difference comes from the new rules: TaxonWorks itself changed between ${oldIndex.updated} and ${dataDate}. A record created in TaxonWorks after the old download is marked "new in TaxonWorks", one edited after it "edited in TaxonWorks" (by the dates TaxonWorks gives for the DwC record and the asserted distribution). A record of the old cache that is nowhere in the new data was deleted in TaxonWorks (or lost its DwC record). Every other change comes from the rules, and every changed record is shown with the steps that placed it now.`,
   ''
@@ -314,7 +316,13 @@ section('No longer placed, by reason', groupBy(noLonger, (item) => `${item.reaso
   intro: 'Records still in TaxonWorks that the new build leaves out of every checklist.'
 })
 section('Part changed (France)', groupBy(partChanges, (item) => `${item.old.part || 'no part'} to ${item.now.part || 'no part'}`))
-section('State changed', groupBy(stateChanges, (item) => `${item.now.checklist}: ${item.old.state || 'no state'} to ${item.now.state || 'no state'}`), {
+// A checklist no longer browsed by state (index.json `states` false, R50):
+// all its records lose their state, listed as one group.
+const statesNow = new Map(newIndex.countries.map((country) => [country.name, country.states]))
+const stateLabel = (item) => (statesNow.get(item.now.checklist) === false && !item.now.state
+  ? `${item.now.checklist}: no states any more (no longer in state_countries), every state dropped`
+  : `${item.now.checklist}: ${item.old.state || 'no state'} to ${item.now.state || 'no state'}`)
+section('State changed', groupBy(stateChanges, stateLabel), {
   intro: 'Records that stay in their checklist but are shown under another state (or under a state for the first time). The old state is what the old page worked out from stateProvince, the place name of the distribution and the county.'
 })
 

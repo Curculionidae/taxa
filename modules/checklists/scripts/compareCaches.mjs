@@ -192,3 +192,32 @@ export function groupBy(items, labelOf) {
   }
   return [...groups].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'en'))
 }
+
+/**
+ * The entries of one cache, either format: the old hard-coded build (country
+ * files named by area id, `<id>.json`, no `file` field, no stored state) and
+ * the placement engine's (`country.file`, `record.state`). The file is
+ * `country.file`, else `${country.id}.json`; the state is `record.state` when
+ * the cache stores one, else, for the old format only, `oldStateOf` (the old
+ * page's state, oldState). A new-format cache whose record has no state has
+ * none ('').
+ * @param {{ countries: { name: string, id?: number, file?: string, parts?: any }[] }} index  index.json
+ * @param {(file: string) => Object[]} recordsOf  the expanded records of countries/<file>
+ * @param {Object} [options]
+ * @param {(name: string) => string} [options.checklistOf]  the name to compare by (oldToNewNames), default the name itself
+ * @param {(record: Object, country: Object) => string} [options.oldStateOf]  the state of an old-format record
+ * @returns {{ key: string, otu: any, oldName: string, checklist: string, part: string, state: string, record: Object }[]}
+ */
+export function cacheEntries(index, recordsOf, { checklistOf = (name) => name, oldStateOf = () => '' } = {}) {
+  const entries = []
+  for (const country of index.countries) {
+    const newFormat = Boolean(country.file)
+    const file = country.file ?? `${country.id}.json`
+    for (const record of recordsOf(file)) {
+      const key = recordKey(record)
+      const state = newFormat || 'state' in record ? (record.state || '') : oldStateOf(record, country)
+      entries.push({ key, otu: record.otu_id, oldName: country.name, checklist: checklistOf(country.name), part: record.part || '', state, record })
+    }
+  }
+  return entries
+}

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   oldCountryKey, oldStateIndexes, oldState, recordKey, pairEntries, classifyPair, oldToNewNames,
-  changedInTaxonWorks, groupBy
+  changedInTaxonWorks, groupBy, cacheEntries
 } from './compareCaches.mjs'
 import { decidingStep } from './cacheFiles.mjs'
 
@@ -114,4 +114,28 @@ test('decidingStep: the step about the checklist, not the state', () => {
     ]
   }
   assert.equal(decidingStep(placement).text, 'Central European Russia (TDWG 14RUC) lies in Russia')
+})
+
+test('cacheEntries: an old-format cache (files <id>.json, no state) gets the old page state', () => {
+  const index = { countries: [{ id: 237, name: 'United States' }] }
+  const files = { '237.json': [{ dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: 5, otu_id: 1, stateProvince: 'Texas' }] }
+  const asked = []
+  const entries = cacheEntries(index, (file) => { asked.push(file); return files[file] }, {
+    checklistOf: (name) => `${name}!`,
+    oldStateOf: (record) => record.stateProvince
+  })
+  assert.deepEqual(asked, ['237.json'])
+  assert.deepEqual(entries.map(({ key, checklist, oldName, state, part }) => ({ key, checklist, oldName, state, part })),
+    [{ key: 'CollectionObject:5', checklist: 'United States!', oldName: 'United States', state: 'Texas', part: '' }])
+})
+
+test('cacheEntries: an engine cache (file, stored state) uses record.state, also when it has none', () => {
+  const index = { countries: [{ name: 'United States', file: 'united-states.json' }, { name: 'United Kingdom', file: 'united-kingdom.json' }] }
+  const files = {
+    'united-states.json': [{ dwc_occurrence_object_type: 'AssertedDistribution', dwc_occurrence_object_id: 7, otu_id: 2, state: 'Hawaii' }],
+    'united-kingdom.json': [{ dwc_occurrence_object_type: 'AssertedDistribution', dwc_occurrence_object_id: 8, otu_id: 2, stateProvince: 'Cornwall' }]
+  }
+  const entries = cacheEntries(index, (file) => files[file], { oldStateOf: () => 'never asked' })
+  assert.deepEqual(entries.map(({ key, checklist, state }) => [key, checklist, state]),
+    [['AssertedDistribution:7', 'United States', 'Hawaii'], ['AssertedDistribution:8', 'United Kingdom', '']])
 })

@@ -146,6 +146,10 @@ manual:
   - match: { tdwg: 10IRE-NI }
     subdivision_of: { country: United Kingdom }
     why: TaxonWorks DwC says Ireland (its name match climbs to TDWG Ireland)
+  # Areas whose cached TaxonWorks outline is wrong
+  - match: { area: GA 20379 }
+    subdivision_of: { country: Russia, state: Chukchi Autonomous Okrug }
+    why: the cached TaxonWorks outline of Chukot also covers Yakutia; fix the shape in TaxonWorks
 
 overlap:
   - match: { tdwg: 12FRA }   # GA 33696 France (TDWG Level 3 12FRA), 867 records
@@ -212,9 +216,6 @@ overlap:
   - match: { tdwg: 13YUG }   # GA 33964 Yugoslavia (TDWG Level 3 13YUG), 7 records
     not_placeable: spans several countries
     measured: "Serbia 30%, Croatia 24%, Bosnia and Herzegovina 21%, North Macedonia 10% (2026-11-20)"
-  - match: { tdwg: 29COM-MA }   # GA 34156 Mayotte (TDWG Level 4 29COM-MA), 7 records
-    not_placeable: spans several countries
-    measured: "Mayotte 55%, France 45% (2026-11-20)"
   - match: { tdwg: 50NFK-LH }   # GA 34374 Lord Howe I. (TDWG Level 4 50NFK-LH), 7 records
     subdivision_of: { country: "Australia" }
     measured: "Australia 100% (2026-11-20)"
@@ -239,9 +240,6 @@ overlap:
   - match: { tdwg: 8 }   # GA 33546 Southern America (TDWG Level 1 8), 5 records
     not_placeable: spans several countries
     measured: "Brazil 44%, Argentina 18%, Peru 7%, Colombia 6% (2026-11-20)"
-  - match: { tdwg: 81LEE-GU }   # GA 34212 Guadeloupe (TDWG Level 4 81LEE-GU), 5 records
-    not_placeable: spans several countries
-    measured: "France 50%, Guadeloupe 50% (2026-11-20)"
   - match: { tdwg: 42SUL-OO }   # GA 34492 Sulawesi (TDWG Level 4 42SUL-OO), 4 records
     subdivision_of: { country: "Indonesia" }
     measured: "Indonesia 100% (2026-11-20)"
@@ -323,9 +321,6 @@ overlap:
   - match: { tdwg: 13ITA }   # GA 33750 Italy (TDWG Level 3 13ITA), 2 records
     subdivision_of: { country: "Italy" }
     measured: "Italy 100% (2026-11-20)"
-  - match: { tdwg: 81WIN-MA }   # GA 34557 Martinique (TDWG Level 4 81WIN-MA), 2 records
-    not_placeable: spans several countries
-    measured: "France 50%, Martinique 50% (2026-11-20)"
   - match: { tdwg: 62MRN }   # GA 33814 Marianas (TDWG Level 3 62MRN), 2 records
     subdivision_of: { country: "Guam" }
     measured: "Guam 100% (2026-11-20)"
@@ -411,9 +406,6 @@ overlap:
   - match: { tdwg: 40IND-DE }   # GA 34247 Delhi (TDWG Level 4 40IND-DE), 1 records
     subdivision_of: { country: "India" }
     measured: "India 100% (2026-11-20)"
-  - match: { tdwg: 82FRG-OO }   # GA 34200 French Guiana (TDWG Level 4 82FRG-OO), 1 records
-    not_placeable: spans several countries
-    measured: "France 50%, French Guiana 50%, Brazil 0%, Suriname 0% (2026-11-20)"
   - match: { tdwg: 40WHM-UT }   # GA 34553 Uttaranchal (TDWG Level 4 40WHM-UT), 1 records
     subdivision_of: { country: "India" }
     measured: "India 98%, China 1%, Nepal 0% (2026-11-20)"
@@ -576,9 +568,6 @@ overlap:
   - match: { area: "GZ 10877" }   # GZ 10877 IBRA7: Brigalow Belt North, 7 records
     subdivision_of: { country: "Australia", state: "Queensland" }
     measured: "Queensland 100% (2026-11-20)"
-  - match: { area: "GA 20379" }   # GA 20379 Chukot, 6 records
-    subdivision_of: { country: "Russia", state: "Sakha (Yakutia)" }
-    measured: "Sakha (Yakutia) 100% (2026-11-20)"
   - match: { area: "GZ 10906" }   # GZ 10906 IBRA7: Geraldton Sandplains, 6 records
     subdivision_of: { country: "Australia", state: "Western Australia" }
     measured: "Western Australia 100% (2026-11-20)"

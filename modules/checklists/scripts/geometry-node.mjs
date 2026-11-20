@@ -44,11 +44,13 @@
 //
 // Sampling in measureShares: a regular grid of 24 x 24 points over the area's
 // bounding box, keeping the points inside the area; when fewer than 30 are
-// inside, a finer grid of 80 x 80 instead; when still none is inside (tiny or
-// degenerate outlines), the vertices of the area's outer rings (at most about
+// inside, a finer grid of 80 x 80 instead (the coarse points again if the fine
+// grid finds none); when still none is inside (tiny or degenerate outlines), the vertices of the area's outer rings (at most about
 // 400, every k-th). Each sample is tested against every target whose bounding
 // box holds it. Samples in no target are `outside` (sea, or land with no
 // outline) and do not count for the shares, so the shares are shares of land.
+// Targets that overlap without an `of` link (two outlines covering the same
+// coast) each count a sample inside both, so shares can add up to more than 100%.
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeName } from '../placement/areas.js'
@@ -315,11 +317,15 @@ function distanceTo(shape, point, limit) {
 
 // The outlines within `limit` of a point: the nearest alone, or the two
 // nearest when the second is nearly as close (less than limit / 2 further).
+// R22 is applied to every close outline first (an `of` country drops out when
+// its own checklist is close too), so France, whose outline still holds
+// French Guiana, never pushes Suriname out of the two nearest.
 function nearest(shapes, point, limit) {
-  const close = shapes
+  const within = shapes
     .map((entry) => ({ entry, distance: distanceTo(entry.shape, point, limit) }))
     .filter(({ distance }) => distance <= limit)
-    .sort((a, b) => a.distance - b.distance)
+  const kept = new Set(ownOverOf(within.map(({ entry }) => entry.target)))
+  const close = within.filter(({ entry }) => kept.has(entry.target)).sort((a, b) => a.distance - b.distance)
   if (!close.length) return []
   if (close.length > 1 && close[1].distance - close[0].distance < limit / 2) return [close[0].entry, close[1].entry]
   return [close[0].entry]
@@ -341,10 +347,11 @@ function ownOverOf(hits) {
 // Sample points of a prepared area (see the header).
 function samplesOf(area) {
   if (!area.parts.length) return { points: [], fromVertices: false }
-  for (const size of [GRID, FINE_GRID]) {
-    const points = grid(area, size)
-    if (points.length >= MIN_POINTS || (size === FINE_GRID && points.length)) return { points, fromVertices: false }
-  }
+  const coarse = grid(area, GRID)
+  if (coarse.length >= MIN_POINTS) return { points: coarse, fromVertices: false }
+  const fine = grid(area, FINE_GRID)
+  if (fine.length) return { points: fine, fromVertices: false }
+  if (coarse.length) return { points: coarse, fromVertices: false }
   const vertices = area.parts.flatMap(({ rings }) => rings[0].slice(0, -1))
   const step = Math.max(1, Math.ceil(vertices.length / MAX_VERTICES))
   return { points: vertices.filter((_, index) => index % step === 0), fromVertices: true }

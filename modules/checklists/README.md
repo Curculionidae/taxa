@@ -253,7 +253,7 @@ GA 8837 Cayenne  =>  French Guiana
 
 GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
   reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:170]
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:174]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
@@ -381,11 +381,11 @@ CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
   Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
-  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:552]
+  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:544]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
-  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:160]
-  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:495]
+  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:164]
+  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:487]
 ```
 
 The two overlap lines behind these examples, as the measuring script wrote them:
@@ -404,8 +404,8 @@ The Tanzania specimen has a DwC country that is not a checklist name, but
 the synonym line names it, so the second step cites that line. The Hawaiian
 gazetteer finds its country by its ISO code, and its name is no state name, so
 the state comes from the overlap line the measuring script wrote for it.
-Central European Russia gets its country from one overlap line (line 160,
-Russia 100%); a second line (495), `not_placeable: spans several states`,
+Central European Russia gets its country from one overlap line (line 164,
+Russia 100%); a second line (487), `not_placeable: spans several states`,
 tells why it has no state: no state holds even a fifth of it. The line
 numbers are those of the rules file on 2026-11-20; they shift when lines are
 added above.

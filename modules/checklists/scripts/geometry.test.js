@@ -66,6 +66,16 @@ test('measureShares: a sample in an own checklist and in its `of` country counts
   near(half.shares[1][1], 50)
 })
 
+test('measureShares: when the fine grid finds no point the coarse points are used', () => {
+  // Two tiny squares placed so the 24 x 24 centres hit them and the 80 x 80 centres miss.
+  // Bounding box 0..24 x 0..24: coarse centres at k + 0.5, fine centres at (k + 0.5) * 0.3.
+  const dot = (x, y) => box(x - 0.01, y - 0.01, x + 0.01, y + 0.01)[0]
+  const area = [box(0, 0, 0.0001, 0.0001)[0], box(23.9999, 23.9999, 24, 24)[0], dot(0.5, 0.5), dot(12.5, 12.5)]
+  const result = measureShares(area, [{ name: 'Land', polygons: box(-1, -1, 25, 25) }])
+  assert.equal(result.points, 2)
+  assert.deepEqual(result.shares, [['Land', 100]])
+})
+
 test('measureShares: a thin area with no grid point inside is sampled at its vertices', () => {
   // A degenerate outline (all vertices on one line): no grid point is inside.
   const sliver = [[[[0.1, 0.5], [0.9, 0.5], [0.5, 0.5], [0.1, 0.5]]]]
@@ -94,6 +104,7 @@ function fixtureDir() {
   write(join(shapeDir, 'GeographicArea', '2.json'), polygon(box(20, 0, 22, 2)))      // Réunion
   write(join(shapeDir, 'GeographicArea', '3.json'), polygon(box(8, 0, 10, 2)))       // Corsica (part)
   write(join(shapeDir, 'GeographicArea', '4.json'), polygon(box(30, 0, 40, 10)))     // Russia
+  write(join(shapeDir, 'GeographicArea', '5.json'), polygon(box(22.045, 0, 24, 2)))  // Suriname, next to Réunion
   write(join(shapeDir, 'Gazetteer', '9.json'), polygon(box(31, 1, 32, 2)))
   const fallbackFile = join(dir, 'fallback.geojson')
   write(fallbackFile, { type: 'FeatureCollection', features: [
@@ -125,7 +136,8 @@ const checklists = [
   { id: 1, name: 'France', iso2: 'FR', areaIds: [1], parts: ['Corsica', 'Mainland France'], states: false },
   { id: 4, name: 'Russia', iso2: 'RU', areaIds: [4], states: true },
   { id: 50, name: 'Spain', iso2: 'ES', areaIds: [50], states: false },
-  { id: 2, name: 'Réunion', iso2: 'RE', areaIds: [2], states: false }
+  { id: 2, name: 'Réunion', iso2: 'RE', areaIds: [2], states: false },
+  { id: 5, name: 'Suriname', iso2: 'SR', areaIds: [5], states: false }
 ]
 
 test('Node geometry: checklistsAt finds the checklist outline, own checklist over its `of` country (R22)', async (t) => {
@@ -138,6 +150,15 @@ test('Node geometry: checklistsAt finds the checklist outline, own checklist ove
   assert.deepEqual(await geometry.checklistsAt([50, 50]), [])
   assert.deepEqual(await geometry.checklistsAt([10.03, 5]), [1], 'a coastal point within 0.05 degrees')
   assert.deepEqual(await geometry.checklistsAt([10.2, 5]), [])
+})
+
+test('Node geometry: a coastal point between an own checklist and a third country is ambiguous', async (t) => {
+  const fx = fixtureDir()
+  t.after(() => rmSync(fx.dir, { recursive: true, force: true }))
+  const geometry = createNodeGeometry({ ...fx, checklists, rules })
+  // 0.02 degrees off Réunion (and off France, whose outline holds Réunion),
+  // 0.025 off Suriname: France must not push Suriname out of the two nearest.
+  assert.deepEqual((await geometry.checklistsAt([22.02, 1])).sort(), [2, 5])
 })
 
 test('Node geometry: stateAt, stateNames and partAt', async (t) => {
@@ -162,11 +183,11 @@ test('Node geometry: measuring targets and area outlines', async (t) => {
   const geometry = createNodeGeometry({ ...fx, checklists, rules })
   const targets = geometry.checklistTargets()
   assert.deepEqual(targets.map((target) => [target.name, target.of ?? null]),
-    [['France', null], ['Russia', null], ['Spain', null], ['Réunion', 'France']])
+    [['France', null], ['Russia', null], ['Spain', null], ['Réunion', 'France'], ['Suriname', null]])
   const area = geometry.areaPolygons('GZ', 9)
   assert.deepEqual(measureShares(area, targets).shares, [['Russia', 100]])
   assert.deepEqual(measureShares(area, geometry.stateTargets(4)).shares, [['Moscow', 100]])
   assert.equal(geometry.areaPolygons('GA', 777), null)
   assert.deepEqual([...listShapes(fx.shapeDir)].sort(),
-    ['Gazetteer/9', 'GeographicArea/1', 'GeographicArea/2', 'GeographicArea/3', 'GeographicArea/4'])
+    ['Gazetteer/9', 'GeographicArea/1', 'GeographicArea/2', 'GeographicArea/3', 'GeographicArea/4', 'GeographicArea/5'])
 })

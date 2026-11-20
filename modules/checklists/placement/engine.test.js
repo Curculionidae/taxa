@@ -233,7 +233,7 @@ const geometry = {
   partAt: async (id, [lng, lat]) => partsAt.get(`${id}:${lng},${lat}`) ?? null,
   stateNames: (id) => ({
     237: ['Alabama', 'Georgia', 'Hawaii', 'Texas'],
-    19713: ['Krasnoyarsk', 'Moscow Oblast', "Tver'", 'Sakha']
+    19713: ['Krasnoyarsk', 'Moscow Oblast', "Tver'", 'Sakha', 'Chukchi Autonomous Okrug']
   })[id] ?? []
 }
 const recordShapes = new Set([...shapes, 'GeographicArea/31731', 'GeographicArea/234', 'GeographicArea/81'])
@@ -375,6 +375,21 @@ test('Evenk (political) gets state Krasnoyarsk by overlap rule', async () => {
   assert.equal(placement.state, 'Krasnoyarsk')
   assert.deepEqual(sources(placement), ['TaxonWorks', 'overlap'])
   assert.equal(placement.steps[1].ref, recordRefOf('match: { area: GA 900001 }'))
+})
+
+test('Chukot (GA 20379) gets the Chukotka state from its manual rule, not from its wrong outline', async () => {
+  const chukot = { ...evenk, key: 'GA 20379', id: 20379, name: 'Chukot' }
+  const placement = await ad(chukot)
+  assert.equal(placement.checklist.name, 'Russia')
+  assert.equal(placement.state, 'Chukchi Autonomous Okrug')
+  const ref = refOf('match: { area: GA 20379 }')
+  assert.ok(placement.steps.every((step) => step.source !== 'overlap'))
+  assert.deepEqual(placement.steps.at(-1), {
+    text: 'Chukot (GA 20379) counts as the state Chukchi Autonomous Okrug (the cached TaxonWorks outline of Chukot ' +
+      'also covers Yakutia; fix the shape in TaxonWorks)',
+    source: 'manual',
+    ref
+  })
 })
 
 test('Central European Russia has no state, reason spans', async () => {

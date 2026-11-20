@@ -10,6 +10,8 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `components/ChecklistMap.vue`: the Leaflet map.
 - `data/`: map helpers, the compact file format (`compact.js` and its test), colour tokens.
 - `scripts/build.mjs`: builds the cache (`npm run checklists`, see "Building the cache"): reads the TaxonWorks data, places every record through the placement engine, writes `public/checklists/`.
+- `scripts/buildContext.mjs`: turns the TaxonWorks data into records, areas, checklists and the engine context, and places one record; shared by `build.mjs` and `compare.mjs`.
+- `scripts/compare.mjs`, `scripts/compareCaches.mjs`: compare two caches record by record and write a report for the curator (see "Comparing two caches"); the pure helpers are tested in `compareCaches.test.js`.
 - `scripts/download.mjs`: everything the build fetches from TaxonWorks, and saving or reading it as files for offline runs (`--save`, `--from`).
 - `scripts/cacheFiles.mjs`: pure helpers that shape the written files (checklist keys, the country file header, index entries, `unplaced.json`); tested in `cacheFiles.test.js`.
 - `scripts/data/country-iso.json`: ISO codes of countries whose TaxonWorks area carries none.
@@ -237,7 +239,7 @@ GA 8837 Cayenne  =>  French Guiana
 
 GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
   reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:174]
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:183]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
@@ -365,11 +367,11 @@ CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
   Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
-  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:544]
+  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:553]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
-  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:164]
-  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:487]
+  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:173]
+  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:496]
 ```
 
 The two overlap lines behind these examples, as the measuring script wrote them:
@@ -588,6 +590,58 @@ The build ends with a summary: placed records by kind and by the source that
 decided the checklist, unplaced records by reason, the number of checklists,
 warnings from `deriveChecklists`, checklists without ISO code, and checklists
 without any outline.
+
+## Comparing two caches
+
+Every visible change to the checklists needs the curator's approval before a
+new cache is committed. `compare.mjs` compares a new cache with an earlier one
+record by record and writes a report to read before approving:
+
+```
+npm run checklists -- --from                          # build the new cache from the saved data
+node modules/checklists/scripts/compare.mjs .cache/old public/checklists
+```
+
+Arguments: the old cache (default `modules/checklists/.cache/old`), the new
+cache (default `public/checklists`) and `--from <dir>`, the saved TaxonWorks
+data the new cache was built from (default `modules/checklists/.cache/data`).
+A folder is read relative to the working directory, else to
+`modules/checklists/`. The new cache must come from that data and the current
+rules file, because the explanations are made again from them.
+
+It writes `modules/checklists/.cache/compare.md` and `compare-full.md` (not
+committed). The report gives the counts (same checklist, moved, newly placed,
+no longer placed, gone from TaxonWorks, part changed, state changed), then the
+moves by "from checklist to checklist", the newly placed records by the step
+that decided their checklist, the records no longer placed by reason, the part
+and state changes, records that are in several checklists, and the checklists
+renamed, added or removed. Each changed record comes with its placement text
+(the same as `--explain`), at most 20 per group in `compare.md`; every record
+and every file rename is in `compare-full.md`.
+
+How it works:
+
+- A record is "<dwc_occurrence_object_type>:<id>". Distributions asserted for
+  a biological association have one record per beetle side; these are paired
+  by OTU.
+- An old checklist counts as the same checklist under its new name when the new
+  one has the same id, shares an area, or has the same name without accents,
+  so a renamed checklist is not a move.
+- The explanations use the build's own code: `buildContext.mjs` creates the
+  engine context from the saved data exactly as the build does.
+- The old cache stored no states; its page worked them out while showing a
+  country. `compareCaches.mjs` (`oldState`) reproduces that: for the United
+  States, Canada, Australia, China, Russia and the United Kingdom, the
+  record's stateProvince, then the place name of its distribution, then its
+  county, matched against the old `subdivisions.geojson` with its aliases.
+- TaxonWorks edits are told apart from rule changes by dates: a record created
+  in TaxonWorks after the old download day (`updated` in the old index.json)
+  is "new in TaxonWorks", one updated after it "edited in TaxonWorks"; a
+  record of the old cache that is nowhere in the new data is "gone from
+  TaxonWorks".
+- Questions for the curator that the report should carry go into
+  `modules/checklists/.cache/compare-questions.md`; its text is added at the
+  end of `compare.md` on every run.
 
 ## Updating
 

@@ -221,8 +221,18 @@ const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached/
  * @returns {'TaxonWorks'|'manual'|'overlap'|null}
  */
 export function decidingSource(placement) {
+  return decidingStep(placement)?.source ?? null
+}
+
+/**
+ * The step that decided the checklist of a placed record (see decidingSource);
+ * compare.mjs groups newly placed records by it.
+ * @param {import('../placement/engine.js').Placement} placement  a placed one
+ * @returns {import('../placement/engine.js').Step|null}
+ */
+export function decidingStep(placement) {
   const steps = placement.steps.filter((step) => !AFTER_DECISION.test(step.text))
-  return (steps.at(-1) ?? placement.steps[0])?.source ?? null
+  return steps.at(-1) ?? placement.steps[0] ?? null
 }
 
 /**

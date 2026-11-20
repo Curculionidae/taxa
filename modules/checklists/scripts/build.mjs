@@ -49,30 +49,18 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compactChecklist } from '../data/compact.js'
-import { compileRules } from '../placement/rules.js'
-import { toArea, normalizeName } from '../placement/areas.js'
-import { deriveChecklists } from '../placement/checklists.js'
-import { createContext, placeRecord } from '../placement/engine.js'
+import { placeRecord } from '../placement/engine.js'
 import { formatPlacement, parseLookup } from '../placement/format.js'
-import { createNodeGeometry, listShapes } from './geometry-node.mjs'
-import { downloadData, saveData, loadData, parseTsv, level0NamesFrom, beetleSides } from './download.mjs'
+import { downloadData, saveData, loadData } from './download.mjs'
+import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
 import {
-  assignKeys, groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary, checklistHeader,
+  groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary, checklistHeader,
   indexEntry, publicPlacement, decidingSource, partShapes
 } from './cacheFiles.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
-const MODULE = join(ROOT, 'modules/checklists/')
-const OUT_DIR = join(ROOT, 'public/checklists/')
+const { outDir: OUT_DIR, fallbackFile: FALLBACK_FILE, defaultDataDir: DEFAULT_DATA_DIR } = buildPaths(ROOT)
 const COUNTRY_DIR = join(OUT_DIR, 'countries/')
-const SHAPE_DIR = join(ROOT, 'public/map-shapes/')
-const FALLBACK_FILE = join(OUT_DIR, 'fallback-shapes.geojson')
-const SUBDIVISIONS_FILE = join(OUT_DIR, 'subdivisions.geojson')
-const RULES_FILE = join(MODULE, 'rules/placement.yml')
-const DEFAULT_DATA_DIR = join(MODULE, '.cache/data')
-const SUPERFAMILY = 'Curculionoidea'
-const RANKS = new Set(['species', 'subspecies'])
-const KIND = { AssertedDistribution: 'AD', CollectionObject: 'CO', FieldOccurrence: 'FO' }
 const BUILD_DATE = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD, local time
 
 // Flags. A folder flag followed by another flag (or nothing) takes the default.
@@ -104,10 +92,6 @@ if (saveDir) {
   saveData(saveDir, data)
   log(`TaxonWorks data saved to ${saveDir}`)
 }
-const rows = parseTsv(data.csv)
-const distributions = new Map(data.distributions.map((ad) => [String(ad.id), ad]))
-log(`${rows.length} occurrences, ${distributions.size} asserted distributions${fromDir ? ` (from ${fromDir})` : ''}`)
-
 // 2. Status, following the project's conventions for asserted distributions
 // (curculionidae.github.io/docs/TutorialAssertedDistributions/):
 // - refuted or doubted: the distribution carries a "Reassessment" data
@@ -139,132 +123,13 @@ for (const attribute of data.reassessments) {
 }
 log(`${data.statusTags.length} adventive/endemic tags, ${data.reassessments.length} reassessments`)
 
-// 3. Distributions asserted for a biological association ("egg of Lixus bidens
-// collected from stem of Opopanax", in Greece) are never in TaxonWorks' DwC
-// export. Each becomes a record here for every beetle side of the association,
-// with the name and classification from that OTU's other DwC records, or from
-// TaxonWorks when it has none. `association` keeps the reading. They are
-// asserted distributions on an area, so they are placed like any other.
-const associations = new Map(data.associations.map((association) => [association.id, association]))
-const rowByOtu = new Map()
-for (const row of rows) if (row.otu_id && row.scientificName && !rowByOtu.has(row.otu_id)) rowByOtu.set(row.otu_id, row)
-const TAXON_FIELDS = ['scientificName', 'scientificNameAuthorship', 'taxonRank', 'kingdom', 'superfamily', 'family', 'subfamily', 'tribe', 'subtribe', 'genus', 'nomenclaturalCode']
-const skippedAssociationOtus = []
-function otuTaxonRow(otuId) {
-  if (rowByOtu.has(otuId)) return rowByOtu.get(otuId)
-  // Not in the DwC export at all: the OTU's taxon name (classification comes
-  // later from the parents lookup, as for field occurrences). A stale or
-  // hidden OTU (4xx at download) is skipped and reported.
-  const found = data.associationOtus[otuId]
-  let row = null
-  if (found?.error) skippedAssociationOtus.push(`${otuId} (${found.error})`)
-  else if (found?.taxonName) {
-    const name = found.taxonName
-    row = {
-      otu_id: otuId,
-      scientificName: [name.cached, name.cached_author_year].filter(Boolean).join(' '),
-      scientificNameAuthorship: name.cached_author_year || '',
-      taxonRank: name.rank || ''
-    }
-  }
-  rowByOtu.set(otuId, row)
-  return row
-}
-let associationRecords = 0
-const associationDistributions = data.distributions.filter((ad) => ad.asserted_distribution_object_type === 'BiologicalAssociation')
-for (const ad of associationDistributions) {
-  const association = associations.get(ad.asserted_distribution_object_id)
-  if (!association) continue
-  const reading = [association.subject?.label, association.relationship, association.object?.label].filter(Boolean).join(' ')
-  for (const otuId of beetleSides(association)) {
-    const taxonRow = otuTaxonRow(otuId)
-    if (!taxonRow) continue
-    rows.push({
-      ...Object.fromEntries(TAXON_FIELDS.map((field) => [field, taxonRow[field] || ''])),
-      otu_id: otuId,
-      dwc_occurrence_object_type: 'AssertedDistribution',
-      dwc_occurrence_object_id: String(ad.id),
-      basisOfRecord: 'MaterialCitation',
-      occurrenceStatus: ad.is_absent ? 'absent' : 'present',
-      country: '',
-      association: reading
-    })
-    associationRecords++
-  }
-}
-log(`${associationDistributions.length} association distributions (not in the DwC export): ${associationRecords} records`)
-if (skippedAssociationOtus.length) console.warn(`association OTUs not found in TaxonWorks: ${skippedAssociationOtus.join(', ')}`)
-
-// 4. Classification of OTUs the DwC export leaves without one (field
-// occurrences): from the OTU's parents, by name endings. null marks a failed
-// lookup (a stale or hidden OTU): its records are not counted anywhere.
-const RANK_ENDINGS = [
-  ['superfamily', /oidea$/], ['family', /idae$/], ['subfamily', /inae$/],
-  ['tribe', /ini$/], ['subtribe', /ina$/]
-]
-const parentClassification = new Map()
-const failedLookups = []
-for (const [otuId, parents] of Object.entries(data.otuParents)) {
-  if (parents?.error) {
-    parentClassification.set(otuId, null)
-    failedLookups.push(`${otuId} (${parents.error})`)
-    continue
-  }
-  const classification = {}
-  for (const name of Object.keys(parents || {})) {
-    for (const [rank, ending] of RANK_ENDINGS) if (ending.test(name)) classification[rank] = name
-  }
-  parentClassification.set(otuId, classification)
-}
-log(`${parentClassification.size - failedLookups.length} OTUs classified from their parents`)
-if (failedLookups.length) console.warn(`classification lookup failed for ${failedLookups.length} OTUs: ${failedLookups.join(', ')}`)
-
-// 5. The placement engine: areas, rules, checklists, outlines.
-const areas = new Map() // area key -> Area, every area a distribution uses
-for (const ad of data.distributions) {
-  if (!ad.asserted_distribution_shape) continue
-  const area = toArea(ad.asserted_distribution_shape_type, ad.asserted_distribution_shape)
-  if (!areas.has(area.key)) areas.set(area.key, area)
-}
-const areaOf = (ad) => (ad?.asserted_distribution_shape
-  ? areas.get(`${ad.asserted_distribution_shape_type === 'Gazetteer' ? 'GZ' : 'GA'} ${ad.asserted_distribution_shape.id}`)
-  : null)
-const areasById = new Map([...areas.values()].filter((area) => area.kind === 'GA').map((area) => [area.id, area]))
-const rules = compileRules(readFileSync(RULES_FILE, 'utf8'))
-const level0Names = level0NamesFrom(rows, data.distributions)
-const isoByName = new Map(Object.entries(JSON.parse(readFileSync(join(MODULE, 'scripts/data/country-iso.json'), 'utf8')))
-  .map(([name, iso]) => [normalizeName(name), iso]))
-const { checklists, warnings } = deriveChecklists([...areas.values()], rules, level0Names, isoByName)
-const keys = assignKeys(checklists) // stops on two checklists with one key
-const checklistById = new Map(checklists.map((checklist) => [checklist.id, checklist]))
-const shapes = listShapes(SHAPE_DIR)
-const geometry = createNodeGeometry({ shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, checklists, rules })
-const ctx = createContext({ checklists, rules, geometry, shapes })
-
-// An area's placement, the same for every distribution on it.
-const areaPlacements = new Map()
-async function placeAreaRecord(area) {
-  if (!areaPlacements.has(area.key)) areaPlacements.set(area.key, await placeRecord({ type: 'AssertedDistribution', id: 0 }, ctx, area))
-  return areaPlacements.get(area.key)
-}
-// A specimen or field occurrence, by its DwC fields.
-const recordInput = (row) => ({
-  type: row.dwc_occurrence_object_type,
-  id: Number(row.dwc_occurrence_object_id),
-  country: row.country,
-  stateProvince: row.stateProvince,
-  county: row.county,
-  locality: row.verbatimLocality || row.locality,
-  lat: row.decimalLatitude,
-  lng: row.decimalLongitude
-})
-// What formatPlacement prints first: kind, id, label and the area behind it.
-const subjectOf = (row, area) => ({
-  kind: KIND[row.dwc_occurrence_object_type] ?? row.dwc_occurrence_object_type,
-  id: row.dwc_occurrence_object_id,
-  label: row.scientificName || '',
-  ...(area ? { area } : {})
-})
+// 3. to 5. The records, areas, rules, checklists and the engine context
+// (buildContext.mjs, shared with compare.mjs).
+const {
+  rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
+  checklistById, shapes, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+  screenRow
+} = await createBuildContext(data, { root: ROOT, log, fromDir })
 
 // --explain: one record or area, then stop.
 if (explain) {
@@ -310,18 +175,12 @@ const unplaced = { records: 0, taxa: new Set() }
 const recordsByArea = new Map() // area key -> number of records on it (placed or not)
 const placedBy = new Map() // 'AD [TaxonWorks]' -> count
 for (const row of rows) {
-  if (!RANKS.has(row.taxonRank) || !row.otu_id) continue
-  if (normalize(row.occurrenceStatus) === 'absent') continue
-  const lookupFailed = !row.superfamily && parentClassification.get(row.otu_id) === null
-  const classification = row.superfamily ? row : { ...row, ...parentClassification.get(row.otu_id) }
-  if (!classification.genus) classification.genus = String(row.scientificName || '').split(' ')[0]
-  if (classification.superfamily !== SUPERFAMILY && !lookupFailed) continue
+  const { left, classification, lookupFailed, ad } = screenRow(row)
+  if (left) continue
 
   const type = row.dwc_occurrence_object_type
   const kind = KIND[type] ?? type
   const id = Number(row.dwc_occurrence_object_id)
-  const ad = type === 'AssertedDistribution' ? distributions.get(String(row.dwc_occurrence_object_id)) : null
-  if (ad?.is_absent) continue
   const area = ad ? areaOf(ad) : null
   if (area) recordsByArea.set(area.key, (recordsByArea.get(area.key) ?? 0) + 1)
 
@@ -509,24 +368,3 @@ console.log(`checklists without iso2: ${noIso.length ? noIso.join(', ') : 'none'
 const noOutline = index.filter((entry) => !entry.shape && !fallbackNames.has(entry.name)).map((entry) => entry.name)
 if (noOutline.length) console.log(`not on the map (no cached or fallback outline): ${noOutline.join(', ')}`)
 if (partsWithoutShape.length) console.warn(`warning: parts without a cached outline (give them a cached GA area in the rules file): ${partsWithoutShape.join(', ')}`)
-
-// The text of one record or area for --explain.
-async function explainOne({ kind, id }) {
-  if (kind === 'GA' || kind === 'GZ') {
-    const area = areas.get(`${kind} ${id}`)
-    if (!area) return `${kind} ${id}: no asserted distribution uses this area`
-    return formatPlacement({ kind, id, label: area.name, area }, await placeAreaRecord(area))
-  }
-  const type = Object.keys(KIND).find((name) => KIND[name] === kind)
-  const row = rows.find((candidate) => candidate.dwc_occurrence_object_type === type && Number(candidate.dwc_occurrence_object_id) === id)
-  if (kind === 'AD') {
-    const ad = distributions.get(String(id))
-    if (!ad) return `AD ${id}: not among the downloaded asserted distributions`
-    const area = areaOf(ad)
-    const subject = { kind, id, label: row?.scientificName || '', ...(area ? { area } : {}) }
-    if (!area) return `${subject.kind} ${id}  ${subject.label}\n  result   not placeable: distribution has no area`
-    return formatPlacement(subject, await placeAreaRecord(area))
-  }
-  if (!row) return `${kind} ${id}: not in the DwC export`
-  return formatPlacement(subjectOf(row, null), await placeRecord(recordInput(row), ctx))
-}

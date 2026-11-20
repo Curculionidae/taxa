@@ -127,6 +127,8 @@ synonyms:
   # Spellings of TaxonWorks' DwC country text (test report 2026-11-20)
   - [Congo, Republic of Congo]
   - ["Côte d'Ivoire", Ivory Coast]
+  # TaxonWorks spells GA 186 with a capital É; the checklist keeps the usual spelling
+  - [Saint Barthélemy, Saint BarthÉlemy]
 
 parts:
   France:
@@ -146,10 +148,17 @@ manual:
   - match: { tdwg: 10IRE-NI }
     subdivision_of: { country: United Kingdom }
     why: TaxonWorks DwC says Ireland (its name match climbs to TDWG Ireland)
+  - match: { tdwg: 50NFK }
+    subdivision_of: { country: Australia }
+    why: Australian external territory, as TaxonWorks DwC says; no country outline is cached for it
   # Areas whose cached TaxonWorks outline is wrong
   - match: { area: GA 20379 }
     subdivision_of: { country: Russia, state: Chukchi Autonomous Okrug }
     why: the cached TaxonWorks outline of Chukot also covers Yakutia; fix the shape in TaxonWorks
+  # Gazetteers with a wrong ISO code
+  - match: { gazetteer_prefix: "TAAF:" }
+    subdivision_of: { country: French Southern Territories }
+    why: TAAF gazetteers carry ISO code FR in TaxonWorks but lie in the French Southern Territories (ISO TF)
 
 overlap:
   - match: { tdwg: 12FRA }   # GA 33696 France (TDWG Level 3 12FRA), 867 records

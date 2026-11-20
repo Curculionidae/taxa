@@ -271,7 +271,7 @@ and optionally the `area` behind it) and the `Placement`. Example:
 ```
 AD 556796  Phaedropus candidus
   area     GA 8837 Cayenne (GA)
-  step     Cayenne is a subdivision of French Guiana (GA 78)        [TaxonWorks]
+  step     Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
   step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:3]
   result   French Guiana checklist
   shape    GeographicArea/32253 (French Guiana)

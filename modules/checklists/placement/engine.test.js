@@ -381,9 +381,7 @@ test('Central European Russia has no state, reason spans', async () => {
   assert.deepEqual(placement.steps[1], {
     text: "no state: spans several states: Moscow Oblast 18%, Tver' 12%, Smolensk 9%",
     source: 'overlap',
-    ref: recordRefOf('match: { tdwg: 14RUC }'),
-    pct: 18,
-    pctOf: 'Moscow Oblast'
+    ref: recordRefOf('match: { tdwg: 14RUC }')
   })
 })
 

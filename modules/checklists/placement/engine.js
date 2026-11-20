@@ -290,13 +290,12 @@ function isStateRule(rule) {
 }
 
 // A step citing a rule: its line, and for an overlap rule its measured share.
-// `pctOf` names what the share refers to; without it the name of the first
-// measured share ('Indonesia 72%, ...' gives Indonesia) is used.
+// The share is only attached when `pctOf` names the target it belongs to (the
+// country or state the area was placed in). Steps that list several shares
+// (not placeable, spans several states) pass none and carry no pct.
 function ruleStep(rule, source, text, pctOf) {
-  if (source !== 'overlap' || rule.pct === undefined) return { text, source, ref: rule.ref }
-  const first = /^(.+?)\s+\d+(?:\.\d+)?\s*%/.exec(rule.measured ?? '')
-  const of = pctOf ?? first?.[1]
-  return { text, source, ref: rule.ref, pct: rule.pct, ...(of ? { pctOf: of } : {}) }
+  if (source !== 'overlap' || rule.pct === undefined || !pctOf) return { text, source, ref: rule.ref }
+  return { text, source, ref: rule.ref, pct: rule.pct, pctOf }
 }
 
 // 'Indonesia 72%, Malaysia 28%': the measured shares without the date.

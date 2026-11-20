@@ -62,3 +62,12 @@ test('parseLookup', () => {
   assert.equal(parseLookup('XY 1'), null)
   assert.equal(parseLookup(''), null)
 })
+
+test('Borneo step tag carries no share', () => {
+  const index = yamlText.split('\n').findIndex((line) => line.includes('match: { tdwg: 42BOR }'))
+  const ref = `placement.yml:${index + 1}`
+  const text = formatPlacement({ kind: 'GA', id: 33639, label: 'Borneo' }, placeArea(ga(fx.ga33639), ctx))
+  const step = 'Borneo spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%'
+  assert.ok(text.includes(`  step     ${step}  [overlap, ${ref}]\n`), text)
+  assert.ok(!/overlap \d/.test(text))
+})

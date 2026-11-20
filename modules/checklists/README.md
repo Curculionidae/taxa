@@ -101,7 +101,17 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   whose names are listed together in `synonyms`, or are the same after
   normalizing (accents, case and punctuation ignored, see `normalizeName`),
   become one checklist. Its name is the first synonym and its `areaIds` list
-  every merged area.
+  every merged area. Its id is the area with the only ISO code; with none or
+  several ISO codes, the lowest id.
+- A country-level area whose parent is not "Earth" (England under United
+  Kingdom, Sint Maarten under Netherlands) is not a checklist of its own: its id
+  joins its parent's country.
+- A country used only through its subdivisions (Spain, Western Sahara, ...) has
+  no area of its own. Every level0 id that areas refer to becomes a country, named
+  by the `level0Names` map the build passes in (from the DwC country text of
+  those records). Without a name the id is skipped and `deriveChecklists`
+  returns a warning `level0 <id> has no name (areas: ...)`; it returns
+  `{ checklists, warnings }`.
 - Own checklists: every entry of `checklists` in the rules file is a checklist
   of its own, even when TaxonWorks files it under another country (`of:`). An
   area id listed there is removed from the country checklist it would have
@@ -109,7 +119,9 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
 - Ids: a merged country has the id of its area with an ISO code (else the first
   area), the same as before, because country files are named `<id>.json`. An
   own checklist has the numeric id of its first listed GA area (French Guiana:
-  32253), or its ISO code when it lists none (Northern Mariana Islands: `MP`).
+  32253, Guadeloupe: 90), or its ISO code when it lists none (Northern Mariana
+  Islands: `MP`). So the `areas` of Guadeloupe, Martinique, Réunion and Mayotte
+  list the areas of today's country files; do not remove them.
 - `states` is true for United States, Canada, Australia, China, Russia and
   United Kingdom, the countries browsed by state. `parts` holds the part names
   from the `parts` section of the rules file (France: Corsica, Mainland France).

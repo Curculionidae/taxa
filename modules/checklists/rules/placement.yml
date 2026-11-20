@@ -64,24 +64,28 @@ checklists:
     iso2: GP
     of: France
     names: [Guadeloupe]
+    areas: [GA 90, GA 32432, GA 34212]   # as in public/checklists/index.json, so country files keep their names
     box: [-62, 15.7, -60.8, 16.6]
     why: ISO 3166-1 code GP of its own, though TaxonWorks files it under France
   - name: Martinique
     iso2: MQ
     of: France
     names: [Martinique]
+    areas: [GA 32213, GA 34557]   # as in public/checklists/index.json, so country files keep their names
     box: [-61.3, 14.3, -60.7, 15]
     why: ISO 3166-1 code MQ of its own, though TaxonWorks files it under France
   - name: Réunion
     iso2: RE
     of: France
     names: [Réunion, Reunion]
+    areas: [GA 33048]   # as in public/checklists/index.json, so country files keep their names
     box: [55.1, -21.5, 56, -20.8]
     why: ISO 3166-1 code RE of its own, though TaxonWorks files it under France
   - name: Mayotte
     iso2: YT
     of: France
     names: [Mayotte]
+    areas: [GA 34156]   # as in public/checklists/index.json, so country files keep their names
     box: [44.9, -13.1, 45.4, -12.5]
     why: ISO 3166-1 code YT of its own, though TaxonWorks files it under France
   - name: Northern Mariana Islands
@@ -107,6 +111,7 @@ synonyms:
   - [Vietnam, Viet Nam]
   - [Saint Martin, Saint Martin (French part)]
   - [Western Sahara, W. Sahara]
+  - [Turks and Caicos Islands, Turks and Caicos Is.]
   - [French Southern Territories, TAAF]
   # Spellings of TaxonWorks' DwC country text (test report 2026-11-20)
   - [Congo, Republic of Congo]

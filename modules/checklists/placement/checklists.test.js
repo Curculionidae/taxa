@@ -16,7 +16,7 @@ const areas = [
   fx.ga33639, fx.ga19713, fx.ga236, fx.ga34271, fx.ga15, fx.ga31721, fx.ga31745,
   fx.ga188, fx.ga243, fx.ga31774
 ].map(ga).concat([fx.gz3529, fx.gz10453].map(gz))
-const checklists = deriveChecklists(areas, rules)
+const checklists = deriveChecklists(areas, rules).checklists
 const byName = (name) => checklists.find((c) => c.name === name)
 
 test('toArea normalizes a geographic area', () => {
@@ -80,7 +80,7 @@ test('Northern Mariana Islands exists with iso2 MP', () => {
   assert.deepEqual(mp.areaIds, [])
 })
 
-test('United States has states, France has parts Corsica and Mainland France', () => {
+test('states flag on Australia, Russia, United Kingdom; France has parts Corsica and Mainland France', () => {
   const states = checklists.filter((c) => c.states).map((c) => c.name).sort()
   assert.deepEqual(states, ['Australia', 'Russia', 'United Kingdom'])
   assert.equal(byName('France').states, false)
@@ -91,15 +91,66 @@ test('United States has states, France has parts Corsica and Mainland France', (
 test('states flag covers the six countries by name', () => {
   const six = ['United States', 'Canada', 'Australia', 'China', 'Russia', 'United Kingdom']
   const fake = six.map((name, i) => ga({ id: 900 + i, name, level0_id: 900 + i, iso_3166_a2: null }))
-  const list = deriveChecklists(fake, { ...rules, checklists: [] })
+  const list = deriveChecklists(fake, { ...rules, checklists: [] }).checklists
   assert.deepEqual(list.map((c) => c.name), six)
   assert.deepEqual(list.map((c) => c.states), six.map(() => true))
 })
 
 test('no area id belongs to two checklists', () => {
   const guyane = ga({ ...fx.ga32253, id: 32253, level0_id: 32253 })
-  const list = deriveChecklists([guyane, ...areas], rules)
+  const list = deriveChecklists([guyane, ...areas], rules).checklists
   const owners = list.filter((c) => c.areaIds.includes(32253))
   assert.equal(owners.length, 1)
   assert.equal(owners[0].name, 'French Guiana')
+})
+
+test('own checklists keep the ids of today\'s country files', () => {
+  const ids = Object.fromEntries(checklists.map((c) => [c.name, c.id]))
+  assert.equal(ids.Guadeloupe, 90)
+  assert.equal(ids.Martinique, 32213)
+  assert.equal(ids['Réunion'], 33048)
+  assert.equal(ids.Mayotte, 34156)
+  assert.equal(ids['French Guiana'], 32253)
+  assert.deepEqual(byName('Guadeloupe').areaIds, [90, 32432, 34212])
+})
+
+const spain = ga({ id: 9001, name: 'Madrid', level0_id: 210, level1_id: 9001, parent_id: 210, parent: { name: 'Spain' } })
+
+test('a country used only through a subdivision becomes a checklist', () => {
+  const { checklists: list, warnings } = deriveChecklists([spain], rules, new Map([[210, 'Spain']]))
+  assert.deepEqual(warnings, [])
+  assert.deepEqual(list.filter((c) => c.name === 'Spain').map((c) => [c.id, c.areaIds]), [[210, [210]]])
+})
+
+test('a level0 id without a name is skipped with a warning', () => {
+  const { checklists: list, warnings } = deriveChecklists([spain], rules)
+  assert.equal(list.find((c) => c.name === 'Spain'), undefined)
+  assert.deepEqual(warnings, ['level0 210 has no name (areas: 9001)'])
+})
+
+test('a stub country merges by synonyms with a country area', () => {
+  const taaf = ga({ id: 80, name: 'TAAF', level0_id: 80, iso_3166_a2: 'TF', parent_id: 1, parent: { name: 'Earth' } })
+  const sub = ga({ id: 9002, name: 'Kerguelen', level0_id: 81, parent_id: 81, parent: { name: 'French Southern Territories' } })
+  const { checklists: list } = deriveChecklists([taaf, sub], rules, new Map([[81, 'French Southern Territories']]))
+  const merged = list.filter((c) => c.name === 'French Southern Territories')
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].id, 80)
+  assert.deepEqual(merged[0].areaIds.sort((a, b) => a - b), [80, 81])
+})
+
+test('a country-level area under another country joins that country', () => {
+  const england = ga({ id: 26372, name: 'England', level0_id: 26372, parent_id: 236, parent: { name: 'United Kingdom' } })
+  const { checklists: list } = deriveChecklists([fx.ga236, england].map((s) => (s.kind ? s : ga(s))), rules)
+  assert.equal(list.find((c) => c.name === 'England'), undefined)
+  assert.deepEqual(list.find((c) => c.name === 'United Kingdom').areaIds, [236, 26372])
+})
+
+test('Turks and Caicos areas merge; without or with several ISO codes the lowest id wins', () => {
+  const a = ga({ id: 231, name: 'Turks and Caicos Islands', level0_id: 231, parent_id: 1, parent: { name: 'Earth' } })
+  const b = ga({ id: 31800, name: 'Turks and Caicos Is.', level0_id: 31800, parent_id: 1, parent: { name: 'Earth' } })
+  const merged = deriveChecklists([b, a], rules).checklists.filter((c) => c.name === 'Turks and Caicos Islands')
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].id, 231)
+  const both = deriveChecklists([{ ...b, iso2: 'TC' }, { ...a, iso2: 'TC' }], rules).checklists
+  assert.equal(both.find((c) => c.name === 'Turks and Caicos Islands').id, 231)
 })

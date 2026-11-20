@@ -5,7 +5,8 @@
 #
 #   1. map shapes        public/map-shapes/        npm run map-shapes
 #   2. country checklists public/checklists/       npm run checklists
-#                        (after 1: it names each country's cached outline)
+#                        (module: modules/checklists/, see its README.md;
+#                        after 1: it names each country's cached outline)
 #   3. home slideshow    public/images/random/,    npm run random-images
 #                        components/randomImagePool.json (needs ImageMagick 7)
 set -eu

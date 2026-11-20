@@ -346,7 +346,6 @@ export const gz3529 = {
   iso_3166_a3: 'NZL'
 }
 
-
 // Added for the United States (R17), ISO fallback (R18) and parent fallback tests.
 
 export const ga237 = {

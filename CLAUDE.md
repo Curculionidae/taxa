@@ -243,6 +243,10 @@ Import example (from `panels/PanelBiologicalAssociationsV2/`): `import DwcTable 
 
 `?curator=1` shows curators pencils/links into TaxonWorks across the site (red "Leave curator mode" button in the top bar). Everything lives in `panels/_shared/curatorMode/`; **read its `readme.md`** before touching it or adding a link. New links: `TwEditLink.vue` in our own templates, an `OverlayPanel<Name>` for package panels. A component that checks the mode itself gets it with `const isCuratorMode = useCuratorMode()`, never by importing `isCuratorMode` alone (the mode must start after hydration, for SSR). Project-root `layout.js` places the two buttons in framework layout regions.
 
+## Country checklists (`/checklists`)
+
+One local module, `modules/checklists/`: the public page, a placement engine that decides which country checklist every asserted distribution, specimen and field occurrence belongs to, the hand-edited rules file `rules/placement.yml` (explanations cite it as `placement.yml:<line>`), and the scripts that build the cache `public/checklists/` (`npm run checklists`, `npm run checklists:measure`, `compare.mjs`). The curator page `/checklists/curator` (curator mode, `?curator=1`) looks up one record, area or OTU and shows the area tree, the unplaced records and the rules. **Read `modules/checklists/README.md`** before changing any of it; `DESIGN.md` is the approved design with an "As built" note. `scripts/update-caches.sh` rebuilds this cache with the others.
+
 ## scientificName.js
 
 `panels/_shared/scientificName.js` — shared scientific-name text helpers: `escHtml` (null-safe HTML

@@ -89,11 +89,27 @@ outline on the world map: polygons of the country whose centre lies in the
 own checklist's `bbox` are dropped. The state/province drill-down draws the
 states from `public/checklists/subdivisions.geojson` (Natural Earth) and the
 parts of France from their cached outlines. Which state or part a record
-belongs to is not worked out on the page: the region dropdown, its counts and
-the downloads read the `state` and `part` the build wrote into each record,
-so the page and the explanations of curator mode always agree. A record
-without one counts for the country only. The page no longer loads
-`rules.json`.
+belongs to is not worked out on the page: the region dropdown and its counts
+read the `part` or `state` the build wrote into each record (the part for
+France, the state for the six state countries), so the page and the
+explanations of curator mode always agree. A record without one counts for
+the country only. The CSV download writes the DwC `stateProvince` of the
+record. The page no longer loads `rules.json`.
+
+Where Natural Earth data enters, and where it does not:
+
+- `fallback-shapes.geojson` (1:10m admin-0 outlines): country outlines for
+  checklists without a cached TaxonWorks outline, as above. It plays no part in
+  deciding a record's checklist, except that `measure-overlap.mjs` measures
+  against it when a checklist has no cached outline.
+- `subdivisions.geojson` (from the Fleas of the World port): the list of states
+  of each state country, their outlines (for `stateAt` and the drill-down) and
+  their name aliases, which the engine uses as `[Natural Earth]` steps.
+- The United Kingdom has four "states" there (England, Scotland, Wales,
+  Northern Ireland). They are groupings of Natural Earth counties, whose names
+  are stored as aliases, so a county such as Cornwall is matched to England
+  with a `[Natural Earth]` step. This grouping lives in the outline file, not
+  in the rules file (see "Known limits and open decisions").
 
 ## How checklists are formed
 
@@ -167,7 +183,11 @@ in short:
 - `checklists`: checklists of their own that TaxonWorks files under another
   country (French Guiana, Guadeloupe, Martinique, Réunion, Mayotte, Northern
   Mariana Islands), and checklists the user decided to keep apart (Kosovo,
-  ISO XK; Norfolk Island, ISO NF, TDWG 50NFK). Keys: `name`, `iso2`, `of`, `areas` (`GA 78`, `GZ 10453`),
+  ISO XK; Norfolk Island, ISO NF, TDWG 50NFK). Norfolk Island has one
+  exception: TDWG 50NFK-LH (Lord Howe I.) has Norfolk Island as its TDWG
+  parent, but Lord Howe Island belongs to New South Wales, so a manual rule
+  keeps it in Australia (state Lord Howe Island comes from an overlap rule).
+  Keys: `name`, `iso2`, `of`, `areas` (`GA 78`, `GZ 10453`),
   `names` (words in a DwC country, province or place), `box` (west, south,
   east, north), `why`.
 - `state_countries`: the checklists browsed by state or province (United
@@ -295,7 +315,7 @@ with `--verbose` and `--explain`, and the curator page shows the same text.
 and optionally the `area` behind it) and the `Placement`. Example:
 
 ```
-AD 556796  Phaedropus candidus
+AD 556796  Phaedropus candidus (Fabricius, 1775)
   area     GA 8837 Cayenne (GA)
   step     Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
   step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:69]
@@ -344,8 +364,8 @@ that applies decides:
    specimens, so it is trusted. It is compared with checklist names and the
    `synonyms` lines only, never with state names. A spelling that is not the
    checklist name gets a second, `[manual]` step citing the synonym line. A
-   country without a checklist is not placeable: `no checklist for Kosovo`
-   (and so for any other country text), even when coordinates exist.
+   country without a checklist is not placeable: `no checklist for Atlantis`
+   (and so for any other country text without a checklist), even when coordinates exist.
 3. No DwC country, but coordinates: `geometry.checklistsAt`. One checklist
    holds the point: placed, step `coordinates <lat>, <lng> lie inside
    <name>` `[overlap]` (measured live, no line, no share). Several:
@@ -908,6 +928,52 @@ Limits:
   the build prints the DwC `scientificName` of the same OTU, normally the same text.
 - A distribution without area gives `not placeable: distribution has no area`,
   as in the build (`live.js` `placeLive`).
+
+## Maintenance
+
+When to run what:
+
+- `npm run checklists` (or `-- --save` once, then `-- --from` to retry quickly):
+  after TaxonWorks data changed, after editing `placement.yml`, or to refresh
+  the cache before publishing. Read the summary at the end: unplaced reasons
+  and warnings show what needs a rule or a fix in TaxonWorks.
+- `npm run checklists:measure`: when the build reports `not measured yet`
+  areas, or the cached outlines changed a lot (`--recheck` lists measurements
+  that moved). Then build again.
+- `node modules/checklists/scripts/compare.mjs .cache/old public/checklists`:
+  before committing a new cache, to see every record that moved. Copy the
+  cache you compare against to `modules/checklists/.cache/old` first.
+
+Adding a rule: see "The rules file" (right section, one action per rule, a
+`why`), run `node --test modules/checklists/placement/rules.test.js`, build
+with `--from`, check the records concerned (below), then compare.
+
+Checking one record or area: on the curator page (`?curator=1`, tab "Record or
+area", for example `AD 556796`), or on the command line with `npm run
+checklists -- --from --explain "AD 556796"`. Both print the steps with their
+source and the rule line to change.
+
+When TaxonWorks has a wrong outline or fact: fix it in TaxonWorks if you can.
+Until it is fixed, add a manual rule with a `why` that says so. Example: the
+cached outline of GA 20379 Chukot also covers Yakutia, so the manual rule at
+`placement.yml:179` places it in Russia, state Chukchi Autonomous Okrug, and
+its `why` says to fix the shape in TaxonWorks. Remove the rule once TaxonWorks
+is right.
+
+## Known limits and open decisions
+
+- The United Kingdom grouping of Natural Earth counties into England,
+  Scotland, Wales and Northern Ireland, and the county aliases, live in
+  `subdivisions.geojson`, not in the rules file. Whether they should move into
+  the rules file is a decision pending with the curator.
+- Králický Sněžník is not placeable (it lies on the Czech and Polish border)
+  pending the curator's review.
+- A specimen without any locality (no country, no coordinates, no locality
+  text) cannot be placed: the reason is `no locality at all`. Fix it in
+  TaxonWorks.
+- The live tabs of the curator page (Record or area, OTU) reflect the current
+  TaxonWorks data; the area tree, the unplaced lists and the rules reflect the
+  last build. A difference is shown as "Differs from the cache".
 
 ## Updating
 

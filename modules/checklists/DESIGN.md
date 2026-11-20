@@ -146,3 +146,33 @@ the browser. A rule that matches nothing is reported.
 
 File names inside the modules, the exact text of the step messages (short, plain),
 page layout details within the project's styling rules.
+
+## As built
+
+The design above is kept as the approved record. The implementation differs in
+these places (the README describes what exists):
+
+- File names: there is no `placement/context.js`; the engine context is made in
+  `scripts/buildContext.mjs` (Node) and `placement/geometry-browser.js` (browser),
+  and the placement code is split into `engine.js`, `areas.js`, `checklists.js`,
+  `states.js`, `format.js`, `rules.js`, `live.js`, `overview.js` and `geometry.js`.
+  Further scripts: `download.mjs`, `cacheFiles.mjs`, `compareCaches.mjs`,
+  `geometry-node.mjs`.
+- The curator page has five tabs (Record or area, OTU, Area tree, Not placed,
+  Rules), addressed by `?tab=`. The OTU tab, which places every record of one OTU
+  live, was not in the design.
+- `public/checklists/context.json` is an extra cache file: the engine's
+  checklists, outline ids and cached shape ids, so the curator page rebuilds the
+  engine context exactly as the build had it.
+- Files are named by the checklist key (the slug of its name,
+  `countries/french-guiana.json`), not by a numeric id.
+- A fourth step source, `[Natural Earth]`, marks a state found through a Natural
+  Earth alias of `subdivisions.geojson`.
+- The rules file has two more keys than designed: `state_countries` (which
+  checklists are browsed by state) and `ignored_name_words` (words left out when
+  comparing place names with state names). The engine has no lists of its own.
+- Kosovo and Norfolk Island became checklists of their own (the Defaults above
+  left Kosovo unplaced).
+- The United Kingdom's four "states" are groupings of Natural Earth counties kept
+  in `subdivisions.geojson`, not in the rules file; see the README, "Known limits
+  and open decisions".

@@ -240,7 +240,7 @@ async function runRecheck({ rules, geometry, ctx }) {
 // The three lines of one rule.
 function ruleLines(area, match, action, shares, date) {
   return [
-    `  - match: ${match}   # ${describe(area)}, ${records.get(area.key)} records`,
+    `  - match: ${match}   # ${describe(area)}, ${records.get(area.key)} ${records.get(area.key) === 1 ? 'record' : 'records'}`,
     `    ${action}`,
     `    measured: ${quote(`${sharesText(shares)} (${date})`)}`
   ]

@@ -505,7 +505,11 @@ What the build writes to `public/checklists/`:
   checklist with records: `key`, `file`, `name`, `iso2`, `of` for own
   checklists filed under another country, `shape` (the cached outline, or
   null when the page draws the Natural Earth fallback), `bbox` of that outline
-  `[west, south, east, north]`, `parts` (France: name and outline of each part),
+  `[west, south, east, north]`, `parts` (France: name and outline of each
+  part, the first cached GA area the part lists in the rules file; Mainland
+  France is GA 34185, TDWG 12FRA-FR, whose outline leaves out the Channel
+  Islands that TDWG 12FRA includes; the build warns about a part without
+  cached outline, as the page skips it),
   `states` (true for the six countries browsed by state), `taxa` and
   `records`), and `unplaced` (records and taxa left out).
 - `countries/<key>.json`: one checklist, a `checklist` header and then its

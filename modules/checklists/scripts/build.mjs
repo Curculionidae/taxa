@@ -4,7 +4,8 @@
 // country instead of paging through the project's 80,000 DwC occurrences.
 //
 // Usage
-//   npm run checklists -- [--save <dir>] [--from <dir>] [--verbose] [--explain "AD 556796"]
+//   npm run checklists -- [--save <dir> | --from <dir>] [--verbose] [--explain "AD 556796"]
+//   (--save and --from exclude each other)
 //   --save <dir>   after downloading, keep the TaxonWorks data in <dir> (default
 //                  modules/checklists/.cache/data when the flag has no folder)
 //   --from <dir>   read the TaxonWorks data from <dir> instead of downloading
@@ -57,7 +58,7 @@ import { createNodeGeometry, listShapes } from './geometry-node.mjs'
 import { downloadData, saveData, loadData, parseTsv, level0NamesFrom, beetleSides } from './download.mjs'
 import {
   assignKeys, groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary, checklistHeader,
-  indexEntry, publicPlacement, decidingSource
+  indexEntry, publicPlacement, decidingSource, partShapes
 } from './cacheFiles.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -84,6 +85,10 @@ const folderOption = (name) => {
 }
 const fromDir = folderOption('--from')
 const saveDir = folderOption('--save')
+if (fromDir && saveDir) {
+  console.error('--save and --from do not go together: --from reads saved data, --save keeps a new download')
+  process.exit(1)
+}
 const verbose = args.includes('--verbose')
 const explainIndex = args.indexOf('--explain')
 const explain = explainIndex >= 0 ? parseLookup(args[explainIndex + 1]) : null
@@ -95,7 +100,7 @@ const log = explain ? () => {} : console.log
 
 // 1. The TaxonWorks data: downloaded, or read from a saved folder.
 const data = fromDir ? loadData(fromDir) : await downloadData({ root: ROOT, log })
-if (saveDir && !fromDir) {
+if (saveDir) {
   saveData(saveDir, data)
   log(`TaxonWorks data saved to ${saveDir}`)
 }
@@ -380,14 +385,15 @@ for (const file of readdirSync(COUNTRY_DIR)) if (!written.has(file)) rmSync(join
 // The debugging overview of the old build is replaced by the curator page.
 if (existsSync(join(OUT_DIR, 'overview.html'))) rmSync(join(OUT_DIR, 'overview.html'))
 
-// Every used GA area, plus the parents known only by their name (GA 78 French
-// Guiana, the parent of Cayenne), for the names in `defined_by`.
-const knownAreas = new Map(areasById)
-for (const area of areasById.values()) {
-  if (area.parentId != null && !knownAreas.has(area.parentId)) {
-    knownAreas.set(area.parentId, { key: `GA ${area.parentId}`, kind: 'GA', id: area.parentId, name: area.parentName, parentName: null, stub: true })
-  }
+// Parents known only by their name (GA 78 French Guiana, the parent of
+// Cayenne, no distribution uses it), once: for the names in `defined_by` and
+// as stubs at the end of areas.json.
+const parentStubs = new Map() // GA id -> { key, kind, id, name, parentName, stub }
+for (const area of areas.values()) {
+  if (area.parentId == null || areasById.has(area.parentId) || parentStubs.has(area.parentId)) continue
+  parentStubs.set(area.parentId, { key: `GA ${area.parentId}`, kind: 'GA', id: area.parentId, name: area.parentName, parentName: null, stub: true })
 }
+const knownAreas = new Map([...areasById, ...parentStubs])
 
 // The outline of a checklist: its first cached area, else the fallback file.
 const targets = new Map(geometry.checklistTargets().map((target) => [target.id, target]))
@@ -406,6 +412,7 @@ function outlineOf(checklist) {
 const HIGHER_RANKS = ['family', 'subfamily', 'tribe', 'subtribe', 'genus']
 const higherTaxa = new Map() // "rank:name" -> { index, rank, name, all: Set(taxon keys) }
 const countsByChecklist = {}
+const partsWithoutShape = []
 const index = []
 for (const [id, entries] of byChecklist) {
   const checklist = checklistById.get(id)
@@ -442,10 +449,9 @@ for (const [id, entries] of byChecklist) {
     }
   }
   countsByChecklist[key] = Object.fromEntries([...perTaxon].map(([taxonIndex, set]) => [taxonIndex, set.size]))
-  const parts = rules.parts[checklist.name]?.map((part) => {
-    const partId = cachedGa(part.areas.filter((areaKey) => areaKey.startsWith('GA ')).map((areaKey) => Number(areaKey.slice(3))))
-    return { name: part.name, shape: partId != null ? `GeographicArea/${partId}` : null }
-  })
+  const parts = rules.parts[checklist.name] && partShapes(rules.parts[checklist.name], shapes)
+  // The page skips a part without outline, so each one must have a cached area.
+  for (const part of parts ?? []) if (!part.shape) partsWithoutShape.push(`${checklist.name}: ${part.name}`)
   index.push(indexEntry({
     key,
     name: checklist.name,
@@ -484,15 +490,10 @@ for (const area of areas.values()) {
   const placement = publicPlacement(await placeAreaRecord(area), keys)
   areaRows.push({ key, name, origin, type, tdwg, iso2, parentId, parentName, records: recordsByArea.get(key) ?? 0, placement })
 }
-const stubs = new Map()
-for (const area of areas.values()) {
-  if (area.parentId == null || areasById.has(area.parentId) || stubs.has(area.parentId)) continue
-  stubs.set(area.parentId, {
-    key: `GA ${area.parentId}`, name: area.parentName, origin: null, type: null, tdwg: null, iso2: null,
-    parentId: null, parentName: null, records: 0, placement: null
-  })
-}
-writeFileSync(join(OUT_DIR, 'areas.json'), JSON.stringify([...areaRows, ...stubs.values()]))
+const stubRows = [...parentStubs.values()].map(({ key, name }) => ({
+  key, name, origin: null, type: null, tdwg: null, iso2: null, parentId: null, parentName: null, records: 0, placement: null
+}))
+writeFileSync(join(OUT_DIR, 'areas.json'), JSON.stringify([...areaRows, ...stubRows]))
 
 // 8. Summary.
 const total = (map) => [...map.values()].reduce((sum, n) => sum + n, 0)
@@ -507,6 +508,7 @@ const noIso = index.filter((entry) => !entry.iso2).map((entry) => entry.name)
 console.log(`checklists without iso2: ${noIso.length ? noIso.join(', ') : 'none'}`)
 const noOutline = index.filter((entry) => !entry.shape && !fallbackNames.has(entry.name)).map((entry) => entry.name)
 if (noOutline.length) console.log(`not on the map (no cached or fallback outline): ${noOutline.join(', ')}`)
+if (partsWithoutShape.length) console.warn(`warning: parts without a cached outline (give them a cached GA area in the rules file): ${partsWithoutShape.join(', ')}`)
 
 // The text of one record or area for --explain.
 async function explainOne({ kind, id }) {

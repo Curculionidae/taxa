@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   checklistKey, assignKeys, groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary,
-  checklistHeader, indexEntry, publicPlacement, decidingSource, RULES_PATH
+  checklistHeader, indexEntry, publicPlacement, decidingSource, partShapes, RULES_PATH
 } from './cacheFiles.mjs'
 
 const area = (fields) => ({
@@ -158,4 +158,16 @@ test('decidingSource: the last step about the checklist, not part, state or outl
   const russia = placement('Russia', [step('Central European Russia (TDWG 14RUC) lies in Russia', 'overlap', { ref: 'placement.yml:164' }),
     step('no state: spans several states: Tver 10%', 'overlap', { ref: 'placement.yml:487' })])
   assert.equal(decidingSource(russia), 'overlap')
+})
+
+test('partShapes: the first cached GA area of each part; Mainland France is GA 34185 (no Channel Islands)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { compileRules } = await import('../placement/rules.js')
+  const rules = compileRules(readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8'))
+  const shapes = new Set(['GeographicArea/32254', 'GeographicArea/34185', 'GeographicArea/33696'])
+  assert.deepEqual(partShapes(rules.parts.France, shapes), [
+    { name: 'Corsica', shape: 'GeographicArea/32254' },
+    { name: 'Mainland France', shape: 'GeographicArea/34185' }
+  ])
+  assert.deepEqual(partShapes([{ name: 'X', areas: ['GZ 5', 'GA 9'] }], shapes), [{ name: 'X', shape: null }])
 })

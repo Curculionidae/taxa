@@ -224,3 +224,19 @@ export function decidingSource(placement) {
   const steps = placement.steps.filter((step) => !AFTER_DECISION.test(step.text))
   return (steps.at(-1) ?? placement.steps[0])?.source ?? null
 }
+
+/**
+ * The outline of every part of a checklist (index.json `parts`): the first of
+ * its GA areas with a cached outline, null when none is cached (the build
+ * warns about those, as the page skips a part without outline).
+ * @param {{ name: string, areas: string[] }[]} parts  rules.parts of one country
+ * @param {Set<string>} shapes  cached outline keys, 'GeographicArea/34185'
+ * @returns {{ name: string, shape: string|null }[]}
+ */
+export function partShapes(parts, shapes) {
+  return parts.map((part) => {
+    const key = part.areas.filter((area) => area.startsWith('GA ')).map((area) => `GeographicArea/${area.slice(3)}`)
+      .find((candidate) => shapes.has(candidate))
+    return { name: part.name, shape: key ?? null }
+  })
+}

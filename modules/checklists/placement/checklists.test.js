@@ -154,3 +154,31 @@ test('Turks and Caicos areas merge; without or with several ISO codes the lowest
   const both = deriveChecklists([{ ...b, iso2: 'TC' }, { ...a, iso2: 'TC' }], rules).checklists
   assert.equal(both.find((c) => c.name === 'Turks and Caicos Islands').id, 231)
 })
+
+test('United States of America (GA 33412, not country-level) joins United States through its states (R17)', () => {
+  const list = deriveChecklists([fx.ga237, fx.ga33412, fx.ga33455].map(ga), rules).checklists
+  const us = list.filter((c) => /united states/i.test(c.name))
+  assert.equal(us.length, 1)
+  assert.equal(us[0].name, 'United States')
+  assert.equal(us[0].id, 237)
+  assert.deepEqual(us[0].areaIds.sort((a, b) => a - b), [237, 33412])
+})
+
+test('a referenced level0 area that is not country-level is named by level0Names first (R17)', () => {
+  const countriesOf = (list) => list.filter((c) => !c.ref).map((c) => [c.name, c.areaIds])
+  const named = deriveChecklists([fx.ga33412, fx.ga33455].map(ga), rules, new Map([[33412, 'USA']])).checklists
+  assert.deepEqual(countriesOf(named), [['USA', [33412]]])
+  // Without a level0 name, the area's own name, through the synonym line.
+  const own = deriveChecklists([fx.ga33412, fx.ga33455].map(ga), rules).checklists
+  assert.deepEqual(countriesOf(own), [['United States', [33412]]])
+})
+
+test('a checklist without ISO code takes it from isoByName, also through a synonym (R18)', () => {
+  const iso = new Map([[normalizeName('Solomon Islands'), 'SB'], [normalizeName('France'), 'XX']])
+  const list = deriveChecklists([fx.ga31761, fx.ga77].map(ga), rules, new Map(), iso).checklists
+  assert.equal(list.find((c) => c.name === 'Solomon Islands').iso2, 'SB')
+  // An ISO code from TaxonWorks is kept.
+  assert.equal(list.find((c) => c.name === 'France').iso2, 'FR')
+  const viaSynonym = deriveChecklists([fx.ga31761].map(ga), rules, new Map(), new Map([['solomon is', 'SB']])).checklists
+  assert.equal(viaSynonym[0].iso2, 'SB')
+})

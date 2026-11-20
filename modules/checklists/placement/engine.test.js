@@ -21,12 +21,15 @@ const ga = (shape) => toArea('GeographicArea', shape)
 const gz = (shape) => toArea('Gazetteer', shape)
 const areas = [
   fx.ga77, fx.ga8837, fx.ga32253, fx.ga34200, fx.ga32254, fx.ga33696, fx.ga33876,
-  fx.ga33639, fx.ga19713, fx.ga236, fx.ga34271, fx.ga15
-].map(ga).concat([fx.gz3529, fx.gz10453].map(gz))
+  fx.ga33639, fx.ga19713, fx.ga236, fx.ga34271, fx.ga15, fx.ga237, fx.ga33412, fx.ga33455,
+  fx.ga26386, fx.ga31761
+].map(ga).concat([fx.gz3529, fx.gz10453, fx.gz3575].map(gz))
+// Country ISO codes the build reads from scripts/data/country-iso.json (R18).
+const isoByName = new Map([['solomon islands', 'SB']])
 // New Zealand is used in TaxonWorks only through gazetteers here, so its
 // checklist is given by hand (id and ISO code as a country file would have them).
 const newZealand = { id: 158, name: 'New Zealand', iso2: 'NZ', areaIds: [158], states: false }
-const checklists = [...deriveChecklists(areas, rules).checklists, newZealand]
+const checklists = [...deriveChecklists(areas, rules, new Map(), isoByName).checklists, newZealand]
 const shapes = new Set(['GeographicArea/32253', 'GeographicArea/77', 'GeographicArea/32254',
   'GeographicArea/19713', 'GeographicArea/236', 'GeographicArea/33639', 'GeographicArea/33876'])
 const ctx = createContext({ checklists, rules, geometry: null, shapes })
@@ -66,7 +69,7 @@ test('TDWG Central European Russia lands in Russia by overlap', () => {
   const placement = placeArea(ga(fx.ga33876), ctx)
   assert.equal(placement.checklist.name, 'Russia')
   assert.deepEqual(sources(placement), ['overlap'])
-  assert.equal(placement.steps[0].text, 'Central European Russia lies in Russia')
+  assert.equal(placement.steps[0].text, 'Central European Russia (TDWG 14RUC) lies in Russia')
   assert.equal(placement.steps[0].pct, 100)
   assert.equal(placement.steps[0].ref, refOf('match: { tdwg: 14RUC }'))
   assert.match(placement.steps[0].ref, /^placement\.yml:\d+$/)
@@ -94,10 +97,35 @@ test('NZCC: Northland lands in New Zealand by its ISO code', () => {
 })
 
 test('a gazetteer whose ISO code has no checklist is not placeable', () => {
-  const placement = placeArea(gz(fx.gz10453), ctx)
+  const placement = placeArea(gz({ ...fx.gz10453, iso_3166_a2: 'ZZ' }), ctx)
   assert.equal(placement.checklist, null)
-  assert.equal(placement.reason, 'no checklist for US')
+  assert.equal(placement.reason, 'no checklist for ZZ')
   assert.deepEqual(sources(placement), ['TaxonWorks'])
+})
+
+test('a Solomon Islands gazetteer lands in Solomon Islands though its country area has no ISO (R18)', () => {
+  const placement = placeArea(gz(fx.gz3575), ctx)
+  assert.equal(placement.checklist.name, 'Solomon Islands')
+  assert.equal(placement.steps[0].text, 'Solomon Islands: Guadalcanal has ISO code SB, Solomon Islands')
+})
+
+test('a US state under GA 33412 lands in United States (R17)', () => {
+  const placement = placeArea(ga(fx.ga33455), ctx)
+  assert.equal(placement.checklist.name, 'United States')
+  assert.equal(placement.checklist.id, 237)
+  assert.equal(placement.steps[0].text, 'Alabama is in United States (GA 33412)')
+  const usa = placeArea(ga(fx.ga33412), ctx)
+  assert.equal(usa.checklist.name, 'United States')
+  assert.equal(usa.steps[0].text, 'United States of America (GA 33412) is a spelling of United States')
+  assert.equal(usa.steps[0].source, 'manual')
+  assert.equal(usa.steps[0].ref, refOf('[United States, United States of America]'))
+})
+
+test('Texas (no level0) lands in United States through its parent GA 237', () => {
+  const placement = placeArea(ga(fx.ga26386), ctx)
+  assert.equal(placement.checklist.name, 'United States')
+  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks'])
+  assert.equal(placement.steps[0].text, 'Texas is a subdivision of United States (GA 237)')
 })
 
 test('Corse lands in France, part Corsica', () => {

@@ -346,3 +346,107 @@ export const gz3529 = {
   iso_3166_a3: 'NZL'
 }
 
+
+// Added for the United States (R17), ISO fallback (R18) and parent fallback tests.
+
+export const ga237 = {
+  id: 237,
+  name: 'United States',
+  level0_id: 237,
+  level1_id: null,
+  parent_id: 1,
+  parent: {
+    name: 'Earth'
+  },
+  iso_3166_a2: 'US',
+  iso_3166_a3: null,
+  tdwgID: null,
+  data_origin: 'country_names_and_code_elements',
+  geographic_area_type: {
+    id: 3,
+    name: 'Country'
+  }
+}
+
+export const ga26386 = {
+  id: 26386,
+  name: 'Texas',
+  level0_id: null,
+  level1_id: null,
+  parent_id: 237,
+  parent: {
+    name: 'United States'
+  },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: null,
+  data_origin: 'gadm',
+  geographic_area_type: {
+    id: 2,
+    name: 'Unknown'
+  }
+}
+
+export const ga31761 = {
+  id: 31761,
+  name: 'Solomon Is.',
+  level0_id: 31761,
+  level1_id: null,
+  parent_id: 1,
+  parent: {
+    name: 'Earth'
+  },
+  iso_3166_a2: null,
+  iso_3166_a3: 'SLB',
+  tdwgID: null,
+  data_origin: 'ne_countries',
+  geographic_area_type: {
+    id: 3,
+    name: 'Country'
+  }
+}
+
+export const ga33412 = {
+  id: 33412,
+  name: 'United States of America',
+  level0_id: null,
+  level1_id: null,
+  parent_id: 1,
+  parent: {
+    name: 'Earth'
+  },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: null,
+  data_origin: 'ne_states',
+  geographic_area_type: {
+    id: 3,
+    name: 'Country'
+  }
+}
+
+export const ga33455 = {
+  id: 33455,
+  name: 'Alabama',
+  level0_id: 33412,
+  level1_id: null,
+  parent_id: 33412,
+  parent: {
+    name: 'United States of America'
+  },
+  iso_3166_a2: null,
+  iso_3166_a3: null,
+  tdwgID: null,
+  data_origin: 'ne_states',
+  geographic_area_type: {
+    id: 63,
+    name: 'State'
+  }
+}
+
+export const gz3575 = {
+  id: 3575,
+  name: 'Solomon Islands: Guadalcanal',
+  iso_3166_a2: 'SB',
+  iso_3166_a3: 'SLB'
+}

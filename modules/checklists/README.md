@@ -112,6 +112,12 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   those records). Without a name the id is skipped and `deriveChecklists`
   returns a warning `level0 <id> has no name (areas: ...)`; it returns
   `{ checklists, warnings }`.
+- A level0 id whose own area exists but is not country-level is treated the
+  same way. GA 33412 "United States of America" (Natural Earth) has no level0
+  of its own, yet every Natural Earth US state points to it. It becomes a
+  country named by `level0Names`, else by its own name, and the synonym line
+  `[United States, United States of America]` merges it into United States
+  (areas 237 and 33412, as in today's index).
 - Own checklists: every entry of `checklists` in the rules file is a checklist
   of its own, even when TaxonWorks files it under another country (`of:`). An
   area id listed there is removed from the country checklist it would have
@@ -122,6 +128,13 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   32253, Guadeloupe: 90), or its ISO code when it lists none (Northern Mariana
   Islands: `MP`). So the `areas` of Guadeloupe, Martinique, Réunion and Mayotte
   list the areas of today's country files; do not remove them.
+- ISO codes: a country takes its ISO code from its TaxonWorks area. Natural
+  Earth country areas and countries used only through subdivisions carry
+  none, so the build passes `isoByName` (fourth argument, keys are
+  `normalizeName` of a country name), filled from
+  `scripts/data/country-iso.json`; it is looked up by the checklist name and
+  every synonym of it. Gazetteers are placed by ISO code, so without this a
+  Solomon Islands gazetteer (ISO SB) would find no checklist.
 - `states` is true for United States, Canada, Australia, China, Russia and
   United Kingdom, the countries browsed by state. `parts` holds the part names
   from the `parts` section of the rules file (France: Corsica, Mainland France).
@@ -193,7 +206,8 @@ Decision order for an area; the first that applies decides:
    `areas`, the area has the entry's ISO code, or a word of the entry's `names`
    is in the area's or its parent's name (accent insensitive, whole words).
 3. The country TaxonWorks gives the area (`level0_id`). An area without one
-   whose parent belongs to a checklist goes to that checklist.
+   goes to the checklist that owns the area itself (GA 33412 United States of
+   America) or its parent (Texas, GA 26386, under GA 237 United States).
 4. The ISO code of a gazetteer.
 5. An overlap rule for the area.
 6. Otherwise not placeable. Reasons: `spans several countries: <shares>` (from
@@ -219,7 +233,7 @@ GA 8837 Cayenne  =>  French Guiana
 
 GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
   reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:159, 72%]
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:160, 72%]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the

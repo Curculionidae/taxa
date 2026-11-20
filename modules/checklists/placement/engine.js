@@ -23,8 +23,8 @@
 //  2. a checklist of its own (rules file, checklists section): the area, or its
 //     parent, is listed in `areas`, the area's ISO code is the checklist's, or
 //     a word of `names` is in the area's or its parent's name
-//  3. the country TaxonWorks gives the area (`level0_id`), or, without one, a
-//     parent that belongs to a checklist
+//  3. the country TaxonWorks gives the area (`level0_id`); without one, the
+//     checklist that owns the area itself or its parent
 //  4. the ISO code of a gazetteer
 //  5. an overlap rule for the area (rules file, overlap section)
 //  6. otherwise not placeable, with the reason
@@ -185,7 +185,7 @@ function applyRule(rule, source, area, ctx, suffix) {
     const { country, part } = action.subdivisionOf
     const checklist = ctx.byName.get(normalizeName(country))
     const partText = part ? `, part ${part}` : ''
-    const lead = source === 'overlap' ? `${area.name} lies in` : `${label(area)} counts as`
+    const lead = `${label(area)} ${source === 'overlap' ? 'lies in' : 'counts as'}`
     if (!checklist) {
       return notPlaced(`no checklist for ${country}`, [step(`${lead} ${country}${partText}, which has no checklist${why}`)])
     }
@@ -245,20 +245,23 @@ function ownChecklist(area, ctx) {
 // Step 3 of the order: the country TaxonWorks gives the area.
 function byTaxonWorksCountry(area, ctx) {
   if (area.kind !== 'GA') return null
-  if (area.level0 != null) {
-    const checklist = ctx.byAreaId.get(area.level0)
-    const countryName = area.id === area.level0 ? area.name
-      : area.parentId === area.level0 && area.parentName ? area.parentName : `GA ${area.level0}`
+  // An area without level0 that a checklist owns itself is its own country
+  // (GA 33412 United States of America, R17).
+  const level0 = area.level0 ?? (ctx.byAreaId.has(area.id) ? area.id : null)
+  if (level0 != null) {
+    const checklist = ctx.byAreaId.get(level0)
+    const countryName = area.id === level0 ? area.name
+      : area.parentId === level0 && area.parentName ? area.parentName : `GA ${level0}`
     if (!checklist) {
       return notPlaced(`no checklist for ${countryName}`, [{
-        text: area.id === area.level0
+        text: area.id === level0
           ? `${area.name} (GA ${area.id}) is a country without a checklist`
-          : `${area.name} is in ${countryName} (GA ${area.level0}), which has no checklist`,
+          : `${area.name} is in ${countryName} (GA ${level0}), which has no checklist`,
         source: 'TaxonWorks'
       }])
     }
-    if (area.id !== area.level0) {
-      return placed(checklist, [{ text: `${area.name} is in ${checklist.name} (GA ${area.level0})`, source: 'TaxonWorks' }])
+    if (area.id !== level0) {
+      return placed(checklist, [{ text: `${area.name} is in ${checklist.name} (GA ${level0})`, source: 'TaxonWorks' }])
     }
     if (normalizeName(area.name) === normalizeName(checklist.name)) {
       return placed(checklist, [{ text: `${area.name} (GA ${area.id}) is a country`, source: 'TaxonWorks' }])

@@ -19,10 +19,18 @@
 //    country too, named by `level0Names` (the build fills it from the DwC
 //    country text of those records). Without a name it is skipped and a
 //    warning is returned.
+//  - A level0 id whose own area is among the areas but is not country-level
+//    (GA 33412 "United States of America" has no level0 of its own, yet every
+//    Natural Earth US state points to it) becomes a country the same way,
+//    named by `level0Names` or else by that area's own name, and merges by
+//    synonyms (R17).
 //  - Countries whose names are synonyms (rules.synonyms, accent and case
 //    insensitive) or equal after normalizing merge into one checklist. Its id
 //    is the area with the only ISO code; with none or several, the lowest id.
 //    Today's ids stay the same, because country files are named <id>.json.
+//  - A country without an ISO code from TaxonWorks (Natural Earth country
+//    areas and stubs carry none) takes it from `isoByName`, by its name or
+//    any synonym of it (R18). The build passes scripts/data/country-iso.json.
 //  - Every rules.checklists entry is a checklist of its own, even with `of:`.
 //    Its id is its first GA area, so its areas must list the areas of today's
 //    country file. No area id belongs to two checklists: an id listed by such
@@ -53,10 +61,13 @@ const STATE_COUNTRIES = new Set(
  * Derive the checklists.
  * @param {import('./areas.js').Area[]} areas
  * @param {import('./rules.js').CompiledRules} rules
- * @param {Map<number, string>} [level0Names]  names of level0 ids no area is itself (R9)
+ * @param {Map<number, string>} [level0Names]  names of level0 ids no area is itself (R9),
+ *   or whose area is not country-level (R17)
+ * @param {Map<string, string>} [isoByName]  ISO 3166-1 alpha-2 code by normalizeName(country
+ *   name), used for countries TaxonWorks gives no ISO code (R18)
  * @returns {{ checklists: Checklist[], warnings: string[] }}  warnings name level0 ids skipped for lack of a name
  */
-export function deriveChecklists(areas, rules, level0Names = new Map()) {
+export function deriveChecklists(areas, rules, level0Names = new Map(), isoByName = new Map()) {
   const canonical = new Map() // normalized synonym -> checklist name
   for (const { names } of rules.synonyms) {
     for (const name of names) canonical.set(normalizeName(name), names[0])
@@ -87,16 +98,19 @@ export function deriveChecklists(areas, rules, level0Names = new Map()) {
     if (area.parentName != null && normalizeName(area.parentName) !== 'earth') nested.push(area)
     else addCountry(area.id, area.name, area.iso2)
   }
-  // Countries used only through their subdivisions.
+  // Countries used only through their subdivisions, or whose own area is not
+  // country-level (GA 33412 United States of America, R17).
   const stubs = new Map() // level0 id -> ids of the areas that refer to it
   for (const area of areas) {
-    if (area.kind !== 'GA' || area.level0 == null || areaById.has(area.level0) || owned.has(area.level0)) continue
+    if (area.kind !== 'GA' || area.level0 == null || owned.has(area.level0)) continue
+    const own = areaById.get(area.level0)
+    if (own && isCountryLevel(own)) continue
     if (!stubs.has(area.level0)) stubs.set(area.level0, [])
     stubs.get(area.level0).push(area.id)
   }
   for (const [id, users] of stubs) {
-    const name = level0Names.get(id)
-    if (name) addCountry(id, name, '')
+    const name = level0Names.get(id) ?? areaById.get(id)?.name
+    if (name) addCountry(id, name, areaById.get(id)?.iso2 ?? '')
     else warnings.push(`level0 ${id} has no name (areas: ${users.join(', ')})`)
   }
   // A country-level area under another country joins that country's checklist.
@@ -109,6 +123,16 @@ export function deriveChecklists(areas, rules, level0Names = new Map()) {
     else addCountry(area.id, area.name, area.iso2)
   }
 
+  // ISO code from isoByName by the checklist name or any synonym of it (R18).
+  const isoFor = (name) => {
+    const names = [name, ...(rules.synonyms.find((s) => s.names.some((n) => normalizeName(n) === normalizeName(name)))?.names ?? [])]
+    for (const n of names) {
+      const iso = isoByName.get(normalizeName(n))
+      if (iso) return iso
+    }
+    return ''
+  }
+
   /** @type {Checklist[]} */
   const list = []
   for (const entry of countries.values()) {
@@ -117,7 +141,7 @@ export function deriveChecklists(areas, rules, level0Names = new Map()) {
     const checklist = {
       id,
       name: entry.name,
-      iso2: withIso[0]?.iso2 ?? '',
+      iso2: withIso[0]?.iso2 ?? isoFor(entry.name),
       areaIds: entry.members.map((member) => member.id),
       states: STATE_COUNTRIES.has(normalizeName(entry.name))
     }

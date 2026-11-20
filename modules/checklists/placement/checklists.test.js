@@ -96,6 +96,14 @@ test('states flag covers the six countries by name', () => {
   assert.deepEqual(list.map((c) => c.states), six.map(() => true))
 })
 
+test('the states flag comes from the rules file state_countries, accent and case insensitive', () => {
+  const fake = ['Canada', 'Brazil', 'Russia'].map((name, i) => ga({ id: 950 + i, name, level0_id: 950 + i, iso_3166_a2: null }))
+  const own = { ...rules, checklists: [], stateCountries: { names: ['brazil'], ref: 'placement.yml:1' } }
+  assert.deepEqual(deriveChecklists(fake, own).checklists.map((c) => c.states), [false, true, false])
+  const none = { ...rules, checklists: [], stateCountries: { names: [], ref: null } }
+  assert.ok(deriveChecklists(fake, none).checklists.every((c) => !c.states))
+})
+
 test('no area id belongs to two checklists', () => {
   const guyane = ga({ ...fx.ga32253, id: 32253, level0_id: 32253 })
   const list = deriveChecklists([guyane, ...areas], rules).checklists

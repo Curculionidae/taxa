@@ -37,7 +37,7 @@
 // same code the curator page runs. Asserted distributions (also those asserted
 // for a biological association) by their area, specimens and field occurrences
 // by their DwC country, else by their coordinates; then the part (France) and
-// the state (six countries). The checklists themselves come from
+// the state (rules file state_countries). The checklists themselves come from
 // placement/checklists.js (deriveChecklists). See the README, "How checklists
 // are formed" and "How a record is placed".
 //

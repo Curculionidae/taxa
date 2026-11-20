@@ -81,6 +81,16 @@ ignored_name_words: [Oblast, krai, "Republic"]
   assert.throws(() => compileRules('ignored_name_words: oblast\n'), /placement.yml:1: .*must be a list/)
 })
 
+test('compiles state_countries with the line of its key', () => {
+  const rules = compileRules(`synonyms:
+  - [Tanzania, United Republic of Tanzania]
+state_countries: [United States, "Russia"]
+`)
+  assert.deepEqual(rules.stateCountries, { names: ['United States', 'Russia'], ref: 'placement.yml:3' })
+  assert.deepEqual(compileRules(MANUAL).stateCountries, { names: [], ref: null })
+  assert.throws(() => compileRules('state_countries: Russia\n'), /placement.yml:1: .*must be a list/)
+})
+
 test('uses the given file name in refs', () => {
   assert.equal(compileRules(MANUAL, 'x.yml').manual[0].ref, 'x.yml:3')
 })
@@ -124,4 +134,5 @@ test('the real file compiles', () => {
   assert.ok(rules.parts.France.some((p) => p.rest))
   assert.ok(rules.manual.length >= 2)
   assert.ok(rules.ignoredNameWords.words.includes('oblast'))
+  assert.deepEqual(rules.stateCountries.names, ['United States', 'Canada', 'Australia', 'China', 'Russia', 'United Kingdom'])
 })

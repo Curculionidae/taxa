@@ -128,8 +128,9 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   `scripts/data/country-iso.json`; it is looked up by the checklist name and
   every synonym of it. Gazetteers are placed by ISO code, so without this a
   Solomon Islands gazetteer (ISO SB) would find no checklist.
-- `states` is true for United States, Canada, Australia, China, Russia and
-  United Kingdom, the countries browsed by state. `parts` holds the part names
+- `states` is true for the checklists named in the rules file's
+  `state_countries` list (`placement.yml:112`: United States, Canada,
+  Australia, China, Russia, United Kingdom), the countries browsed by state. `parts` holds the part names
   from the `parts` section of the rules file (France: Corsica, Mainland France).
 
 ## The rules file
@@ -152,6 +153,10 @@ in short:
   Mariana Islands). Keys: `name`, `iso2`, `of`, `areas` (`GA 78`, `GZ 10453`),
   `names` (words in a DwC country, province or place), `box` (west, south,
   east, north), `why`.
+- `state_countries`: the checklists browsed by state or province (United
+  States, Canada, Australia, China, Russia, United Kingdom); their state
+  outlines and other state names come from Natural Earth
+  (`subdivisions.geojson`). The engine has no list of its own.
 - `synonyms`: spellings of one country; the first name is the checklist name,
   e.g. `[Tanzania, United Republic of Tanzania]`. Anything looked up by
   checklist name tries every name of its synonym list too, such as the
@@ -256,7 +261,7 @@ GA 8837 Cayenne  =>  French Guiana
 
 GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
   reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:193]
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:199]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
@@ -343,8 +348,9 @@ country level; else no part.
 
 ### States and provinces
 
-Only checklists with `states` (United States, Canada, Australia, China,
-Russia, United Kingdom) get a state; any other has none and no state step.
+Only checklists with `states` (the rules file's `state_countries`,
+`placement.yml:112`: United States, Canada, Australia, China, Russia, United
+Kingdom) get a state; any other has none and no state step.
 State names are matched with `placement/states.js` (`matchSubdivision`) and
 only against the states of the chosen checklist: first the state's own name
 `[TaxonWorks]` or one of its Natural Earth names (`aliases` in
@@ -398,15 +404,15 @@ Three more worked examples:
 ```
 CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
   DwC country is United Republic of Tanzania                     [TaxonWorks]
-  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:123]
+  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:129]
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
   Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
-  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:563]
+  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:569]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
-  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:183]
-  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:506]
+  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:189]
+  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:512]
 ```
 
 The two overlap lines behind these examples, as the measuring script wrote them:
@@ -425,8 +431,8 @@ The Tanzania specimen has a DwC country that is not a checklist name, but
 the synonym line names it, so the second step cites that line. The Hawaiian
 gazetteer finds its country by its ISO code, and its name is no state name, so
 the state comes from the overlap line the measuring script wrote for it.
-Central European Russia gets its country from one overlap line (line 183,
-Russia 100%); a second line (506), `not_placeable: spans several states`,
+Central European Russia gets its country from one overlap line (line 189,
+Russia 100%); a second line (512), `not_placeable: spans several states`,
 tells why it has no state: no state holds even a fifth of it. The line
 numbers are those of the rules file on 2026-11-20; they shift when lines are
 added above.

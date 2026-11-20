@@ -105,6 +105,12 @@ checklists:
     iso2: MP
     why: 31 records on Northern Mariana Islands gazetteers had no checklist (test report 2026-11-20)
 
+# Checklists that can be browsed by state or province. Their records get a
+# state, and the page shows a state drill-down. The state outlines and their
+# other names come from Natural Earth (public/checklists/subdivisions.geojson,
+# features whose country is the checklist name).
+state_countries: [United States, Canada, Australia, China, Russia, United Kingdom]
+
 synonyms:
   # Several country-level areas in TaxonWorks, spelled differently
   - [Bosnia and Herzegovina, Bosnia and Herz.]

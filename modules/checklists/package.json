@@ -1,0 +1,8 @@
+{
+  "name": "taxonpages-module-checklists",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Country checklists page for TaxonPages.",
+  "taxonpages": { "type": "module", "entry": "./router/index.js" },
+  "peerDependencies": { "@sfgrp/taxonpages": "*", "vue": "^3", "vue-router": "^4" }
+}

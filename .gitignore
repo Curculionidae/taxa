@@ -8,3 +8,6 @@ config/**/*.development.yml
 *.kate-swp
 .ipynb_checkpoints/
 docs/
+
+# Saved TaxonWorks data and old cache copies for the checklist scripts (--save / --from), local only
+modules/checklists/.cache/

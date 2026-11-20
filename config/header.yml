@@ -17,6 +17,9 @@
     - label: Search DwC
       link: /resources/tw/filter/dwc_otus
 
+    - label: Checklists
+      link: /checklists
+
     - label: Keys
       link: /keys
 

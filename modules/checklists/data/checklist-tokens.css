@@ -1,0 +1,35 @@
+/* Colours for the country checklist map (modules/checklists/ChecklistsPage.vue).
+   Plain --pp- custom properties, see CLAUDE.md "Every colour is a theme token".
+   The count ramp runs from the page's slate greys to the green of the
+   taxon pages' aggregate map (--tp-map-aggregate, rgb(3, 115, 22)), so the
+   two maps read alike. Outlines and the selection reuse --tp-* tokens directly.
+   Leaflet needs literal colour strings, so the page reads these with
+   getComputedStyle() at style time (cssVar() in ChecklistsPage.vue). */
+:root {
+  /* YAML colours of the rules file on the curator page (components/RulesView.vue). */
+  --pp-yaml-comment: #6b7280;
+  --pp-yaml-string: #15803d;
+  --pp-yaml-number: #b45309;
+  --pp-checklist-0: #e2e8f0;  /* slate-200, same as --tp-base-muted */
+  --pp-checklist-1: #e3f1e5;
+  --pp-checklist-2: #a8d5b0;
+  --pp-checklist-3: #4fa463;
+  --pp-checklist-4: #037316;  /* --tp-map-aggregate */
+}
+
+.dark {
+  --pp-yaml-comment: #a3a3a3;
+  --pp-yaml-string: #86efac;
+  --pp-yaml-number: #fcd34d;
+  --pp-checklist-0: #303030;  /* --tp-base-muted */
+  /* Same direction as light: few species greenish white, many dark green. */
+  --pp-checklist-1: #e3f1e5;
+  --pp-checklist-2: #a8d5b0;
+  --pp-checklist-3: #4fa463;
+  --pp-checklist-4: #0f7a26;
+}
+
+/* Clicking a country should not leave a browser focus box on the SVG path. */
+.country-checklist-map .leaflet-interactive:focus:not(:focus-visible) {
+  outline: none;
+}

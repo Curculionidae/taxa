@@ -9,7 +9,9 @@
 //
 // Every checklist is known by its key, the slug of its name (checklistKey):
 // country files are countries/<key>.json, index.json and taxa.json use the
-// key, and no numeric id appears anywhere in public/checklists/.
+// key, and no numeric id appears anywhere in public/checklists/ except in
+// context.json, which holds the engine's own checklists (ids included) for the
+// curator page (cacheContext).
 import { normalizeName } from '../placement/areas.js'
 import { formatStep } from '../placement/format.js'
 
@@ -203,6 +205,33 @@ export function indexEntry({ key, name, iso2, of, shape, fallback, bbox, parts, 
   return {
     key, file: `${key}.json`, name, iso2, ...(of ? { of } : {}), shape, ...(fallback ? { fallback } : {}),
     bbox, ...(parts ? { parts } : {}), states, taxa, records
+  }
+}
+
+/**
+ * context.json: everything the placement engine needs besides rules.json, so
+ * the curator page (placement/geometry-browser.js, loadCacheContext) decides
+ * exactly as the build did: the engine checklists as deriveChecklists made
+ * them, the outline standing for each (GeographicArea/<id> or
+ * fallback/<feature name>) with its bbox, and every cached outline key.
+ * @param {{ built: string, checklists: import('../placement/checklists.js').Checklist[],
+ *   targets: { id: number|string, outline: string, polygons: any[] }[], shapes: Set<string> }} input
+ *   targets: the Node geometry's checklistTargets(), in checklist order
+ * @returns {{ built: string, checklists: Object[], outlines: { id: number|string, outline: string, bbox: number[]|null }[],
+ *   shapes: { GeographicArea: number[], Gazetteer: number[] } }}
+ */
+export function cacheContext({ built, checklists, targets, shapes }) {
+  const byKind = { GeographicArea: [], Gazetteer: [] }
+  for (const key of shapes) {
+    const [kind, id] = key.split('/')
+    byKind[kind]?.push(Number(id))
+  }
+  for (const ids of Object.values(byKind)) ids.sort((a, b) => a - b)
+  return {
+    built,
+    checklists,
+    outlines: targets.map(({ id, outline, polygons }) => ({ id, outline, bbox: bboxOf(polygons) })),
+    shapes: byKind
   }
 }
 

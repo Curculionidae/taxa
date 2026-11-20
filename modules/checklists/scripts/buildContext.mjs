@@ -27,7 +27,7 @@ import { compileRules } from '../placement/rules.js'
 import { toArea, normalizeName } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
 import { createContext, placeRecord } from '../placement/engine.js'
-import { formatPlacement } from '../placement/format.js'
+import { formatPlacement, formatExplanation } from '../placement/format.js'
 import { createNodeGeometry, listShapes } from './geometry-node.mjs'
 import { loadData, parseTsv, level0NamesFrom, beetleSides } from './download.mjs'
 import { assignKeys } from './cacheFiles.mjs'
@@ -251,8 +251,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
     }
     const { missing, subject, placement } = await placementOf({ kind, id })
     if (missing) return missing
-    if (!placement.steps.length && !placement.checklist) return `${subject.kind} ${id}  ${subject.label}\n  result   not placeable: ${placement.reason}`
-    return formatPlacement(subject, placement)
+    return formatExplanation(subject, placement)
   }
 
   return {

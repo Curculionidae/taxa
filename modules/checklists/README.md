@@ -18,6 +18,9 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
+- `CuratorPage.vue` (route `checklists-curator`, `/checklists/curator`), `components/PlacementLookup.vue`, `components/PlacementMap.vue`: the curator page (see "Curator page: looking up a record").
+- `placement/live.js`: fetches one record or area from TaxonWorks for the curator page, and says whether the cache lists it; tested in `live.test.js`.
+- `placement/geometry.js`: the point tests (point in polygon, coast distance, R22), shared by `scripts/geometry-node.mjs` (the build) and `placement/geometry-browser.js` (the curator page, which also makes the engine context from the cache files); `scripts/browserContext.test.js` checks the browser context reproduces the cache.
 - `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
 - `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`, `format.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `format.js` writes a decision as text.
 - `DESIGN.md`, `PLAN.md`: design and implementation plan.
@@ -575,6 +578,13 @@ What the build writes to `public/checklists/`:
 - `taxa.json`: per higher taxon its number of taxa in each checklist, keyed by
   the checklist key; the page loads it for the taxon filter.
 - `rules.json`: the compiled rules file (`compileRules`), for the browser.
+- `context.json`: what the placement engine needs besides `rules.json`, for
+  the curator page: `built` (the build date), `checklists` (the engine's
+  checklists as `deriveChecklists` made them, numeric ids and `areaIds`
+  included), `outlines` (per checklist with an outline: `id`, `outline`,
+  `GeographicArea/<id>` or `fallback/<feature name>`, and its `bbox`) and
+  `shapes` (every cached outline id the build saw, `{ GeographicArea: [...],
+  Gazetteer: [...] }`). See "Curator page: looking up a record".
 - `areas.json`: every area some distribution uses, `{ key, name, origin, type,
   tdwg, iso2, parentId, parentName, records, placement }`, where `records`
   counts the build's records on the area (Curculionoidea, species, present;
@@ -591,7 +601,8 @@ What the build writes to `public/checklists/`:
 Checklist keys: every checklist is known by its key, the slug of its name
 (`normalizeName`, spaces as hyphens, ASCII only): `french-guiana`,
 `reunion`, `united-states`. The country file is `countries/<key>.json`. No
-numeric id appears in `public/checklists/`. When two checklists would get the
+numeric id appears in `public/checklists/` except in `context.json` (the
+engine's own checklists, for the curator page). When two checklists would get the
 same key the build stops with an error naming both.
 
 The country file header says what the checklist is made of and how its
@@ -699,6 +710,76 @@ How it works:
 - Questions for the curator that the report should carry go into
   `modules/checklists/.cache/compare-questions.md`; its text is added at the
   end of `compare.md` on every run.
+
+## Curator page: looking up a record
+
+`/checklists/curator` (in hash mode `/#/checklists/curator`) shows, for one
+record or area, which checklist it lands in, every step of the decision with
+its source, whether the cache lists it, and both outlines on a map. It is
+for curators: open it with `?curator=1` (curator mode, see
+`panels/_shared/curatorMode/readme.md`), or follow "How records are placed"
+on the checklists page in curator mode. Without curator mode it shows only
+"Open this page with ?curator=1".
+
+Input: a kind and an id, as `parseLookup` reads them (see "Reading an
+explanation"): `GA`, `GZ`, `AD`, `CO` or `FO`, any case, with or without a
+space, spaces around ignored (`AD 556796`, `ad 556796`, `AD556796`,
+`GZ 10453`, `CO 1385165`). Anything else gives a message naming these forms.
+The lookup is part of the address, `?lookup=AD%20556796`
+(`/#/checklists/curator?curator=1&lookup=AD%20556796`), so a lookup can be
+linked and reloaded.
+
+What it shows:
+
+- The explanation in the text form of `placement/format.js`, the same text
+  `npm run checklists -- --from --explain "AD 556796"` prints.
+- What the cache says: `listed in French Guiana` (with the part and state of
+  the cached record), or why not: its reason from `unplaced.json`, or `not
+  listed: rank genus` (or `not in Curculionoidea`, `recorded as absent`,
+  `distribution is absent`) when the record is outside the checklists'
+  scope, else `not listed in the cache` (for example a record added after
+  the build). The record is looked up in the country file of the live
+  result only. For an area: its row in `areas.json`, with the number of
+  records on it.
+- Links into TaxonWorks: the record's edit page, its area's page
+  (`/geographic_areas/:id` or `/gazetteers/:id`) and the OTU.
+- A map with two layers and a legend: the record's own place (its area's
+  cached outline from `public/map-shapes/`, or a specimen's coordinates) and
+  the outline the placement chose (`shape`, else the checklist's Natural
+  Earth fallback outline). A layer that does not exist is left out and named
+  (`No outline cached for Cayenne (GA 8837).`). Colours are the map tokens
+  of the taxon pages (area `--tp-map-asserted`, specimen point
+  `--tp-map-collection-object` or `--tp-map-field-occurrence`, assigned
+  outline `--tp-map-aggregate`).
+
+Why it equals the build: the page fetches the record from TaxonWorks
+(`placement/live.js`: AD `GET /asserted_distributions/:id` with
+`extend[]=asserted_distribution_shape`, CO `GET /collection_objects/:id/dwc`,
+FO `GET /field_occurrences/:id/dwc`, GA and GZ through
+`GET /asserted_distributions?geo_shape_id[]=…&geo_shape_type[]=…&per=1`),
+the same JSON the build downloads, and places it with the same engine in an
+engine context made from the cache files only (`context.json` and
+`rules.json`, `placement/geometry-browser.js`). The browser geometry fetches
+an outline only when a point lies within its `bbox` (one or two files per
+lookup) and runs the same point tests as the build (`placement/geometry.js`).
+`scripts/browserContext.test.js` builds the context this way from disk and
+checks it reproduces every area of `areas.json` (2458 of 2458 on 2026-11-20)
+and 200 specimens of the country files (100 of them placed by their
+coordinates), and the coordinate reasons of `unplaced.json`. It needs the
+saved data (`--save`) and is skipped without it. The explanation can differ
+from the cache only when TaxonWorks changed since the build (or the rules
+file, before the next build); the cache line then shows the old result.
+
+Limits:
+
+- An area no distribution uses cannot be fetched (TaxonWorks has no area
+  endpoint): `used by no record`. When `areas.json` knows it as a parent
+  (GA 78 French Guiana), its children are named.
+- Specimens and field occurrences are placed from their DwC fields, as in the
+  build: a change in TaxonWorks shows only after TaxonWorks has updated the
+  record's DwC index.
+- The label of a distribution is the OTU's name from TaxonWorks (`object_tag`);
+  the build prints the DwC `scientificName` of the same OTU, normally the same text.
 
 ## Updating
 

@@ -5,7 +5,7 @@ import { compileRules } from './rules.js'
 import { toArea } from './areas.js'
 import { deriveChecklists } from './checklists.js'
 import { createContext, placeArea } from './engine.js'
-import { formatPlacement, formatStep, parseLookup } from './format.js'
+import { formatPlacement, formatStep, parseLookup, formatExplanation } from './format.js'
 import * as fx from './fixtures.js'
 
 const yamlText = readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8')
@@ -77,4 +77,12 @@ test('formatStep: one step as text and source tag', () => {
   assert.equal(formatStep({ text: 'x', source: 'manual', ref: 'placement.yml:66' }), 'x [manual, placement.yml:66]')
   assert.equal(formatStep({ text: 'Moskva is a Natural Earth name of the state Moscow', source: 'Natural Earth' }), 'Moskva is a Natural Earth name of the state Moscow [Natural Earth]')
   assert.equal(formatStep({ text: 'y', source: 'overlap', ref: 'placement.yml:9', pct: 100, pctOf: 'Russia' }), 'y [overlap 100% Russia, placement.yml:9]')
+})
+
+test('formatExplanation: the --explain text; a decision without steps is one result line', () => {
+  const subject = { kind: 'AD', id: 7, label: 'Aus bus' }
+  assert.equal(formatExplanation(subject, { checklist: null, part: null, state: null, shape: null, reason: 'distribution has no area', steps: [] }),
+    'AD 7  Aus bus\n  result   not placeable: distribution has no area')
+  const placement = { checklist: { id: 1, name: 'Chile' }, part: null, state: null, shape: null, reason: null, steps: [{ text: 'DwC country is Chile', source: 'TaxonWorks' }] }
+  assert.equal(formatExplanation(subject, placement), formatPlacement(subject, placement))
 })

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   checklistKey, assignKeys, groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary,
-  checklistHeader, indexEntry, publicPlacement, decidingSource, partShapes, RULES_PATH
+  checklistHeader, indexEntry, publicPlacement, decidingSource, partShapes, cacheContext, RULES_PATH
 } from './cacheFiles.mjs'
 
 const area = (fields) => ({
@@ -175,4 +175,26 @@ test('partShapes: the first cached GA area of each part; Mainland France is GA 3
     { name: 'Mainland France', shape: 'GeographicArea/34185' }
   ])
   assert.deepEqual(partShapes([{ name: 'X', areas: ['GZ 5', 'GA 9'] }], shapes), [{ name: 'X', shape: null }])
+})
+
+test('cacheContext: checklists, their outlines with bbox, and the cached outline keys by kind', () => {
+  const checklists = [
+    { id: 1, name: 'France', iso2: 'FR', areaIds: [1, 5], states: false },
+    { id: 2, name: 'Spain', iso2: 'ES', areaIds: [2], states: false },
+    { id: 3, name: 'Atlantis', iso2: '', areaIds: [3], states: false }
+  ]
+  const targets = [
+    { id: 1, name: 'France', outline: 'GeographicArea/5', polygons: [[[[0, 0], [2.123456, 0], [2.123456, 1], [0, 0]]]] },
+    { id: 2, name: 'Spain', outline: 'fallback/Spain', polygons: [[[[-3, 0], [-1, 0], [-1, 2], [-3, 0]]]] }
+  ]
+  const shapes = new Set(['GeographicArea/5', 'Gazetteer/7', 'GeographicArea/12', 'GeographicArea/2'])
+  assert.deepEqual(cacheContext({ built: '2026-11-20', checklists, targets, shapes }), {
+    built: '2026-11-20',
+    checklists,
+    outlines: [
+      { id: 1, outline: 'GeographicArea/5', bbox: [0, 0, 2.1235, 1] },
+      { id: 2, outline: 'fallback/Spain', bbox: [-3, 0, -1, 2] }
+    ],
+    shapes: { GeographicArea: [2, 5, 12], Gazetteer: [7] }
+  })
 })

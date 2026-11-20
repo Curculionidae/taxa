@@ -9,6 +9,13 @@
           Weevil species reported in each country. Counts are distinct species in the occurrence records.
           <template v-if="checklistUpdated">Checklists are compiled from cached data, last updated {{ checklistUpdated }}.</template>
         </p>
+        <RouterLink
+          v-if="isCuratorMode"
+          :to="{ name: 'checklists-curator' }"
+          class="text-sm text-secondary hover:underline"
+        >
+          How records are placed
+        </RouterLink>
       </div>
     </header>
 
@@ -599,6 +606,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { expandChecklist } from './data/compact.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'
+import { useCuratorMode } from '../../panels/_shared/curatorMode/curatorMode.js'
 import { ADVENTIVE_CHIP_STYLE } from '../../panels/_shared/adventive.js'
 import '../../panels/_shared/panel-tokens.css'
 import './data/checklist-tokens.css'
@@ -608,6 +616,9 @@ const {
   project_name: projectName = 'Curculionidae of the World Online',
   project_authors: projectAuthors = ''
 } = __APP_ENV__
+
+// Curator mode adds a link to the curator page (CuratorPage.vue).
+const isCuratorMode = useCuratorMode()
 
 const exportPrefix = projectName.replace(/[^A-Za-z0-9]+/g, '')
 

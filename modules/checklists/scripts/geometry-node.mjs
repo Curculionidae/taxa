@@ -33,17 +33,9 @@
 //   part       the first of its GA areas with a cached outline, else its `box`
 //   state      the subdivisions feature with that country and name
 //
-// Point tests: ray casting on every ring, holes excluded, after a bounding box
-// test of the outline and of each of its polygons (most points are rejected
-// there, which keeps a run over 230 countries fast). A point outside every
-// outline but within NEAR (0.05 degrees, about 5 km) of one counts for the
-// nearest outline, unless a second one is nearly as close: coasts are
-// simplified, so coastal points often miss them by a few hundred metres (as
-// the old build did, countryByPoint and distanceTo in build.mjs).
-//
-// R22: a point inside an own checklist (rules file `checklists` entry with `of`,
-// Réunion) and inside the checklist it is filed under (France, whose outline
-// still contains Réunion) counts for the own checklist only.
+// Point tests, the coastal fallback (NEAR) and R22 come from
+// placement/geometry.js, shared with the browser geometry of the curator page
+// (placement/geometry-browser.js), so both answer every point question alike.
 //
 // Sampling in measureShares: a regular grid of 24 x 24 points over the area's
 // bounding box, keeping the points inside the area; when fewer than 30 are
@@ -58,9 +50,12 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeName } from '../placement/areas.js'
 import { findByName } from '../placement/checklists.js'
+import {
+  NEAR, polygonsOf, prepared, preparedTarget, entriesOf, contains, nearest, ownOverOf, ofByName,
+  checklistsAtPoint, stateAtPoint, stateTargetsOf, partOutlineId, partAtPoint
+} from '../placement/geometry.js'
 
-/** Coastal tolerance in degrees (about 5 km), as in the old build. */
-export const NEAR = 0.05
+export { NEAR, polygonsOf }
 
 const GRID = 24
 const FINE_GRID = 80
@@ -75,17 +70,6 @@ const MAX_VERTICES = 400
  *   samples taken, samples in no target, and the share of land samples per target
  *   name in percent (unrounded), largest first
  */
-
-/**
- * The polygons of a GeoJSON geometry.
- * @param {{ type: string, coordinates: any } | null} geometry
- * @returns {Polygon[]}  [] for anything but Polygon and MultiPolygon
- */
-export function polygonsOf(geometry) {
-  if (geometry?.type === 'Polygon') return [geometry.coordinates]
-  if (geometry?.type === 'MultiPolygon') return geometry.coordinates
-  return []
-}
 
 /**
  * Keys of every cached outline, 'GeographicArea/32253' and 'Gazetteer/3529'.
@@ -155,50 +139,44 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
     }
     return files.get(key)
   }
-  const fallback = new Map()
+  const fallback = new Map() // normalized name -> { name, polygons }
   if (fallbackFile && existsSync(fallbackFile)) {
     for (const feature of JSON.parse(readFileSync(fallbackFile, 'utf8')).features) {
-      fallback.set(normalizeName(feature.properties.name), polygonsOf(feature.geometry))
+      fallback.set(normalizeName(feature.properties.name), { name: feature.properties.name, polygons: polygonsOf(feature.geometry) })
     }
   }
   const subdivisions = subdivisionsFile && existsSync(subdivisionsFile)
     ? JSON.parse(readFileSync(subdivisionsFile, 'utf8')).features
     : []
 
-  // `of` of own checklists, by normalized name (Réunion -> France).
-  const ofByName = new Map()
-  for (const entry of rules?.checklists ?? []) if (entry.of) ofByName.set(normalizeName(entry.name), entry.of)
+  const ofOf = ofByName(rules) // Réunion -> France
   const byId = new Map(checklists.map((checklist) => [checklist.id, checklist]))
 
-  // Checklist outlines as targets, in checklist order; checklists without one are left out.
+  // Checklist outlines as targets, in checklist order; checklists without one
+  // are left out. `outline` says which file it came from (written to
+  // context.json for the curator page): 'GeographicArea/<id>' or 'fallback/<name>'.
   let targets = null
   const checklistTargets = () => {
     targets ??= checklists.flatMap((checklist) => {
       const id = checklist.areaIds.find((areaId) => readShape(`GeographicArea/${areaId}`))
-      const polygons = id != null ? readShape(`GeographicArea/${id}`) : findByName(fallback, checklist.name, rules)
+      const found = id != null ? null : findByName(fallback, checklist.name, rules)
+      const polygons = id != null ? readShape(`GeographicArea/${id}`) : found?.polygons
       if (!polygons?.length) return []
-      const of = ofByName.get(normalizeName(checklist.name))
-      return [{ name: checklist.name, id: checklist.id, polygons, ...(of ? { of } : {}) }]
+      const of = ofOf.get(normalizeName(checklist.name))
+      const outline = id != null ? `GeographicArea/${id}` : `fallback/${found.name}`
+      return [{ name: checklist.name, id: checklist.id, polygons, outline, ...(of ? { of } : {}) }]
     })
     return targets
   }
   let preparedChecklists = null
   const checklistShapes = () => {
-    preparedChecklists ??= checklistTargets().map((target) => ({ target, shape: preparedTarget(target) }))
+    preparedChecklists ??= entriesOf(checklistTargets())
     return preparedChecklists
   }
 
   const statesById = new Map()
   const stateTargets = (checklistId) => {
-    if (!statesById.has(checklistId)) {
-      const checklist = byId.get(checklistId)
-      const list = checklist?.states
-        ? subdivisions
-          .filter((feature) => normalizeName(feature.properties.country) === normalizeName(checklist.name))
-          .map((feature) => ({ name: feature.properties.name, aliases: feature.properties.aliases ?? [], polygons: polygonsOf(feature.geometry) }))
-        : []
-      statesById.set(checklistId, list)
-    }
+    if (!statesById.has(checklistId)) statesById.set(checklistId, stateTargetsOf(subdivisions, byId.get(checklistId)))
     return statesById.get(checklistId)
   }
 
@@ -208,8 +186,7 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
       const checklist = byId.get(checklistId)
       const parts = (checklist && rules?.parts?.[checklist.name]) || []
       partShapes.set(checklistId, parts.map((part) => {
-        const id = part.areas.filter((key) => key.startsWith('GA ')).map((key) => key.slice(3))
-          .find((areaId) => readShape(`GeographicArea/${areaId}`))
+        const id = partOutlineId(part, (key) => Boolean(readShape(key)))
         const polygons = id != null ? readShape(`GeographicArea/${id}`) : null
         return { name: part.name, shape: polygons ? preparedTarget({ name: part.name, polygons }) : null, box: part.box ?? null }
       }))
@@ -219,21 +196,13 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
 
   return {
     async checklistsAt(point) {
-      const shapes = checklistShapes()
-      let hits = shapes.filter(({ shape }) => contains(shape, point))
-      if (!hits.length) hits = nearest(shapes, point, NEAR)
-      return ownOverOf(hits.map(({ target }) => target)).map((target) => target.id)
+      return checklistsAtPoint(checklistShapes(), point)
     },
     async stateAt(checklistId, point) {
-      const shapes = stateTargets(checklistId).map((target) => ({ target, shape: preparedTarget(target) }))
-      const hit = shapes.find(({ shape }) => contains(shape, point)) ?? onlyNearest(shapes, point)
-      return hit?.target.name ?? null
+      return stateAtPoint(entriesOf(stateTargets(checklistId)), point)
     },
     async partAt(checklistId, point) {
-      const parts = partsOf(checklistId)
-      const inOutline = parts.find((part) => part.shape && contains(part.shape, point))
-      if (inOutline) return inOutline.name
-      return parts.find((part) => part.box && inBox(part.box, point))?.name ?? null
+      return partAtPoint(partsOf(checklistId), point)
     },
     stateNames(checklistId) {
       return stateTargets(checklistId).map(({ name, aliases }) => ({ name, aliases }))
@@ -245,107 +214,6 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
       return polygons?.length ? polygons : null
     }
   }
-}
-
-// Prepared outlines: polygons with their bounding boxes, cached per target object.
-const preparedCache = new WeakMap()
-function preparedTarget(target) {
-  if (!preparedCache.has(target)) preparedCache.set(target, prepared(target.polygons))
-  return preparedCache.get(target)
-}
-
-function prepared(polygons) {
-  const parts = polygons.filter((polygon) => polygon?.[0]?.length).map((rings) => ({ rings, box: boxOf(rings[0]) }))
-  const box = [Infinity, Infinity, -Infinity, -Infinity]
-  for (const part of parts) {
-    box[0] = Math.min(box[0], part.box[0]); box[1] = Math.min(box[1], part.box[1])
-    box[2] = Math.max(box[2], part.box[2]); box[3] = Math.max(box[3], part.box[3])
-  }
-  return { parts, box }
-}
-
-function boxOf(ring) {
-  const box = [Infinity, Infinity, -Infinity, -Infinity]
-  for (const [lng, lat] of ring) {
-    if (lng < box[0]) box[0] = lng
-    if (lat < box[1]) box[1] = lat
-    if (lng > box[2]) box[2] = lng
-    if (lat > box[3]) box[3] = lat
-  }
-  return box
-}
-
-function inBox(box, [lng, lat], margin = 0) {
-  return lng >= box[0] - margin && lng <= box[2] + margin && lat >= box[1] - margin && lat <= box[3] + margin
-}
-
-function inRing(ring, lng, lat) {
-  let inside = false
-  for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
-    const [x1, y1] = ring[a]
-    const [x2, y2] = ring[b]
-    if ((y1 > lat) !== (y2 > lat) && lng < ((x2 - x1) * (lat - y1)) / (y2 - y1) + x1) inside = !inside
-  }
-  return inside
-}
-
-// Is the point inside the prepared outline (holes excluded)?
-function contains(shape, point) {
-  if (!inBox(shape.box, point)) return false
-  const [lng, lat] = point
-  return shape.parts.some(({ rings: [outer, ...holes], box }) =>
-    inBox(box, point) && inRing(outer, lng, lat) && !holes.some((hole) => inRing(hole, lng, lat)))
-}
-
-// Distance in degrees from a point to the edges of a prepared outline, only
-// for polygons whose box widened by `limit` holds the point; else Infinity.
-function distanceTo(shape, point, limit) {
-  if (!inBox(shape.box, point, limit)) return Infinity
-  const [lng, lat] = point
-  let best = Infinity
-  for (const { rings, box } of shape.parts) {
-    if (!inBox(box, point, limit)) continue
-    for (const ring of rings) {
-      for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
-        const [x1, y1] = ring[b]
-        const [x2, y2] = ring[a]
-        const dx = x2 - x1
-        const dy = y2 - y1
-        const t = dx || dy ? Math.max(0, Math.min(1, ((lng - x1) * dx + (lat - y1) * dy) / (dx * dx + dy * dy))) : 0
-        best = Math.min(best, Math.hypot(lng - (x1 + t * dx), lat - (y1 + t * dy)))
-      }
-    }
-  }
-  return best
-}
-
-// The outlines within `limit` of a point: the nearest alone, or the two
-// nearest when the second is nearly as close (less than limit / 2 further).
-// R22 is applied to every close outline first (an `of` country drops out when
-// its own checklist is close too), so France, whose outline still holds
-// French Guiana, never pushes Suriname out of the two nearest.
-function nearest(shapes, point, limit) {
-  const within = shapes
-    .map((entry) => ({ entry, distance: distanceTo(entry.shape, point, limit) }))
-    .filter(({ distance }) => distance <= limit)
-  const kept = new Set(ownOverOf(within.map(({ entry }) => entry.target)))
-  const close = within.filter(({ entry }) => kept.has(entry.target)).sort((a, b) => a.distance - b.distance)
-  if (!close.length) return []
-  if (close.length > 1 && close[1].distance - close[0].distance < limit / 2) return [close[0].entry, close[1].entry]
-  return [close[0].entry]
-}
-
-// The nearest outline within NEAR when it is unambiguous, else undefined.
-function onlyNearest(shapes, point) {
-  const hits = nearest(shapes, point, NEAR)
-  return hits.length === 1 ? hits[0] : undefined
-}
-
-// R22: drop a target when an own checklist filed under it is also hit.
-function ownOverOf(hits) {
-  if (hits.length < 2) return hits
-  const covered = new Set(hits.filter((target) => target.of).map((target) => normalizeName(target.of)))
-  return covered.size ? hits.filter((target) => !covered.has(normalizeName(target.name))) : hits
 }
 
 // Sample points of a prepared area (see the header).

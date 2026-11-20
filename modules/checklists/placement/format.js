@@ -4,7 +4,8 @@
 // Input:  formatPlacement gets the subject (what was placed) and the Placement
 //         the engine returned (engine.js). parseLookup gets the typed text.
 // Output: formatPlacement returns a multi-line string, formatStep one line
-//         (a step and its source tag), parseLookup returns { kind, id } or null. The same text is printed by the build's
+//         (a step and its source tag), formatExplanation the --explain text,
+//         parseLookup returns { kind, id } or null. The same text is printed by the build's
 //         --verbose and --explain output and shown on the curator page.
 // Pure and browser-safe: no imports, no network, no file system.
 
@@ -70,6 +71,21 @@ export function formatPlacement(subject, placement) {
   if (placement.shape) lines.push(row('shape', `${placement.shape.key} (${placement.shape.name})`))
   else lines.push(row('shape', `none (${placement.checklist ? 'no outline cached' : placement.reason})`))
   return lines.join('\n')
+}
+
+/**
+ * The text --explain prints and the curator page shows: formatPlacement, or,
+ * for a decision without steps that placed nothing (a distribution without
+ * area), the first line and the result alone.
+ * @param {{ kind: string, id: number|string, label: string, area?: Object }} subject
+ * @param {import('./engine.js').Placement} placement
+ * @returns {string}
+ */
+export function formatExplanation(subject, placement) {
+  if (!placement.steps.length && !placement.checklist) {
+    return `${subject.kind} ${subject.id}  ${subject.label}\n${row('result', `not placeable: ${placement.reason}`)}`
+  }
+  return formatPlacement(subject, placement)
 }
 
 /**

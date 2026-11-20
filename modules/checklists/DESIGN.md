@@ -128,6 +128,8 @@ the browser. A rule that matches nothing is reported.
 ## Live lookup limits
 
 - AD, CO, FO: fetched live, placed live.
+- The engine context of the curator page comes only from the cache files (`context.json`,
+  `rules.json`), so its decisions equal the build's (see the README, "Curator page").
 - GA, GZ: found through any AD using it (`/asserted_distributions?geo_shape_id[]=`);
   an area no record uses can only be shown as "used by no record" (no area endpoint).
 - An area not yet measured shows "not measured yet; the next build measures it".

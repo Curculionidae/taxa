@@ -29,6 +29,9 @@
 //                          the compact form of data/compact.js
 //   taxa.json              per higher taxon, its number of taxa in each checklist
 //   rules.json             the compiled rules file (placement/rules.js)
+//   context.json           the engine checklists, their outlines and the cached
+//                          outline keys: with rules.json, all the curator page
+//                          needs to place a record exactly as this build does
 //   areas.json             every area a distribution uses, with its placement
 //   unplaced.json          the records no rule places, by reason
 // Country files of checklists that no longer exist are removed.
@@ -57,7 +60,7 @@ import { downloadData, saveData, loadData } from './download.mjs'
 import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
 import {
   groupUnplaced, bboxOf, definedBy, areasUsed, specimensSummary, checklistHeader,
-  indexEntry, publicPlacement, decidingSource, partShapes
+  indexEntry, publicPlacement, decidingSource, partShapes, cacheContext
 } from './cacheFiles.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -345,6 +348,9 @@ writeFileSync(join(OUT_DIR, 'index.json'), JSON.stringify({
   unplaced: { records: unplaced.records, taxa: unplaced.taxa.size }
 }, null, 1))
 writeFileSync(join(OUT_DIR, 'rules.json'), JSON.stringify(rules))
+writeFileSync(join(OUT_DIR, 'context.json'), JSON.stringify(cacheContext({
+  built: BUILD_DATE, checklists, targets: geometry.checklistTargets(), shapes
+})))
 writeFileSync(join(OUT_DIR, 'unplaced.json'), JSON.stringify(groupUnplaced(unplacedEntries)))
 
 // areas.json: every area a distribution uses, then the parents known only as

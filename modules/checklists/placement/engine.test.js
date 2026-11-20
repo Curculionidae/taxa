@@ -297,7 +297,7 @@ test('coordinates only', async () => {
   const placement = await placeRecord(specimen({ lat: 50.4, lng: 30.5 }), rctx)
   assert.equal(placement.checklist.name, 'Ukraine')
   assert.equal(placement.reason, null)
-  assert.deepEqual(placement.steps[0], { text: 'coordinates 50.4, 30.5 lie inside Ukraine', source: 'overlap' })
+  assert.deepEqual(placement.steps[0], { text: 'coordinates 50.4, 30.5 lie inside Ukraine', source: 'overlap', stage: 'checklist' })
 })
 
 test('coordinates within the coastal tolerance say so and cite the rules line (R48)', async () => {
@@ -306,7 +306,8 @@ test('coordinates within the coastal tolerance say so and cite the rules line (R
   assert.deepEqual(placement.steps[0], {
     text: 'coordinates 44.4, 33.4 lie within about 5 km of the coast of Ukraine',
     source: 'overlap',
-    ref: refOf('coastal_tolerance_degrees:')
+    ref: refOf('coastal_tolerance_degrees:'),
+    stage: 'checklist'
   })
   const state = await placeRecord(specimen({ lat: 33.8, lng: -84.5 }), rctx)
   assert.equal(state.state, 'Georgia')
@@ -366,14 +367,14 @@ test('Kralicky Sneznik is not placeable by a manual rule (R36)', () => {
 test('a US specimen takes its state from DwC stateProvince', async () => {
   const placement = await placeRecord(specimen({ country: 'United States', stateProvince: 'Texas' }), rctx)
   assert.equal(placement.state, 'Texas')
-  assert.deepEqual(placement.steps.at(-1), { text: 'DwC stateProvince Texas is the state Texas', source: 'TaxonWorks' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'DwC stateProvince Texas is the state Texas', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('a US specimen without stateProvince takes its state from its coordinates', async () => {
   const placement = await placeRecord(specimen({ country: 'United States of America', lat: 33.7, lng: -84.4 }), rctx)
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, 'Georgia')
-  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 33.7, -84.4 lie inside the state Georgia', source: 'overlap' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 33.7, -84.4 lie inside the state Georgia', source: 'overlap', stage: 'state' })
 })
 
 test('a US specimen with neither gets no state, with the reason', async () => {
@@ -393,7 +394,7 @@ test('the US state Georgia stays in the United States (state Georgia) and does n
   const placement = await ad(usGeorgia)
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, 'Georgia')
-  assert.deepEqual(placement.steps.at(-1), { text: 'Georgia (GA 900002) is the state Georgia', source: 'TaxonWorks' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'Georgia (GA 900002) is the state Georgia', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('Hawaiian gazetteer gets state Hawaii by its measured overlap rule', async () => {
@@ -406,7 +407,8 @@ test('Hawaiian gazetteer gets state Hawaii by its measured overlap rule', async 
     source: 'overlap',
     ref: recordRefOf('match: { area: "GZ 10453" }'),
     pct: 100,
-    pctOf: 'Hawaii'
+    pctOf: 'Hawaii',
+    stage: 'state'
   })
 })
 
@@ -436,7 +438,8 @@ test('Chukot (GA 20379) gets the Chukotka state from its manual rule, not from i
     text: 'Chukot (GA 20379) counts as the state Chukchi Autonomous Okrug (the cached TaxonWorks outline of Chukot ' +
       'also covers Yakutia; fix the shape in TaxonWorks)',
     source: 'manual',
-    ref
+    ref,
+    stage: 'state'
   })
 })
 
@@ -451,7 +454,8 @@ test('Central European Russia has no state, reason spans', async () => {
   assert.deepEqual(placement.steps[1], {
     text: `no state: spans several states: ${spans.measured.replace(/ \(\d{4}-\d{2}-\d{2}\)$/, '')}`,
     source: 'overlap',
-    ref: recordRefOf('match: { tdwg: 14RUC }')
+    ref: recordRefOf('match: { tdwg: 14RUC }'),
+    stage: 'state'
   })
   assert.notEqual(placement.steps[0].ref, placement.steps[1].ref)
 })
@@ -459,7 +463,7 @@ test('Central European Russia has no state, reason spans', async () => {
 test('an area for the whole country gets no state', async () => {
   const placement = await ad(ga(fx.ga19713))
   assert.equal(placement.state, null)
-  assert.deepEqual(placement.steps.at(-1), { text: 'no state: record is for the whole country', source: 'TaxonWorks' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'no state: record is for the whole country', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('a state area no rule measured yet', async () => {
@@ -503,7 +507,7 @@ test('a country without states gets no state step', async () => {
 test('a France specimen with only coordinates in Corsica gets part Corsica', async () => {
   const placement = await placeRecord(specimen({ country: 'France', lat: 42.1, lng: 9.1 }), rctx)
   assert.equal(placement.part, 'Corsica')
-  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 42.1, 9.1 lie inside Corsica', source: 'overlap' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 42.1, 9.1 lie inside Corsica', source: 'overlap', stage: 'part' })
   assert.deepEqual(placement.shape, { key: 'GeographicArea/32254', name: 'Corsica' })
 })
 
@@ -515,7 +519,8 @@ test('a France specimen with coordinates on the mainland gets Mainland France', 
   const byBox = await placeRecord(specimen({ country: 'France', lat: 46, lng: -1.5 }), rctx)
   assert.equal(byBox.part, 'Mainland France')
   assert.deepEqual(byBox.steps.at(-1), {
-    text: 'coordinates 46, -1.5 lie inside the rough box of the part Mainland France', source: 'manual', ref: refOf('- name: Mainland France')
+    text: 'coordinates 46, -1.5 lie inside the rough box of the part Mainland France', source: 'manual', ref: refOf('- name: Mainland France'),
+    stage: 'part'
   })
   // A point no part outline or box holds still lies below country level: the rest part.
   const byRest = await placeRecord(specimen({ country: 'France', lat: 45.5, lng: 4.8 }), rctx)
@@ -554,7 +559,8 @@ test('a county named like a state gets the state it lies in, not the state of it
     assert.equal(placement.state, state, shape.name)
     assert.deepEqual(placement.steps.at(-1), {
       text: `${shape.name} is a subdivision of ${state} (GA ${shape.parent_id}), the state ${state}`,
-      source: 'TaxonWorks'
+      source: 'TaxonWorks',
+      stage: 'state'
     })
   }
 })
@@ -562,13 +568,13 @@ test('a county named like a state gets the state it lies in, not the state of it
 test('a gadm state (type Unknown, parent the country) is the state of its own name', async () => {
   const placement = await ad(ga(fx.ga26370))
   assert.equal(placement.state, 'Washington')
-  assert.deepEqual(placement.steps.at(-1), { text: 'Washington (GA 26370) is the state Washington', source: 'TaxonWorks' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'Washington (GA 26370) is the state Washington', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('a Natural Earth alias decides nothing: stateProvince Moskva is no state name (R51)', async () => {
   const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moskva' }), rctx)
   assert.equal(placement.state, null)
-  assert.deepEqual(placement.steps.at(-1), { text: 'no state: Moskva is not a state of Russia', source: 'TaxonWorks' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'no state: Moskva is not a state of Russia', source: 'TaxonWorks', stage: 'state' })
   assert.ok(!placement.steps.some((step) => step.source === 'Natural Earth'))
 })
 
@@ -582,7 +588,8 @@ test('a stateProvince that names a TaxonWorks area of the checklist takes that a
   assert.equal(placement.state, 'Krasnoyarsk')
   assert.deepEqual(placement.steps.at(-1), {
     text: 'DwC stateProvince Evenk is TaxonWorks area GA 900001, which lies in the state Krasnoyarsk',
-    source: 'overlap', ref: recordRefOf('match: { area: GA 900001 }'), pct: 100, pctOf: 'Krasnoyarsk'
+    source: 'overlap', ref: recordRefOf('match: { area: GA 900001 }'), pct: 100, pctOf: 'Krasnoyarsk',
+    stage: 'state'
   })
   // Two areas of that name in the checklist: the name is ambiguous and ignored.
   const twice = createContext({
@@ -599,7 +606,8 @@ test('a stateProvince matched by ignoring words cites the word list', async () =
   assert.deepEqual(placement.steps.at(-1), {
     text: 'DwC stateProvince "Krasnoyarsk Krai" matches the state Krasnoyarsk (ignoring "krai")',
     source: 'manual',
-    ref: ignoredRef
+    ref: ignoredRef,
+    stage: 'state'
   })
   // "Sakha" was the alias "Sakha Republic" with "republic" ignored; aliases decide nothing now (R51).
   const both = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Sakha' }), rctx)
@@ -616,14 +624,15 @@ test('a state area named by an alias gets no state from it (R51), a parent match
   const moskva = { ...evenk, key: 'GA 900005', id: 900005, name: 'Moskva' }
   const own = await ad(moskva)
   assert.equal(own.state, null)
-  assert.deepEqual(own.steps.at(-1), { text: 'no state: no outline to measure', source: 'TaxonWorks' })
+  assert.deepEqual(own.steps.at(-1), { text: 'no state: no outline to measure', source: 'TaxonWorks', stage: 'state' })
   const district = { ...evenk, key: 'GA 900006', id: 900006, name: 'Some District', level1: 900007, parentId: 900007, parentName: 'Pskov Oblast', origin: 'gadm', type: 'Raion' }
   const parent = await ad(district)
   assert.equal(parent.state, 'Pskov')
   assert.deepEqual(parent.steps.at(-1), {
     text: 'Some District is a subdivision of Pskov Oblast (GA 900007), which matches the state Pskov (ignoring "oblast")',
     source: 'manual',
-    ref: ignoredRef
+    ref: ignoredRef,
+    stage: 'state'
   })
 })
 
@@ -632,7 +641,7 @@ test('a TDWG area, which has no levels, is still tried by its own name', async (
   const tdwg = { ...ga(fx.ga33876), key: 'GA 900008', id: 900008, name: 'Krasnoyarsk' }
   const placement = await ad(tdwg)
   assert.equal(placement.state, 'Krasnoyarsk')
-  assert.deepEqual(placement.steps.at(-1), { text: 'Krasnoyarsk (TDWG 14RUC) is the state Krasnoyarsk', source: 'TaxonWorks' })
+  assert.deepEqual(placement.steps.at(-1), { text: 'Krasnoyarsk (TDWG 14RUC) is the state Krasnoyarsk', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('an area below a county does not take the county name as its state', async () => {

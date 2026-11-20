@@ -122,6 +122,9 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
  * @property {'TaxonWorks'|'manual'|'overlap'} source  TaxonWorks data, a hand-written
  *   line of the rules file, or a measured overlap line of the rules file
  * @property {string} [ref]  'placement.yml:12', the rules file line, for manual and overlap
+ * @property {'checklist'|'part'|'state'|'outline'} [stage]  the decision the step belongs to
+ *   (set by the engine, read by overview.js plainReasons; steps of an older cache lack it)
+ * @property {boolean} [decidesPart]  on a rule step of the checklist stage that also gives the part
  * @property {number} [pct]  the measured share of an overlap step
  * @property {string} [pctOf]  the name the share refers to (the country of a country
  *   rule, the state of a state rule); set on every step that has `pct`
@@ -285,22 +288,39 @@ export async function placeRecord(record, ctx, area) {
   if (record.type === 'AssertedDistribution') {
     if (!area) throw new Error(`placeRecord: asserted distribution ${record.id} needs its area`)
     const decision = decideArea(area, ctx)
+    const before = decision.steps.length
     const state = decision.checklist ? areaState(area, decision.checklist, ctx, decision.steps) : null
+    stamp(decision.steps, before, 'state')
     return finish(decision, state, ctx)
   }
   const point = pointOf(record)
   const decision = await decideRecord(record, point, ctx)
+  stamp(decision.steps, 0, 'checklist')
   if (!decision.checklist) return finish(decision, null, ctx)
+  let before = decision.steps.length
   decision.part = decision.part ?? await recordPart(record, point, decision.checklist, ctx, decision.steps)
+  stamp(decision.steps, before, 'part')
+  before = decision.steps.length
   const state = await recordState(record, point, decision.checklist, ctx, decision.steps)
+  stamp(decision.steps, before, 'state')
   return finish(decision, state, ctx)
 }
 
 // The checklist and part of an area, with steps.
 function decideArea(area, ctx) {
   const decision = decide(area, ctx)
-  if (decision.checklist) decision.part = decision.part ?? choosePart(area, decision.checklist, ctx, decision.steps)
+  stamp(decision.steps, 0, 'checklist')
+  if (decision.checklist) {
+    const before = decision.steps.length
+    decision.part = decision.part ?? choosePart(area, decision.checklist, ctx, decision.steps)
+    stamp(decision.steps, before, 'part')
+  }
   return decision
+}
+
+// Marks the steps added since `from` with the decision they belong to (Step.stage).
+function stamp(steps, from, stage) {
+  for (let i = from; i < steps.length; i++) steps[i].stage ??= stage
 }
 
 // A decision turned into a Placement: the outline, and its step when none is cached.
@@ -311,11 +331,11 @@ function finish(decision, state, ctx) {
   }
   const { checklist, part } = decision
   const shape = chooseShape(checklist, part, ctx)
-  if (!shape) steps.push({ text: `no outline cached for ${checklist.name}`, source: 'TaxonWorks' })
+  if (!shape) steps.push({ text: `no outline cached for ${checklist.name}`, source: 'TaxonWorks', stage: 'outline' })
   else if (shape.key.startsWith('fallback/')) {
     const entry = ctx.rules.checklists.find((candidate) => normalizeName(candidate.name) === normalizeName(checklist.name))
     if (entry?.outline === 'natural_earth') {
-      steps.push({ text: `outline of ${checklist.name} from Natural Earth`, source: 'manual', ref: entry.outlineRef ?? entry.ref })
+      steps.push({ text: `outline of ${checklist.name} from Natural Earth`, source: 'manual', ref: entry.outlineRef ?? entry.ref, stage: 'outline' })
     }
   }
   return {
@@ -436,7 +456,9 @@ function applyRule(rule, source, area, ctx, suffix) {
     if (!checklist) {
       return notPlaced(`no checklist for ${country}`, [step(`${lead} ${country}${partText}, which has no checklist${why}`)])
     }
-    return placed(checklist, [step(`${lead} ${checklist.name}${partText}${why}`, checklist.name)], part ?? null)
+    const decided = step(`${lead} ${checklist.name}${partText}${why}`, checklist.name)
+    if (part) decided.decidesPart = true
+    return placed(checklist, [decided], part ?? null)
   }
 
   // synonymousWith: the area is the same as another area, given by its key.

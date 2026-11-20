@@ -930,16 +930,32 @@ of its descendants.
 The tab starts with one line: "Each area: how many records point to it, the
 checklist it lands in, and why. Indentation shows the TaxonWorks hierarchy."
 Each area line (R54) reads `name (GA 237)` (a TaxonWorks link) · `n records`
-· `→ <checklist> checklist` with `, part P`, `, state S` (or `not placed:
-<reason>`) · `because: <plain words>`, a short wording of the deciding step
-(`overview.js` `plainReason`: "country area in TaxonWorks", "GA hierarchy in TaxonWorks (GA 77)", "spelling synonym", "own checklist entry",
-"gazetteer ISO code NZ", "measured 100% in Russia", "manual rule") with its
-rules line as a link when there is one. The full steps and source tags stay in
-the lookup tab; the OTU table keeps its source tags (R43). An area not
-placed shows only `not placed: <reason>` in red with its rules line, no
-"because" (the reason already says it); one placed without any outline is
-red too. A wrapped line stays at its node's indentation. Each root header gives its
-number of areas and of problems.
+· one segment per decision, each with its own reason (`overview.js`
+`plainReasons`, read from the step that decided it: the engine marks every
+step with its `stage`, `checklist`, `part`, `state` or `outline`). A state or
+part is never called a checklist. For example:
+
+```
+Primor'ye (GA 20330) · 60 records · → Russia checklist · because: GA hierarchy in TaxonWorks (GA 19713) · → state Primorsky Krai · because: measured 100% in Primorsky Krai (placement.yml:539)
+Corse (GA 32254) · 12 records · → France checklist · because: GA hierarchy in TaxonWorks (GA 77) · → part Corsica · because: manual entry (placement.yml:172)
+Clay (GA 30081) · 3 records · → United States checklist · because: GA hierarchy in TaxonWorks (GA 237) · → state Alabama · because: GA hierarchy in TaxonWorks (GA 26688)
+```
+
+The checklist reasons are "country area in TaxonWorks", "GA hierarchy in
+TaxonWorks (GA 77)", "spelling synonym", "own checklist entry", "gazetteer ISO
+code NZ", "measured 100% in Russia" and "manual rule". The part's are "manual
+entry", "rest of the country", "manual rule" (the rule that placed the area
+also names the part) and the measured ones. The state's are "the area is this
+state in TaxonWorks", "GA hierarchy in TaxonWorks (GA 26688)" (through the
+parent), "measured 100% in Primorsky Krai", "manual rule" and "name matches
+after ignoring words". Each carries its rules line as a link when it has one.
+A decision whose step is not known (a cache built before steps had a `stage`,
+or a wording `plainReasons` does not know) shows no "because", never a guess.
+The full steps and source tags stay in the lookup tab; the OTU table keeps its
+source tags (R43). An area not placed shows only `not placed: <reason>` in red
+with its rules line, no "because" (the reason already says it); one placed
+without any outline gets a red "no outline". A wrapped line stays at its
+node's indentation. Each root header gives its number of areas and of problems.
 
 Only the top level is shown at first, and an area's children render only when
 it is opened, so the 2,600 areas stay fast. The filter box keeps areas whose

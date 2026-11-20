@@ -2,10 +2,11 @@
   One area of the curator page's area tree (AreaTree.vue), and its children
   when open. Children are rendered only while the node is open. A group node
   (gazetteers of one ISO code) shows its name and size only. An area line
-  (R54): name (key, a TaxonWorks link) · n records · → <checklist> checklist
-  with part and state · because: <a few plain words for the deciding step,
-  overview.js plainReason> (its rules line); an area not placed shows only
-  "not placed: <reason>" with its rules line. Wrapped text stays indented. A
+  (R54): name (key, a TaxonWorks link) · n records · one segment per decision,
+  each with its own reason (overview.js plainReasons): "→ <checklist> checklist
+  · because: ...", then "→ part <part> · because: ..." and "→ state <state> ·
+  because: ..."; a decision whose step is unknown has no "because". An area not
+  placed shows only "not placed: <reason>" with its rules line. Wrapped text stays indented. A
   placement.yml:N in the source tag links to that line on the Rules tab
   (RefText.vue).
 
@@ -76,21 +77,41 @@
           class="text-base-soft"
           aria-hidden="true"
         >·</span>
-        <span :class="outcome.problem ? 'font-semibold text-danger' : ''">{{ outcome.text }}{{ outcome.ref ? ' (' : '' }}<RefText
+        <span
+          v-if="!placed"
+          class="font-semibold text-danger"
+        >{{ outcome.text }}{{ outcome.ref ? ' (' : '' }}<RefText
           v-if="outcome.ref"
           class="font-mono text-xs font-normal"
           :text="outcome.ref"
         />{{ outcome.ref ? ')' : '' }}</span>
-        <template v-if="because">
+        <template v-else>
+          <template
+            v-for="(segment, index) in segments"
+            :key="segment.what"
+          >
+            <span
+              v-if="index"
+              class="text-base-soft"
+              aria-hidden="true"
+            >·</span>
+            <span>{{ segment.text }}</span>
+            <template v-if="segment.because">
+              <span
+                class="text-base-soft"
+                aria-hidden="true"
+              >·</span>
+              <span>because: {{ segment.because.text }}{{ segment.because.ref ? ' (' : '' }}<RefText
+                v-if="segment.because.ref"
+                class="font-mono text-xs"
+                :text="segment.because.ref"
+              />{{ segment.because.ref ? ')' : '' }}</span>
+            </template>
+          </template>
           <span
-            class="text-base-soft"
-            aria-hidden="true"
-          >·</span>
-          <span>because: {{ because.text }}{{ because.ref ? ' (' : '' }}<RefText
-            v-if="because.ref"
-            class="font-mono text-xs"
-            :text="because.ref"
-          />{{ because.ref ? ')' : '' }}</span>
+            v-if="!placement.shape"
+            class="font-semibold text-danger"
+          >no outline</span>
         </template>
       </template>
       </div>
@@ -114,7 +135,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { decisionOf, plainReason } from '../placement/overview.js'
+import { plainReason, plainReasons } from '../placement/overview.js'
 import RefText from './RefText.vue'
 import { twRecordUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
 
@@ -129,18 +150,25 @@ const emit = defineEmits(['toggle', 'lookup'])
 
 // A filter opens the nodes on the way to its matches; a click toggles that.
 const isOpen = computed(() => (props.filtered && props.node.open) !== props.openKeys.has(props.node.key))
-// '→ France checklist, part Corsica' or 'not placed: <reason>' (R54).
-const outcome = computed(() => {
-  const placement = props.node.row?.placement
-  if (!placement) return { text: '', problem: false, ref: null }
-  // Not placed: the reason says it all; the rules line goes with it, no "because" (R54).
-  if (!placement.checklist) return { text: `not placed: ${placement.reason}`, problem: true, ref: plainReason(placement)?.ref ?? null }
-  const extra = [placement.part && `part ${placement.part}`, placement.state && `state ${placement.state}`, !placement.shape && 'no outline']
-  return { text: [`→ ${placement.checklist.name} checklist`, ...extra.filter(Boolean)].join(', '), problem: decisionOf(placement).problem, ref: null }
+const placement = computed(() => props.node.row?.placement ?? null)
+const placed = computed(() => Boolean(placement.value?.checklist))
+// Not placed: the reason says it all; the rules line goes with it, no "because" (R54).
+const outcome = computed(() => ({
+  text: `not placed: ${placement.value?.reason}`,
+  ref: plainReason(placement.value)?.ref ?? null
+}))
+// One segment per decision, each with its own reason (overview.js plainReasons):
+// '→ Russia checklist · because: GA hierarchy in TaxonWorks (GA 19713)', then
+// '→ state Primorsky Krai · because: measured 100% in Primorsky Krai (placement.yml:539)'.
+// A decision without a known step shows no "because".
+const segments = computed(() => {
+  if (!placed.value) return []
+  const reasons = plainReasons(placement.value)
+  const list = [{ what: 'checklist', text: `→ ${placement.value.checklist.name} checklist`, because: reasons.checklist }]
+  if (placement.value.part) list.push({ what: 'part', text: `→ part ${placement.value.part}`, because: reasons.part })
+  if (placement.value.state) list.push({ what: 'state', text: `→ state ${placement.value.state}`, because: reasons.state })
+  return list
 })
-// 'because: spelling synonym (placement.yml:131)', overview.js plainReason;
-// only for placed areas.
-const because = computed(() => (props.node.row?.placement?.checklist ? plainReason(props.node.row.placement) : null))
 const twUrl = computed(() => {
   const [kind, id] = props.node.key.split(' ')
   return twRecordUrl(kind === 'GZ' ? `/gazetteers/${id}` : `/geographic_areas/${id}`)

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
 import {
   areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, reasonDetail, unplacedSections, summarizeOtu,
-  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, splitRefs, sourceTags, afterDecisionSteps, lineLink, plainReason
+  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, splitRefs, sourceTags, afterDecisionSteps, lineLink, plainReason, plainReasons
 } from './overview.js'
 
 const placed = (name, steps = [{ text: `x is in ${name}`, source: 'TaxonWorks' }], extra = {}) => ({
@@ -257,4 +257,67 @@ test('plainReason: the deciding step in a few words, with its rules line (R54)',
   assert.deepEqual(reason([{ text: 'coordinates 44.5, 34.24 lie within about 5 km of the coast of Ukraine', source: 'overlap', ref: 'placement.yml:168' }]),
     { text: 'coordinates near the coast', ref: 'placement.yml:168' })
   assert.equal(plainReason(null), null)
+})
+
+test('plainReasons: one reason for each decision, from the step that decided it', () => {
+  const reasons = (steps, extra = {}) => plainReasons(placed('X', steps, extra))
+  // Primor'ye GA 20330: checklist from the hierarchy, state measured
+  assert.deepEqual(reasons([
+    { text: "Primor'ye is in Russia (GA 19713)", source: 'TaxonWorks', stage: 'checklist' },
+    { text: "Primor'ye (GA 20330) lies in the state Primorsky Krai", source: 'overlap', ref: 'placement.yml:539', pct: 100, pctOf: 'Primorsky Krai', stage: 'state' }
+  ], { state: 'Primorsky Krai' }), {
+    checklist: { text: 'GA hierarchy in TaxonWorks (GA 19713)', ref: null },
+    part: null,
+    state: { text: 'measured 100% in Primorsky Krai', ref: 'placement.yml:539' }
+  })
+  // an Alabama county: state through the parent
+  assert.deepEqual(reasons([
+    { text: 'Clay is in United States (GA 237)', source: 'TaxonWorks', stage: 'checklist' },
+    { text: 'Clay is a subdivision of Alabama (GA 26688), the state Alabama', source: 'TaxonWorks', stage: 'state' }
+  ], { state: 'Alabama' }).state, { text: 'GA hierarchy in TaxonWorks (GA 26688)', ref: null })
+  // Alabama itself: its own name is a state in TaxonWorks
+  assert.deepEqual(reasons([
+    { text: 'Alabama is in United States (GA 33412)', source: 'TaxonWorks', stage: 'checklist' },
+    { text: 'Alabama (GA 33455) is the state Alabama', source: 'TaxonWorks', stage: 'state' }
+  ], { state: 'Alabama' }).state, { text: 'the area is this state in TaxonWorks', ref: null })
+  // a manual state rule, and a name matched after ignoring words
+  assert.deepEqual(reasons([
+    { text: 'Chukot (GA 20379) counts as the state Chukotka', source: 'manual', ref: 'placement.yml:600', stage: 'state' }
+  ], { state: 'Chukotka' }).state, { text: 'manual rule', ref: 'placement.yml:600' })
+  assert.deepEqual(reasons([
+    { text: 'Tuva (GA 19977) matches the state Tuva (ignoring "republic")', source: 'manual', ref: 'placement.yml:30', stage: 'state' }
+  ], { state: 'Tuva' }).state, { text: 'name matches after ignoring words', ref: 'placement.yml:30' })
+  // Corse GA 32254: the part by a manual entry; no state
+  assert.deepEqual(reasons([
+    { text: 'Corse is in France (GA 77)', source: 'TaxonWorks', stage: 'checklist' },
+    { text: 'Corse (GA 32254) belongs to the part Corsica', source: 'manual', ref: 'placement.yml:172', stage: 'part' }
+  ], { part: 'Corsica' }), {
+    checklist: { text: 'GA hierarchy in TaxonWorks (GA 77)', ref: null },
+    part: { text: 'manual entry', ref: 'placement.yml:172' },
+    state: null
+  })
+  // the rest part
+  assert.deepEqual(reasons([
+    { text: 'Aquitaine is in France (GA 77)', source: 'TaxonWorks', stage: 'checklist' },
+    { text: 'Aquitaine (GA 32220) is below country level, so it goes to the part Mainland France', source: 'manual', ref: 'placement.yml:175', stage: 'part' }
+  ], { part: 'Mainland France' }).part, { text: 'rest of the country', ref: 'placement.yml:175' })
+  // a TDWG area measured for its country, and its part named by the same rule
+  assert.deepEqual(reasons([
+    { text: 'Portugal (TDWG 12POR) lies in Portugal', source: 'overlap', ref: 'placement.yml:211', pct: 99, pctOf: 'Portugal', stage: 'checklist' }
+  ]).checklist, { text: 'measured 99% in Portugal', ref: 'placement.yml:211' })
+  assert.deepEqual(reasons([
+    { text: 'France (TDWG 12FRA) counts as France, part Mainland France', source: 'manual', ref: 'placement.yml:182', stage: 'checklist', decidesPart: true }
+  ], { part: 'Mainland France' }).part, { text: 'manual rule', ref: 'placement.yml:182' })
+  // Tierra del Fuego GA 2588: no state, no part, so no reason for either
+  assert.deepEqual(reasons([{ text: 'Tierra del Fuego is in Argentina (GA 12)', source: 'TaxonWorks', stage: 'checklist' }]), {
+    checklist: { text: 'GA hierarchy in TaxonWorks (GA 12)', ref: null }, part: null, state: null
+  })
+  // steps of an older cache have no stage: no reason rather than a guess
+  assert.deepEqual(reasons([
+    { text: 'Corse is in France (GA 77)', source: 'TaxonWorks' },
+    { text: 'Corse (GA 32254) belongs to the part Corsica', source: 'manual', ref: 'placement.yml:172' }
+  ], { part: 'Corsica' }).part, null)
+  // not placed or no placement: nothing
+  assert.deepEqual(plainReasons(unplaced('no outline')), { checklist: null, part: null, state: null })
+  assert.deepEqual(plainReasons(null), { checklist: null, part: null, state: null })
 })

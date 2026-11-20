@@ -43,7 +43,10 @@ const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached|^out
  * @returns {import('./engine.js').Step|null}  null when there are no steps
  */
 export function decidingStep(placement) {
-  const steps = placement.steps.filter((step) => !AFTER_DECISION.test(step.text))
+  // A step of the engine says which decision it belongs to (Step.stage); the
+  // wording is only used for steps of an older cache.
+  const staged = placement.steps.some((step) => step.stage)
+  const steps = placement.steps.filter((step) => (staged ? step.stage === 'checklist' : !AFTER_DECISION.test(step.text)))
   return steps.at(-1) ?? placement.steps[0] ?? null
 }
 

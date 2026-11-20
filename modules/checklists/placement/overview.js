@@ -569,3 +569,70 @@ export function plainReason(placement) {
   if (spans) return said(`measured: ${spans[1]}`)
   return said('measured overlap')
 }
+
+/**
+ * @typedef {{ text: string, ref: string|null }} Reason
+ */
+
+/**
+ * One reason for each decision of a placed area, for the area tree (R54): the
+ * checklist, the part (France) and the state, each from the step that decided
+ * it (Step.stage, set by the engine). A decision whose step is not known (a
+ * cache made before steps had a stage, or a wording not listed here) gets
+ * null, never a guess.
+ *   checklist  as plainReason
+ *   part       'manual entry', 'rest of the country', 'manual rule' (the rule
+ *              that placed the area also names the part), 'measured: coordinates
+ *              inside the part', 'coordinates inside the part's rough box'
+ *   state      'the area is this state in TaxonWorks', 'GA hierarchy in
+ *              TaxonWorks (GA 19713)', 'measured 100% in Primorsky Krai',
+ *              'manual rule', 'name matches after ignoring words', and for a
+ *              specimen 'DwC stateProvince is this state in TaxonWorks',
+ *              'coordinates inside the state'
+ * @param {Object|null} placement  a Placement (areas.json or engine)
+ * @returns {{ checklist: Reason|null, part: Reason|null, state: Reason|null }}
+ */
+export function plainReasons(placement) {
+  const none = { checklist: null, part: null, state: null }
+  if (!placement?.checklist) return none
+  const steps = placement.steps ?? []
+  return {
+    checklist: plainReason(placement),
+    part: placement.part ? partReason(steps) : null,
+    state: placement.state ? stateReason(steps) : null
+  }
+}
+
+function partReason(steps) {
+  const step = steps.find((candidate) => candidate.stage === 'part')
+  if (!step) {
+    const rule = steps.find((candidate) => candidate.stage === 'checklist' && candidate.decidesPart)
+    return rule ? { text: 'manual rule', ref: rule.ref ?? null } : null
+  }
+  const ref = step.ref ?? null
+  if (step.source === 'overlap') return { text: 'measured: coordinates inside the part', ref }
+  if (/so (?:it goes|they go) to the part /.test(step.text)) return { text: 'rest of the country', ref }
+  if (/inside the rough box of the part /.test(step.text)) return { text: 'coordinates inside the part\'s rough box', ref }
+  if (step.source === 'manual' && / the (?:name .* of the )?part |belongs to the part /.test(step.text)) return { text: 'manual entry', ref }
+  return null
+}
+
+function stateReason(steps) {
+  const step = steps.find((candidate) => candidate.stage === 'state' && !candidate.text.startsWith('no state'))
+  if (!step) return null
+  const ref = step.ref ?? null
+  const text = step.text
+  if (step.source === 'manual' && /\(ignoring "/.test(text)) return { text: 'name matches after ignoring words', ref }
+  if (step.source === 'manual') return / the state /.test(text) ? { text: 'manual rule', ref } : null
+  if (step.source === 'overlap') {
+    if (step.pct !== undefined && step.pctOf) return { text: `measured ${step.pct}% in ${step.pctOf}`, ref }
+    if (/within about \d+ km of the coast/.test(text)) return { text: 'coordinates near the coast of the state', ref }
+    if (/ lie inside the state /.test(text)) return { text: 'coordinates inside the state', ref }
+    return { text: 'measured overlap', ref }
+  }
+  const parent = / is a subdivision of .*\((GA \d+)\), the state /.exec(text)
+  if (parent) return { text: `GA hierarchy in TaxonWorks (${parent[1]})`, ref }
+  if (/^DwC stateProvince .* is the state /.test(text)) return { text: 'DwC stateProvince is this state in TaxonWorks', ref }
+  if (/ is the state [^,]*$/.test(text)) return { text: 'the area is this state in TaxonWorks', ref }
+  return null
+}

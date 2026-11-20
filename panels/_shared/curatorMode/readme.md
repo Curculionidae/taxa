@@ -55,6 +55,9 @@ The public sees none of this, and no curator-only request is made for them.
 - `sourcePdfs.js`: which sources have a PDF (`/sources?source_id[]=…&documents=true`, batched, cached).
 - `TwSourceLinks.vue`: edit + PDF icons for a source, for our own source lists.
 - `CuratorModeButton.vue`: the red leave button.
+- `curator-button.css`: `.pp-curator-button`, the red paper and black print of a name-bearing
+  type label (`--pp-type-label` / `--pp-type-label-ink`). Used by the leave button and the
+  "How records are placed (curator)" link on `/checklists`; use it for any new curator-only button.
 - `OtuTaxonWorksButton.vue`: the open-OTU icon on the taxon page.
 
 Both buttons are placed by the project-root `layout.js` in the framework's layout regions:

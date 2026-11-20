@@ -1,0 +1,14 @@
+/* Curator-only buttons ("Leave curator mode", "How records are placed (curator)"):
+   the red paper and black print of a name-bearing type label
+   (--pp-type-label / --pp-type-label-ink in panels/_shared/panel-tokens.css),
+   so curator tools read as one family. */
+@import '../panel-tokens.css';
+
+.pp-curator-button {
+  background-color: var(--pp-type-label);
+  color: var(--pp-type-label-ink);
+}
+
+.pp-curator-button:hover {
+  filter: brightness(0.9);
+}

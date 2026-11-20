@@ -24,10 +24,24 @@ let boundaryLayer
 let resizeObserver
 let disposed = false
 
-// Smallest zoom at which one world copy fills the map width (256px world at zoom 0).
-function worldZoom() {
+// World view: the zoom (fractional, zoomSnap is 0) and centre at which one
+// world copy, from Tierra del Fuego to the Arctic islands, fits the map in
+// both width and height. Web Mercator: the world is 256px wide at zoom 0.
+const WORLD_VIEW_LATITUDES = { south: -56, north: 76 }
+function mercatorY(lat) {
+  const rad = (lat * Math.PI) / 180
+  return (1 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / Math.PI) / 2
+}
+function worldView() {
   const width = mapElement.value?.clientWidth || 0
-  return Math.max(props.zoom, width ? Math.ceil(Math.log2(width / 256)) : props.zoom)
+  const height = mapElement.value?.clientHeight || 0
+  const north = mercatorY(WORLD_VIEW_LATITUDES.north)
+  const south = mercatorY(WORLD_VIEW_LATITUDES.south)
+  const middle = (north + south) / 2
+  const centerLat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * middle))) * 180) / Math.PI
+  if (!width || !height) return { center: [centerLat, 0], zoom: props.zoom }
+  const zoom = Math.min(Math.log2(width / 256), Math.log2(height / (256 * (south - north))))
+  return { center: [centerLat, 0], zoom }
 }
 
 async function renderBoundaries() {
@@ -48,8 +62,7 @@ onMounted(async () => {
   if (disposed) return
   leaflet = L
   mapObject = L.map(mapElement.value, {
-    center: props.center,
-    zoom: worldZoom(),
+    ...worldView(),
     dragging: props.dragging,
     worldCopyJump: true,
     // Beyond these longitudes only the repeated US/Russia boundaries exist; other countries would be blank.
@@ -99,5 +112,5 @@ onBeforeUnmount(() => {
   mapObject = undefined
 })
 
-defineExpose({ getMapObject: () => mapObject, getWorldZoom: worldZoom })
+defineExpose({ getMapObject: () => mapObject, getWorldView: worldView })
 </script>

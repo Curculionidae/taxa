@@ -1,5 +1,5 @@
 <!--
-  Red "Leave curator mode" button in the top bar, shown only in curator mode
+  Red "Leave curator mode" button (red and black of a primary type label, curator-button.css) in the top bar, shown only in curator mode
   (panels/_shared/curatorMode/curatorMode.js).
 
   Placed on every page by the project's layout.js in the `header:after`
@@ -13,7 +13,7 @@
   >
     <button
       type="button"
-      class="curator-mode-button max-md:ml-auto md:ml-4 px-2.5 py-1 rounded-md text-xs font-medium bg-danger hover:bg-danger/85 text-white cursor-pointer whitespace-nowrap"
+      class="curator-mode-button max-md:ml-auto md:ml-4 px-2.5 py-1 rounded-md text-xs font-medium pp-curator-button cursor-pointer whitespace-nowrap"
       title="Hide the Edit in TaxonWorks links again"
       @click="leave"
     >
@@ -26,6 +26,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { leaveCuratorMode, useCuratorMode } from './curatorMode.js'
+import './curator-button.css'
 
 const isCuratorMode = useCuratorMode()
 

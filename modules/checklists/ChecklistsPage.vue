@@ -5,42 +5,12 @@
         <h1 class="text-2xl font-bold">
           Country checklists
         </h1>
-        <p class="text-sm text-base-content/70">
-          Weevil species reported in each country. Counts are distinct species in the occurrence records.
-          <template v-if="checklistUpdated">Checklists are compiled from cached data, last updated {{ checklistUpdated }}.</template>
-        </p>
-      </div>
-    </header>
-
-    <div class="container mx-auto box-border min-w-0 px-4 pt-4">
-      <div class="flex flex-wrap items-end gap-3 rounded-lg border border-base-border bg-base-foreground p-4">
-        <div class="min-w-[14rem] flex-1 sm:max-w-sm">
-          <label class="block text-sm font-semibold" for="distribution-country">
-            Country or area
-          </label>
-          <select
-            id="distribution-country"
-            class="mt-1 box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            :value="selectedCountryOption"
-            @change="selectCountry($event.target.value)"
-          >
-            <option value="">Select a country</option>
-            <option
-              v-for="country in countries"
-              :key="country.key"
-              :value="country.name"
-            >
-              {{ countryDisplayName(country.name) }} ({{ country.count }})
-            </option>
-          </select>
-        </div>
-
         <p
-          class="box-border flex items-center gap-2 rounded-md border border-warning bg-base-foreground px-3 py-2 text-sm text-base-content"
+          class="box-border flex items-center gap-1.5 self-center rounded-md border border-warning bg-base-foreground px-2 py-0.5 text-xs text-base-content"
           role="note"
         >
           <svg
-            class="h-5 w-5 shrink-0 text-warning"
+            class="h-4 w-4 shrink-0 text-warning"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -55,16 +25,55 @@
           </svg>
           Distribution data is generally incomplete
         </p>
+        <p class="text-sm text-base-content/70">
+          Weevil species reported in each country. Counts are distinct species in the occurrence records.
+          <template v-if="checklistUpdated">Checklists are compiled from cached data, last updated {{ checklistUpdated }}.</template>
+          <!-- Curator mode only: the same red and black as "Leave curator mode"
+               (panels/_shared/curatorMode/CuratorModeButton.vue), so it reads as a curator tool. -->
+          <RouterLink
+            v-if="isCuratorMode"
+            :to="{ name: 'checklists-curator' }"
+            class="ml-2 inline-block whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium pp-curator-button focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            How records are placed (curator)
+          </RouterLink>
+        </p>
+      </div>
+    </header>
 
-        <!-- Curator mode only: the same red as "Leave curator mode"
-             (panels/_shared/curatorMode/CuratorModeButton.vue), so it reads as a curator tool. -->
-        <RouterLink
-          v-if="isCuratorMode"
-          :to="{ name: 'checklists-curator' }"
-          class="mb-2 self-end whitespace-nowrap rounded-md bg-danger px-2.5 py-1 text-xs font-medium text-white hover:bg-danger/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          How records are placed (curator)
-        </RouterLink>
+    <div class="container mx-auto box-border min-w-0 px-4 pt-4">
+      <div class="flex flex-wrap items-start gap-3 rounded-lg border border-base-border bg-base-foreground p-4">
+        <div class="min-w-[14rem] flex-1 sm:max-w-sm">
+          <label class="block text-sm font-semibold" for="distribution-country">
+            Country or area
+          </label>
+          <div class="relative mt-1">
+          <select
+            id="distribution-country"
+            :class="{ 'pr-16': selectedCountry }"
+            class="box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            :value="selectedCountryOption"
+            @change="selectCountry($event.target.value)"
+          >
+            <option value="">Select a country</option>
+            <option
+              v-for="country in countries"
+              :key="country.key"
+              :value="country.name"
+            >
+              {{ countryDisplayName(country.name) }} ({{ country.count }})
+            </option>
+          </select>
+          <button
+            v-if="selectedCountry"
+            class="absolute right-8 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-lg leading-none text-base-soft hover:bg-base-muted hover:text-base-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            type="button"
+            title="Clear the country or area"
+            aria-label="Clear the country or area"
+            @click="selectCountry('')"
+          >×</button>
+          </div>
+        </div>
 
         <div v-if="subdivisionOptions.length" class="min-w-[14rem] flex-1 sm:max-w-sm">
           <label class="block text-sm font-semibold" for="distribution-region">
@@ -112,109 +121,30 @@
           </select>
         </div>
 
-        <p
-          v-if="countsLoading"
-          class="pb-2 text-xs text-base-content/60"
-          role="status"
-        >
-          Loading country species counts…
-        </p>
-        <p
-          v-else-if="countsError"
-          class="pb-2 text-sm text-danger"
-          role="alert"
-        >
-          {{ countsError }}
-          <button
-            class="ml-1 font-semibold underline"
-            type="button"
-            @click="retryLoading"
-          >Retry</button>
-        </p>
-      </div>
-    </div>
-
-    <section class="container mx-auto box-border grid min-w-0 gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(21rem,0.85fr)]">
-      <section aria-label="Weevil species world map" class="min-w-0 rounded-lg border border-base-border bg-base-foreground p-3">
-        <div class="relative overflow-hidden rounded-lg bg-base-foreground ring-1 ring-base-border/50">
-          <ClientOnly>
-            <ChecklistMap
-              ref="countryMapRef"
-              v-if="countryGeoJson"
-              class="country-checklist-map h-[26rem] max-h-[26rem] sm:h-[30rem] sm:max-h-[30rem] xl:h-[max(24rem,calc(100vh-17rem))] xl:max-h-none"
-              dragging
-              :zoom="2"
-              :center="[15, 0]"
-              :geojson="countryGeoJson"
-              :geojson-options="geojsonOptions"
-              @geojson:ready="onCountryMapReady"
-            />
-            <VSpinner
-              v-if="countsLoading"
-              class="absolute left-1/2 top-4 z-[500] -translate-x-1/2"
-            />
-          </ClientOnly>
-          <p
-            v-if="mapError"
-            class="px-4 py-3 text-sm text-danger"
-            role="alert"
-          >
-            {{ mapError }}
-          </p>
-        </div>
-
-        <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Map view">
-          <button
-            class="rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm font-medium hover:bg-base-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
-            type="button"
-            :disabled="!mapReady"
-            @click="showWorldView"
-          >World view</button>
-          <button
-            class="rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm font-medium hover:bg-base-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
-            type="button"
-            :disabled="!mapReady || !selectedCountry"
-            :title="selectedCountry ? `Return to ${selectionLabel}` : 'Select a country or area first'"
-            @click="syncMapSelection"
-          >Return to selection</button>
-        </div>
-
-        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70">
-          <span class="font-semibold">Reported species</span>
-          <span
-            v-for="step in legend"
-            :key="step.label"
-            class="inline-flex items-center gap-1.5"
-          >
-            <span
-              class="h-3 w-3 rounded-sm ring-1 ring-base-border"
-              :style="{ backgroundColor: `var(${step.token})`, opacity: 'var(--tp-map-shape-opacity, 0.5)' }"
-            />
-            {{ step.label }}
-          </span>
-          <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China and Russia, click a state or province to narrow it.</span>
-        </div>
-        <p class="mt-3 text-xs text-base-soft">
-          This feature was adapted from
-          <a
-            href="https://jrpletch.github.io/fleasoftheworld/"
-            target="_blank"
-            rel="noopener"
-            class="text-secondary hover:underline"
-          >Fleas of the World Online</a>.
-        </p>
-      </section>
-
-      <aside class="min-w-0 rounded-lg border border-base-border bg-base-foreground p-4">
-        <div class="mb-4">
+        <div class="min-w-[14rem] flex-1 sm:max-w-sm">
           <label class="block text-sm font-semibold" for="taxon-filter">Taxon</label>
           <div class="relative mt-1">
+            <!-- The chosen taxon sits inside the field as a chip, before the text input. -->
+            <div class="box-border flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-md border border-base-border bg-base-foreground px-1.5 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary">
+            <span
+              v-if="higherTaxonFilter"
+              class="ml-0.5 inline-flex max-w-[60%] shrink-0 items-center gap-1 rounded-full border border-base-border bg-base-muted py-0.5 pl-2.5 pr-0.5 text-sm"
+              :title="!selectedCountry && !taxaIndexFailed ? 'The map and the country list count this taxon.' : undefined"
+            >
+              <span class="truncate">{{ higherTaxonFilter.rank }} <span :class="{ italic: higherTaxonFilter.rank === 'genus' }">{{ higherTaxonFilter.name }}</span></span>
+              <button
+                type="button"
+                class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-base-border"
+                :aria-label="`Remove the ${higherTaxonFilter.name} filter`"
+                @click="setHigherTaxonFilter(null)"
+              >×</button>
+            </span>
             <input
               id="taxon-filter"
               v-model="taxonQuery"
-              class="box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              class="box-border block w-full min-w-0 flex-1 border-0 bg-transparent px-1.5 py-[7px] text-base placeholder:text-base-content/45 focus:outline-none"
               type="search"
-              placeholder="Genus, tribe, subfamily or family"
+              :placeholder="higherTaxonFilter ? 'Another taxon' : 'Genus, tribe, subfamily or family'"
               autocomplete="off"
               role="combobox"
               aria-autocomplete="list"
@@ -226,6 +156,7 @@
               @blur="suggestionsOpen = false"
               @keydown="onTaxonFilterKeydown"
             />
+            </div>
             <ul
               v-if="suggestionsOpen && higherTaxonSuggestions.length"
               id="higher-taxon-suggestions"
@@ -248,19 +179,6 @@
               </li>
             </ul>
           </div>
-          <div v-if="higherTaxonFilter" class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span class="text-base-soft">Only</span>
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-base-border bg-base-muted py-0.5 pl-3 pr-1">
-              <span>{{ higherTaxonFilter.rank }} <span :class="{ italic: higherTaxonFilter.rank === 'genus' }">{{ higherTaxonFilter.name }}</span></span>
-              <button
-                type="button"
-                class="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-base-border"
-                :aria-label="`Remove the ${higherTaxonFilter.name} filter`"
-                @click="setHigherTaxonFilter(null)"
-              >×</button>
-            </span>
-            <span v-if="!selectedCountry && !taxaIndexFailed" class="text-xs text-base-soft">The map and the country list count this taxon.</span>
-          </div>
           <p v-if="higherTaxonFilter && taxaIndexFailed" class="mt-2 text-xs text-danger" role="status">
             The counts for this taxon could not be loaded, so the map and the country list show all taxa.
           </p>
@@ -268,10 +186,34 @@
             The taxon “{{ taxonNotFound }}” in the link was not found; all taxa are shown.
           </p>
         </div>
-        <div
-          v-if="selectedCountry"
-          class="border-t border-base-border/50 pt-3 xl:border-t-0 xl:pt-0"
+
+        <p
+          v-if="countsLoading"
+          class="self-end pb-2 text-xs text-base-content/60"
+          role="status"
         >
+          Loading country species counts…
+        </p>
+        <p
+          v-else-if="countsError"
+          class="self-end pb-2 text-sm text-danger"
+          role="alert"
+        >
+          {{ countsError }}
+          <button
+            class="ml-1 font-semibold underline"
+            type="button"
+            @click="retryLoading"
+          >Retry</button>
+        </p>
+      </div>
+    </div>
+
+    <section class="container mx-auto box-border grid min-w-0 gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(21rem,0.85fr)]">
+      <div class="flex min-w-0 flex-col gap-4">
+        <section
+          v-if="selectedCountry"
+          aria-label="Checklist selection" class="flex min-w-0 flex-col gap-4 rounded-lg border border-base-border bg-base-foreground p-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex min-w-0 items-baseline gap-3">
               <h2 class="flex items-center gap-2 text-xl font-semibold">
@@ -320,8 +262,83 @@
             </div>
           </div>
 
+        </section>
+
+        <section aria-label="Weevil species world map" class="min-w-0 rounded-lg border border-base-border bg-base-foreground p-3">
+          <div class="relative overflow-hidden rounded-lg bg-base-foreground ring-1 ring-base-border/50">
+            <ClientOnly>
+              <ChecklistMap
+                ref="countryMapRef"
+                v-if="countryGeoJson"
+                class="country-checklist-map h-[26rem] max-h-[26rem] sm:h-[30rem] sm:max-h-[30rem] xl:h-[max(20rem,calc(100vh-27rem))] xl:max-h-none"
+                dragging
+                :zoom="2"
+                :center="[15, 0]"
+                :geojson="countryGeoJson"
+                :geojson-options="geojsonOptions"
+                @geojson:ready="onCountryMapReady"
+              />
+              <VSpinner
+                v-if="countsLoading"
+                class="absolute left-1/2 top-4 z-[500] -translate-x-1/2"
+              />
+            </ClientOnly>
+            <p
+              v-if="mapError"
+              class="px-4 py-3 text-sm text-danger"
+              role="alert"
+            >
+              {{ mapError }}
+            </p>
+          </div>
+
+          <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Map view">
+            <button
+              class="rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm font-medium hover:bg-base-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              :disabled="!mapReady"
+              @click="showWorldView"
+            >World view</button>
+            <button
+              class="rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm font-medium hover:bg-base-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              :disabled="!mapReady || !selectedCountry"
+              :title="selectedCountry ? `Return to ${selectionLabel}` : 'Select a country or area first'"
+              @click="syncMapSelection"
+            >Return to selection</button>
+          </div>
+
+          <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70">
+            <span class="font-semibold">Reported species</span>
+            <span
+              v-for="step in legend"
+              :key="step.label"
+              class="inline-flex items-center gap-1.5"
+            >
+              <span
+                class="h-3 w-3 rounded-sm ring-1 ring-base-border"
+                :style="{ backgroundColor: `var(${step.token})`, opacity: step.max === 0 ? 0.48 : 0.88 }"
+              />
+              {{ step.label }}
+            </span>
+            <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China and Russia, click a state or province to narrow it.</span>
+          </div>
+          <p class="mt-3 text-xs text-base-soft">
+            This feature was adapted from
+            <a
+              href="https://jrpletch.github.io/fleasoftheworld/"
+              target="_blank"
+              rel="noopener"
+              class="text-secondary hover:underline"
+            >Fleas of the World Online</a>.
+          </p>
+        </section>
+      </div>
+
+      <aside class="min-w-0 rounded-lg border border-base-border bg-base-foreground p-4">
+        <template v-if="selectedCountry">
           <div
-            class="mt-4 flex border-b border-base-border/60"
+            class="mb-3 flex border-b border-base-border/60"
             role="tablist"
             aria-label="Country checklist views"
           >
@@ -346,7 +363,6 @@
               @click="activeCountryTab = 'references'"
             >References</button>
           </div>
-
           <p
             v-if="countryLoading"
             class="mt-4 text-sm text-base-content/65"
@@ -364,26 +380,23 @@
               <section
                 v-else-if="activeCountryTab === 'species'"
                 id="country-panel-species"
-                class="pt-3"
                 role="tabpanel"
                 aria-labelledby="country-tab-species"
               >
                 <template v-if="species.length">
-                  <label class="block text-sm font-medium" for="species-filter">
-                    Species and subspecies checklist
-                  </label>
                   <input
                     id="species-filter"
                     v-model="speciesFilter"
-                    class="mt-1.5 box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    class="box-border block w-full min-w-0 max-w-full rounded-md border border-base-border bg-base-foreground px-3 py-2 text-sm placeholder:text-base-content/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     type="search"
                     placeholder="Filter by species name"
+                    aria-label="Filter the species and subspecies checklist by name"
                     autocomplete="off"
                   />
                   <p class="mt-2 text-xs text-base-content/55">
                     {{ filteredSpecies.filter((taxon) => !taxon.reassessed).length }} of {{ species.filter((taxon) => !taxon.reassessed).length }} listed taxa<template v-if="species.some((taxon) => taxon.reassessed)">, plus reassessed ones, not counted</template>
                   </p>
-                  <ul class="mt-2 max-h-[28rem] divide-y divide-base-border/50 overflow-y-auto border-y border-base-border/50 xl:max-h-[calc(100vh-27rem)] xl:min-h-[12rem]">
+                  <ul class="mt-2 max-h-[28rem] divide-y divide-base-border/50 overflow-y-auto border-y border-base-border/50 xl:max-h-[calc(100vh-12rem)] xl:min-h-[12rem]">
                     <template
                       v-for="row in filteredSpeciesRows"
                       :key="row.key"
@@ -516,7 +529,6 @@
               <section
                 v-else
                 id="country-panel-references"
-                class="pt-3"
                 role="tabpanel"
                 aria-labelledby="country-tab-references"
               >
@@ -524,9 +536,9 @@
                   v-if="checklistReferences.length"
                   class="text-xs text-base-content/55"
                 >
-                  {{ checklistReferences.length }} {{ checklistReferences.length === 1 ? 'reference' : 'references' }}<template v-if="higherTaxonFilter || speciesFilter.trim()"> for the taxa shown by the filter</template>, alphabetical. Each shows the taxa it is cited for.
+                  {{ checklistReferences.length }} {{ checklistReferences.length === 1 ? 'reference' : 'references' }}<template v-if="higherTaxonFilter || speciesFilter.trim()"> for the taxa shown by the filter</template>, most taxa first. Each shows the taxa it is cited for.
                 </p>
-                <ol v-if="checklistReferences.length" class="mt-2 max-h-[28rem] space-y-3 overflow-y-auto pr-2 xl:max-h-[calc(100vh-27rem)] xl:min-h-[12rem]">
+                <ol v-if="checklistReferences.length" class="mt-2 max-h-[28rem] space-y-3 overflow-y-auto pr-2 xl:max-h-[calc(100vh-12rem)] xl:min-h-[12rem]">
                   <li
                     v-for="reference in checklistReferences"
                     :key="reference.full"
@@ -569,10 +581,10 @@
                   No cited references are currently indexed for {{ selectionLabel }}.
                 </p>
               </section>
-        </div>
+        </template>
         <p
           v-else
-          class="mt-5 border-t border-base-border/50 pt-4 text-sm text-base-content/65"
+          class="text-sm text-base-content/65"
         >
           Select a country on the map or from the list to see its checklist and references.
         </p>
@@ -603,7 +615,7 @@
 // Ported from Fleas of the World (https://github.com/jrpletch/fleasoftheworld,
 // pages/checklists.vue at 2afe35c), used with permission. Changes: weevil
 // wording, project-name exports, colour steps scaled to the counts, map colours
-// as --pp-checklist-* tokens in the aggregate-map green (modules/checklists/data/checklist-tokens.css).
+// as --pp-checklist-* tokens with the original colours (modules/checklists/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { expandChecklist } from './data/compact.js'
@@ -612,6 +624,7 @@ import ChecklistMap from './components/ChecklistMap.vue'
 import { useCuratorMode } from '../../panels/_shared/curatorMode/curatorMode.js'
 import { ADVENTIVE_CHIP_STYLE } from '../../panels/_shared/adventive.js'
 import '../../panels/_shared/panel-tokens.css'
+import '../../panels/_shared/curatorMode/curator-button.css'
 import './data/checklist-tokens.css'
 
 const {
@@ -630,13 +643,6 @@ const exportPrefix = projectName.replace(/[^A-Za-z0-9]+/g, '')
 function cssVar(name) {
   if (typeof document === 'undefined') return ''
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-}
-
-// Same see-through fill as the taxon pages' map (--tp-map-shape-opacity), so
-// the tiles show through the countries the way they do there.
-function shapeOpacity() {
-  const value = Number.parseFloat(cssVar('--tp-map-shape-opacity'))
-  return Number.isFinite(value) ? value : 0.5
 }
 
 // Colour steps scaled to the highest count on the map under the current
@@ -1118,15 +1124,15 @@ function countryStyle(feature) {
   const selected = countryKey(name) === countryKey(mapSelectionName.value)
   if (selected && subdivisionsShown.value) {
     if (selectedRegion.value && !isAssociatedAreaSelection.value) return { weight: 0, opacity: 0, fill: false }
-    return { color: cssVar('--tp-base-content'), weight: 3.5, opacity: 1, fill: false }
+    return { color: cssVar('--pp-checklist-selected'), weight: 3.5, opacity: 1, fill: false }
   }
   return {
     fill: true,
     opacity: 1,
-    color: selected ? cssVar('--tp-base-content') : cssVar('--tp-base-foreground'),
+    color: selected ? cssVar('--pp-checklist-selected') : cssVar('--tp-base-foreground'),
     weight: selected ? 3.5 : 0.6,
     fillColor: colorForCount(count),
-    fillOpacity: count ? shapeOpacity() : 0.12
+    fillOpacity: count ? 0.88 : 0.48
   }
 }
 
@@ -1191,8 +1197,8 @@ function focusMapOnCountry() {
   const map = countryMapRef.value?.getMapObject()
   if (!map) return
   if (!selectedCountry.value) {
-    const zoom = countryMapRef.value?.getWorldZoom?.() ?? 2
-    map.setView([15, 0], zoom, { animate: false })
+    const { center, zoom } = countryMapRef.value?.getWorldView?.() ?? { center: [15, 0], zoom: 2 }
+    map.setView(center, zoom, { animate: false })
     return
   }
 
@@ -1242,7 +1248,7 @@ const geojsonOptions = () => ({
     })
     layer.on('mouseover', (event) => event.target.setStyle({
       weight: countryKey(name) === countryKey(mapSelectionName.value) ? 3.5 : 1.5,
-      fillOpacity: shapeOpacity() + 0.25
+      fillOpacity: 1
     }))
     layer.on('mouseout', () => layer.setStyle(countryStyle(feature)))
   }
@@ -1451,10 +1457,10 @@ function subdivisionStyle(feature) {
   const count = regionCounts.value.get(name) || 0
   const selected = name === selectedRegion.value
   return {
-    color: selected ? cssVar('--tp-base-content') : cssVar('--tp-base-foreground'),
+    color: selected ? cssVar('--pp-checklist-selected') : cssVar('--tp-base-foreground'),
     weight: selected ? 3.5 : 0.8,
     fillColor: colorForCount(count),
-    fillOpacity: count ? shapeOpacity() : 0.12
+    fillOpacity: count ? 0.9 : 0.5
   }
 }
 
@@ -1494,7 +1500,7 @@ async function updateSubdivisionLayer() {
         })
         layer.on('mouseover', (event) => event.target.setStyle({
           weight: name === selectedRegion.value ? 3.5 : 1.8,
-          fillOpacity: shapeOpacity() + 0.25
+          fillOpacity: 1
         }))
         layer.on('mouseout', () => layer.setStyle(subdivisionStyle(feature)))
       }
@@ -1514,11 +1520,11 @@ async function updateMapView(view) {
   refreshMapStyles()
   restyleSubdivisions()
   if (view === 'world') {
-    const zoom = countryMapRef.value?.getWorldZoom?.() ?? 2
+    const { center, zoom } = countryMapRef.value?.getWorldView?.() ?? { center: [15, 0], zoom: 2 }
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      map.setView([15, 0], zoom, { animate: false })
+      map.setView(center, zoom, { animate: false })
     } else {
-      map.flyTo([15, 0], zoom, { duration: 0.55 })
+      map.flyTo(center, zoom, { duration: 0.55 })
     }
   } else {
     focusMapOnSelection()
@@ -1733,7 +1739,8 @@ const higherTaxonSuggestions = computed(() => {
   if (!query) return []
   return suggestionPool.value
     .filter((taxon) => taxon.name.toLocaleLowerCase().startsWith(query))
-    .sort((a, b) => SUGGESTION_RANKS.indexOf(a.rank) - SUGGESTION_RANKS.indexOf(b.rank) || a.name.localeCompare(b.name))
+    // Highest rank first (family, subfamily, tribe, subtribe, genus), then by name.
+    .sort((a, b) => SUGGESTION_RANKS.indexOf(b.rank) - SUGGESTION_RANKS.indexOf(a.rank) || a.name.localeCompare(b.name))
     .slice(0, 8)
 })
 
@@ -1748,6 +1755,11 @@ function chooseHigherTaxon(taxon) {
 }
 
 function onTaxonFilterKeydown(event) {
+  // Backspace in the empty field removes the taxon chip, as in tag inputs.
+  if (event.key === 'Backspace' && !taxonQuery.value && higherTaxonFilter.value) {
+    setHigherTaxonFilter(null)
+    return
+  }
   const count = higherTaxonSuggestions.value.length
   if (event.key === 'Escape') {
     suggestionsOpen.value = false
@@ -2242,7 +2254,7 @@ const checklistReferences = computed(() => {
         .sort((a, b) => a.name.localeCompare(b.name))
       return { ...reference, key: `reference-${index}`, taxa }
     })
-    .sort((a, b) => a.full.localeCompare(b.full))
+    .sort((a, b) => b.taxa.length - a.taxa.length || a.full.localeCompare(b.full))
 })
 
 async function loadCountry(name) {

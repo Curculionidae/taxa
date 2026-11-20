@@ -61,7 +61,7 @@
         <RouterLink
           v-if="isCuratorMode"
           :to="{ name: 'checklists-curator' }"
-          class="self-center whitespace-nowrap rounded-md bg-danger px-2.5 py-1 text-xs font-medium text-white hover:bg-danger/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="mb-2 self-end whitespace-nowrap rounded-md bg-danger px-2.5 py-1 text-xs font-medium text-white hover:bg-danger/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           How records are placed (curator)
         </RouterLink>

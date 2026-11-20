@@ -174,8 +174,8 @@
     -9.2402
    ],
    "states": true,
-   "taxa": 1043,
-   "records": 1287
+   "taxa": 1037,
+   "records": 1280
   },
   {
    "key": "austria",
@@ -2422,16 +2422,17 @@
    "file": "norfolk-island.json",
    "name": "Norfolk Island",
    "iso2": "NF",
-   "shape": "GeographicArea/33700",
+   "shape": null,
+   "fallback": "Norfolk Island",
    "bbox": [
-    159.0449,
-    -31.6,
-    167.9977,
-    -29.002
+    167.9121,
+    -29.08,
+    167.9963,
+    -28.9975
    ],
    "states": false,
-   "taxa": 3,
-   "records": 3
+   "taxa": 10,
+   "records": 10
   },
   {
    "key": "north-korea",
@@ -3489,7 +3490,7 @@
     1.7712,
     60.8479
    ],
-   "states": true,
+   "states": false,
    "taxa": 331,
    "records": 345
   },

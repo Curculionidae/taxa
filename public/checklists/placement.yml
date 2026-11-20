@@ -1,0 +1,715 @@
+# Placement rules for the country checklists.
+#
+# What this file is for
+#   The checklist build decides, for every asserted distribution, specimen and
+#   field occurrence, which country checklist it belongs to. Most decisions come
+#   straight from TaxonWorks. This file holds everything TaxonWorks cannot say:
+#   checklists of their own, spelling variants of country names, and what to do
+#   with areas whose country is not stated. The file is compiled by
+#   modules/checklists/placement/rules.js. Every explanation of a decision cites
+#   the line of the rule that made it, as placement.yml:<line>.
+#
+# The three sources of a decision (shown in square brackets in explanations)
+#   [TaxonWorks]  what TaxonWorks says: the country of a political area, the ISO
+#                 code of a gazetteer, the DwC country and stateProvince of a specimen.
+#   (Natural Earth is geometry only: country and state outlines. No name from it
+#                 decides anything; its state aliases are not read.)
+#   [manual]      a line in this file written by hand (manual section, checklists,
+#                 synonyms, parts, ignored_name_words, coastal_tolerance_degrees).
+#   [overlap]     a line in the overlap section: which country outlines the shape
+#                 of an area falls in, measured on the cached shapes.
+#   Manual lines win over overlap lines.
+#
+# The overlap section is written by the measuring script (npm run
+# checklists:measure, see the module README, "Measuring overlap"). It appends
+# rules at the end of the section and never changes other lines. Do not edit it
+# by hand, except to delete a line (the next run measures that area again). To
+# overrule a line, add a manual rule for the same area instead.
+#
+# Keys
+#   checklists  Checklists of their own that TaxonWorks files under another country.
+#     name   checklist name, shown on the page
+#     iso2   ISO 3166-1 alpha-2 code; gazetteers carrying it belong here
+#     of     the country TaxonWorks files it under (optional)
+#     areas  area ids that belong to it, GA = geographic area, GZ = gazetteer
+#     names  words in a DwC country, province or place that name it
+#     box    rough bounding box [west, south, east, north], used where no outline is cached
+#     outline  natural_earth: take the checklist's outline from the Natural Earth
+#            outlines (public/checklists/fallback-shapes.geojson) even when an
+#            area of it has a cached outline (optional)
+#     why    the reason this checklist exists
+#     Example: { name: Mayotte, iso2: YT, of: France, names: [Mayotte], box: [...], why: ... }
+#   coastal_tolerance_degrees  A point outside every outline but this close to
+#               one (in degrees) counts for that outline, as a coastal point.
+#   synonyms    Different spellings of one country. The first name is the checklist name.
+#     Example: [Tanzania, United Republic of Tanzania]
+#   parts       Parts of a country that can be selected on their own, by country name.
+#     name   part name
+#     areas  area ids that belong to it
+#     names  words in a province or place that name it
+#     box    rough bounding box, as above
+#     rest   true on the part that takes every other record below country level
+#     Example: Corsica under France
+#   manual, overlap  Rules for one area each.
+#     match   which area: area ("GA 78" or "GZ 10453"), tdwg (TDWG code),
+#             gazetteer_prefix (start of a gazetteer name), iso2 (ISO code)
+#     subdivision_of   the area is a part of a country: { country, part?, state? }
+#     synonymous_with  the area is the same as another area, given as "GA 78"
+#     not_placeable    the area has no single country; the text is the reason
+#       not_placeable: spans several states   speaks about the state only: the
+#                      area lies in one country but in several of its states, so
+#                      its records get no state. Such a rule never decides the
+#                      country; another rule or TaxonWorks does.
+#     Exactly one of the three actions per rule.
+#     why       the reason, for manual rules
+#     measured  the measurement, for overlap rules: the top four shares and the
+#               date; its first percentage is kept. A share of 90% or more gives
+#               subdivision_of, less gives not_placeable.
+#     Example: { match: { tdwg: 12SPA }, subdivision_of: { country: Spain } }
+#     Example of a state rule: { match: { area: "GZ 10453" },
+#               subdivision_of: { country: United States, state: Hawaii } }
+
+checklists:
+  # Own checklists although TaxonWorks files them under France (ISO 3166-1 codes)
+  - name: French Guiana
+    iso2: GF
+    of: France
+    names: [French Guiana, Guyane]
+    areas: [GA 32253, GA 78, GA 34200]   # Natural Earth state, country-level area, TDWG L4
+    box: [-55, 1.8, -51, 6.2]
+    why: ISO 3166-1 code GF of its own, though TaxonWorks files it under France
+  - name: Guadeloupe
+    iso2: GP
+    of: France
+    names: [Guadeloupe]
+    areas: [GA 90, GA 32432, GA 34212]   # as in public/checklists/index.json, so country files keep their names
+    box: [-62, 15.7, -60.8, 16.6]
+    why: ISO 3166-1 code GP of its own, though TaxonWorks files it under France
+  - name: Martinique
+    iso2: MQ
+    of: France
+    names: [Martinique]
+    areas: [GA 32213, GA 34557]   # as in public/checklists/index.json, so country files keep their names
+    box: [-61.3, 14.3, -60.7, 15]
+    why: ISO 3166-1 code MQ of its own, though TaxonWorks files it under France
+  - name: Réunion
+    iso2: RE
+    of: France
+    names: [Réunion, Reunion]
+    areas: [GA 33048]   # as in public/checklists/index.json, so country files keep their names
+    box: [55.1, -21.5, 56, -20.8]
+    why: ISO 3166-1 code RE of its own, though TaxonWorks files it under France
+  - name: Mayotte
+    iso2: YT
+    of: France
+    names: [Mayotte]
+    areas: [GA 34156]   # as in public/checklists/index.json, so country files keep their names
+    box: [44.9, -13.1, 45.4, -12.5]
+    why: ISO 3166-1 code YT of its own, though TaxonWorks files it under France
+  - name: Northern Mariana Islands
+    iso2: MP
+    areas: [GA 31750]   # the TaxonWorks country area; no record uses it, so its outline is not cached
+    why: 31 records on Northern Mariana Islands gazetteers had no checklist (test report 2026-11-20)
+  - name: Kosovo
+    iso2: XK
+    why: own checklist by user decision 2026-11-20 (XK is the user-assigned code in common use)
+  - name: Norfolk Island
+    iso2: NF
+    areas: [GA 33700, GZ 10458]   # TDWG Norfolk Is. (50NFK); gazetteer "Australia: Norfolk Island" (ISO AU)
+    outline: natural_earth   # the TDWG outline of 50NFK also covers Lord Howe Island, which stays Australia (manual rule for 50NFK-LH)
+    why: own checklist by user decision 2026-11-20
+
+# Checklists that can be browsed by state or province. Their records get a
+# state, and the page shows a state drill-down. The state names and outlines
+# come from Natural Earth (public/checklists/subdivisions.geojson, features
+# whose country is the checklist name; their aliases are not used).
+state_countries: [United States, Canada, Australia, China, Russia]
+
+synonyms:
+  # Several country-level areas in TaxonWorks, spelled differently
+  - [Bosnia and Herzegovina, Bosnia and Herz.]
+  - [Cayman Islands, Cayman Is.]
+  - [North Korea, Dem. Rep. Korea]
+  - [South Korea, Korea]
+  - [Equatorial Guinea, Eq. Guinea]
+  - [Faroe Islands, Faeroe Is.]
+  - [Laos, Lao PDR]
+  - [North Macedonia, Macedonia]
+  - [Sao Tome and Principe, São Tomé and Principe]
+  - [Solomon Islands, Solomon Is.]
+  - [Saint Kitts and Nevis, St. Kitts and Nevis]
+  - ["Saint Vincent and the Grenadines", St. Vin. and Gren.]
+  - ["Virgin Islands, U.S.", U.S. Virgin Is.]
+  - [Tanzania, United Republic of Tanzania]
+  - [Vietnam, Viet Nam]
+  - [Saint Martin, Saint Martin (French part)]
+  - [Western Sahara, W. Sahara]
+  - [Turks and Caicos Islands, Turks and Caicos Is.]
+  - [French Southern Territories, TAAF]
+  - [United States, United States of America]   # GA 33412 (Natural Earth), parent of the US states
+  # Spellings of TaxonWorks' DwC country text (test report 2026-11-20)
+  - [Congo, Republic of Congo]
+  - ["Côte d'Ivoire", Ivory Coast]
+  # TaxonWorks spells GA 186 with a capital É; the checklist keeps the usual spelling
+  - [Saint Barthélemy, Saint BarthÉlemy]
+
+# Words left out when a place name is compared with the state names of a
+# checklist, so that "Krasnoyarsk Krai" finds the state Krasnoyarsk and
+# "Republic of Sakha" finds Sakha. They apply only to states, never to country
+# names. Case and accents do not matter. An explanation that needed them says
+# which words it ignored and cites this line.
+ignored_name_words: [province, oblast, krai, kray, republic, of, autonomous, region, okrug, state, municipality, city, district, territory, sheng, shi, the, and, county]
+
+# Coastlines of the cached outlines are simplified, so specimens collected on
+# the shore often lie a few hundred metres outside them. A point outside every
+# outline but within this many degrees (0.05 degrees, about 5 km) of one
+# counts for the nearest outline, unless a second one is nearly as close; the
+# step then says "within about 5 km of the coast of".
+coastal_tolerance_degrees: 0.05
+
+parts:
+  France:
+    - name: Corsica
+      areas: [GA 32254]
+      names: [Corse, Corsica]
+      box: [8.4, 41.3, 9.7, 43.1]
+    - name: Mainland France
+      areas: [GA 34185]   # TDWG L4 12FRA-FR, mainland only: its outline has no Channel Islands (12FRA has)
+      rest: true
+      box: [-5.5, 42.2, 8.3, 51.2]
+manual:
+  # TDWG areas where geometry alone would mislead
+  - match: { tdwg: 12FRA }
+    subdivision_of: { country: France, part: Mainland France }
+    why: approximately; TDWG France also covers Jersey and Guernsey
+  - match: { tdwg: 10IRE-NI }
+    subdivision_of: { country: United Kingdom }
+    why: TaxonWorks DwC says Ireland (its name match climbs to TDWG Ireland)
+  - match: { tdwg: 50NFK-LH }
+    subdivision_of: { country: Australia }
+    why: Lord Howe Island belongs to New South Wales; its TDWG parent 50NFK is the Norfolk Island checklist
+  # Areas whose cached TaxonWorks outline is wrong
+  - match: { area: GA 20379 }
+    subdivision_of: { country: Russia, state: Chukchi Autonomous Okrug }
+    why: the cached TaxonWorks outline of Chukot also covers Yakutia; fix the shape in TaxonWorks
+  # Areas on a border
+  - match: { area: GZ 10572 }
+    not_placeable: lies on the border of Czech Republic and Poland
+    why: user decision 2026-11-20, to be reviewed
+  # Gazetteers with a wrong ISO code
+  - match: { gazetteer_prefix: "TAAF:" }
+    subdivision_of: { country: French Southern Territories }
+    why: TAAF gazetteers carry ISO code FR in TaxonWorks but lie in the French Southern Territories (ISO TF)
+
+overlap:
+  - match: { tdwg: 12FRA }   # GA 33696 France (TDWG Level 3 12FRA), 867 records
+    subdivision_of: { country: "France" }
+    measured: "France 100%, Guernsey 0% (2026-11-20)"
+  - match: { tdwg: 12SPA }   # GA 33615 Spain (TDWG Level 3 12SPA), 751 records
+    subdivision_of: { country: "Spain" }
+    measured: "Spain 100%, Andorra 0% (2026-11-20)"
+  - match: { tdwg: 12POR }   # GA 33867 Portugal (TDWG Level 3 12POR), 230 records
+    subdivision_of: { country: "Portugal" }
+    measured: "Portugal 99%, Spain 1% (2026-11-20)"
+  - match: { tdwg: 14RUC }   # GA 33876 Central European Russia (TDWG Level 3 14RUC), 124 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 14RUE }   # GA 33877 East European Russia (TDWG Level 3 14RUE), 82 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 42JAW }   # GA 33768 Jawa (TDWG Level 3 42JAW), 62 records
+    subdivision_of: { country: "Indonesia" }
+    measured: "Indonesia 100% (2026-11-20)"
+  - match: { tdwg: 42BOR }   # GA 33639 Borneo (TDWG Level 3 42BOR), 36 records
+    not_placeable: spans several countries
+    measured: "Indonesia 72%, Malaysia 28%, Brunei 1% (2026-11-20)"
+  - match: { tdwg: 43NWG }   # GA 33838 New Guinea (TDWG Level 3 43NWG), 36 records
+    not_placeable: spans several countries
+    measured: "Indonesia 51%, Papua New Guinea 49% (2026-11-20)"
+  - match: { tdwg: 23EQG }   # GA 33711 Equatorial Guinea (TDWG Level 3 23EQG), 35 records
+    subdivision_of: { country: "Equatorial Guinea" }
+    measured: "Equatorial Guinea 100%, Cameroon 0% (2026-11-20)"
+  - match: { tdwg: 30YAK }   # GA 33962 Yakutskiya (TDWG Level 3 30YAK), 28 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 24SOC }   # GA 33900 Socotra (TDWG Level 3 24SOC), 24 records
+    subdivision_of: { country: "Yemen" }
+    measured: "Yemen 100% (2026-11-20)"
+  - match: { tdwg: 61MRQ }   # GA 33815 Marquesas (TDWG Level 3 61MRQ), 24 records
+    subdivision_of: { country: "French Polynesia" }
+    measured: "French Polynesia 100% (2026-11-20)"
+  - match: { tdwg: 38OGA }   # GA 33846 Ogasawara-shoto (TDWG Level 3 38OGA), 19 records
+    subdivision_of: { country: "Japan" }
+    measured: "Japan 100% (2026-11-20)"
+  - match: { tdwg: 31KUR }   # GA 33786 Kuril Is. (TDWG Level 3 31KUR), 18 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 42SUL }   # GA 33906 Sulawesi (TDWG Level 3 42SUL), 13 records
+    subdivision_of: { country: "Indonesia" }
+    measured: "Indonesia 100% (2026-11-20)"
+  - match: { tdwg: 33 }   # GA 33566 Caucasus (TDWG Level 2 33), 12 records
+    not_placeable: spans several countries
+    measured: "Russia 59%, Azerbaijan 19%, Georgia 15%, Armenia 6% (2026-11-20)"
+  - match: { area: "GZ 11013" }   # GZ 11013 Pyrenees, 10 records
+    not_placeable: spans several countries
+    measured: "Spain 61%, France 38%, Andorra 1% (2026-11-20)"
+  - match: { area: "GZ 10419" }   # GZ 10419 Borneo, 9 records
+    not_placeable: spans several countries
+    measured: "Indonesia 71%, Malaysia 28%, Brunei 1% (2026-11-20)"
+  - match: { tdwg: 27 }   # GA 33560 Southern Africa (TDWG Level 2 27), 9 records
+    not_placeable: spans several countries
+    measured: "South Africa 47%, Namibia 30%, Botswana 22%, Lesotho 1% (2026-11-20)"
+  - match: { tdwg: 27CPP-NC }   # GA 34165 Northern Cape Province (TDWG Level 4 27CPP-NC), 9 records
+    subdivision_of: { country: "South Africa" }
+    measured: "South Africa 100%, Botswana 0% (2026-11-20)"
+  - match: { tdwg: 13YUG }   # GA 33964 Yugoslavia (TDWG Level 3 13YUG), 7 records
+    not_placeable: spans several countries
+    measured: "Serbia 30%, Croatia 24%, Bosnia and Herzegovina 21%, North Macedonia 10% (2026-11-20)"
+  - match: { tdwg: 50NFK-LH }   # GA 34374 Lord Howe I. (TDWG Level 4 50NFK-LH), 7 records
+    subdivision_of: { country: "Australia" }
+    measured: "Australia 100% (2026-11-20)"
+  - match: { area: "GZ 3549" }   # GZ 3549 Hispaniola, 7 records
+    not_placeable: spans several countries
+    measured: "Dominican Republic 66%, Haiti 34% (2026-11-20)"
+  - match: { tdwg: 85AGE-BA }   # GA 33971 Buenos Aires (TDWG Level 4 85AGE-BA), 6 records
+    subdivision_of: { country: "Argentina" }
+    measured: "Argentina 100% (2026-11-20)"
+  - match: { tdwg: 13GRC }   # GA 33739 Greece (TDWG Level 3 13GRC), 6 records
+    subdivision_of: { country: "Greece" }
+    measured: "Greece 99%, Bulgaria 1% (2026-11-20)"
+  - match: { tdwg: 30YAK-OO }   # GA 34564 Yakutskiya (TDWG Level 4 30YAK-OO), 5 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 36CHS-HK }   # GA 34135 Hong Kong (TDWG Level 4 36CHS-HK), 5 records
+    subdivision_of: { country: "Hong Kong" }
+    measured: "Hong Kong 100% (2026-11-20)"
+  - match: { tdwg: 40WHM }   # GA 33954 West Himalaya (TDWG Level 3 40WHM), 5 records
+    not_placeable: spans several countries
+    measured: "India 72%, Pakistan 28%, China 0% (2026-11-20)"
+  - match: { tdwg: 8 }   # GA 33546 Southern America (TDWG Level 1 8), 5 records
+    not_placeable: spans several countries
+    measured: "Brazil 44%, Argentina 18%, Peru 7%, Colombia 6% (2026-11-20)"
+  - match: { tdwg: 42SUL-OO }   # GA 34492 Sulawesi (TDWG Level 4 42SUL-OO), 4 records
+    subdivision_of: { country: "Indonesia" }
+    measured: "Indonesia 100% (2026-11-20)"
+  - match: { tdwg: 81 }   # GA 33594 Caribbean (TDWG Level 2 81), 4 records
+    not_placeable: spans several countries
+    measured: "Cuba 47%, Dominican Republic 19%, Haiti 11%, Jamaica 5% (2026-11-20)"
+  - match: { area: "GZ 10509" }   # GZ 10509 Timor, 3 records
+    not_placeable: spans several countries
+    measured: "Timor-Leste 52%, Indonesia 48% (2026-11-20)"
+  - match: { tdwg: 23GGI-BI }   # GA 34208 Bioko (TDWG Level 4 23GGI-BI), 3 records
+    subdivision_of: { country: "Equatorial Guinea" }
+    measured: "Equatorial Guinea 100% (2026-11-20)"
+  - match: { tdwg: 42BOR-KA }   # GA 34048 Kalimantan (TDWG Level 4 42BOR-KA), 3 records
+    subdivision_of: { country: "Indonesia" }
+    measured: "Indonesia 99%, Malaysia 1% (2026-11-20)"
+  - match: { area: "GZ 10573" }   # GZ 10573 Šibeník, 3 records
+    subdivision_of: { country: "Czech Republic" }
+    measured: "Czech Republic 100% (2026-11-20)"
+  - match: { tdwg: 42SUM }   # GA 33907 Sumatera (TDWG Level 3 42SUM), 3 records
+    subdivision_of: { country: "Indonesia" }
+    measured: "Indonesia 100% (2026-11-20)"
+  - match: { tdwg: 42LSI-ET }   # GA 34319 East Timor (TDWG Level 4 42LSI-ET), 3 records
+    not_placeable: spans several countries
+    measured: "Timor-Leste 50%, Indonesia 50% (2026-11-20)"
+  - match: { tdwg: 28ASC }   # GA 33621 Ascension (TDWG Level 3 28ASC), 3 records
+    subdivision_of: { country: "Saint Helena" }
+    measured: "Saint Helena 100% (2026-11-20)"
+  - match: { tdwg: 81LEE-AB }   # GA 34303 Antigua-Barbuda (TDWG Level 4 81LEE-AB), 3 records
+    subdivision_of: { country: "Antigua and Barbuda" }
+    measured: "Antigua and Barbuda 100% (2026-11-20)"
+  - match: { tdwg: 38JAP-HN }   # GA 34287 Honshu (TDWG Level 4 38JAP-HN), 3 records
+    subdivision_of: { country: "Japan" }
+    measured: "Japan 100% (2026-11-20)"
+  # GA 33700 Norfolk Is. (TDWG Level 3 50NFK), 3 records: outside every country outline
+  - match: { tdwg: 27CPP-EC }   # GA 34160 Eastern Cape Province (TDWG Level 4 27CPP-EC), 3 records
+    subdivision_of: { country: "South Africa" }
+    measured: "South Africa 100%, Lesotho 0% (2026-11-20)"
+  - match: { tdwg: 21CNY }   # GA 33676 Canary Is. (TDWG Level 3 21CNY), 3 records
+    subdivision_of: { country: "Spain" }
+    measured: "Spain 100% (2026-11-20)"
+  - match: { tdwg: 27CPP-WC }   # GA 34167 Western Cape Province (TDWG Level 4 27CPP-WC), 3 records
+    subdivision_of: { country: "South Africa" }
+    measured: "South Africa 100% (2026-11-20)"
+  - match: { area: "GZ 3667" }   # GZ 3667 Cocos Island (Costa Rica, Puntarenas), 3 records
+    subdivision_of: { country: "Costa Rica" }
+    measured: "Costa Rica 100% (2026-11-20)"
+  - match: { tdwg: 31PRM-OO }   # GA 34445 Primorye (TDWG Level 4 31PRM-OO), 2 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 99%, China 1% (2026-11-20)"
+  - match: { tdwg: 14RUS }   # GA 33879 South European Russia (TDWG Level 3 14RUS), 2 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 29ALD }   # GA 33608 Aldabra (TDWG Level 3 29ALD), 2 records
+    subdivision_of: { country: "Seychelles" }
+    measured: "Seychelles 100% (2026-11-20)"
+  - match: { tdwg: 31SAK-OO }   # GA 34464 Sakhalin (TDWG Level 4 31SAK-OO), 2 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 33TCS }   # GA 33918 Transcaucasus (TDWG Level 3 33TCS), 2 records
+    not_placeable: spans several countries
+    measured: "Azerbaijan 47%, Georgia 37%, Armenia 16%, Russia 1% (2026-11-20)"
+  - match: { tdwg: 40EHM }   # GA 33709 East Himalaya (TDWG Level 3 40EHM), 2 records
+    not_placeable: spans several countries
+    measured: "India 70%, Bhutan 29%, China 1%, Myanmar 0% (2026-11-20)"
+  - match: { tdwg: 61SCI }   # GA 33888 Society Is. (TDWG Level 3 61SCI), 2 records
+    subdivision_of: { country: "French Polynesia" }
+    measured: "French Polynesia 100% (2026-11-20)"
+  - match: { tdwg: 42SUM-OO }   # GA 34493 Sumatera (TDWG Level 4 42SUM-OO), 2 records
+    subdivision_of: { country: "Indonesia" }
+    measured: "Indonesia 100% (2026-11-20)"
+  - match: { tdwg: 12FRA-FR }   # GA 34185 France (TDWG Level 4 12FRA-FR), 2 records
+    subdivision_of: { country: "France" }
+    measured: "France 100% (2026-11-20)"
+  - match: { tdwg: 13ITA }   # GA 33750 Italy (TDWG Level 3 13ITA), 2 records
+    subdivision_of: { country: "Italy" }
+    measured: "Italy 100% (2026-11-20)"
+  - match: { tdwg: 62MRN }   # GA 33814 Marianas (TDWG Level 3 62MRN), 2 records
+    subdivision_of: { country: "Guam" }
+    measured: "Guam 100% (2026-11-20)"
+  - match: { tdwg: 85JNF }   # GA 33769 Juan Fernández Is. (TDWG Level 3 85JNF), 2 records
+    subdivision_of: { country: "Chile" }
+    measured: "Chile 100% (2026-11-20)"
+  - match: { tdwg: 84BZL-MG }   # GA 34086 Minas Gerais (TDWG Level 4 84BZL-MG), 2 records
+    subdivision_of: { country: "Brazil" }
+    measured: "Brazil 100% (2026-11-20)"
+  - match: { tdwg: 84BZS-PR }   # GA 34103 Paraná (TDWG Level 4 84BZS-PR), 2 records
+    subdivision_of: { country: "Brazil" }
+    measured: "Brazil 100% (2026-11-20)"
+  - match: { tdwg: 84BZL-RJ }   # GA 34087 Rio de Janeiro (TDWG Level 4 84BZL-RJ), 2 records
+    subdivision_of: { country: "Brazil" }
+    measured: "Brazil 100% (2026-11-20)"
+  - match: { tdwg: 36CHX }   # GA 33668 Xinjiang (TDWG Level 3 36CHX), 2 records
+    subdivision_of: { country: "China" }
+    measured: "China 100% (2026-11-20)"
+  - match: { tdwg: 36CHN-SD }   # GA 34124 Shandong (TDWG Level 4 36CHN-SD), 2 records
+    subdivision_of: { country: "China" }
+    measured: "China 100% (2026-11-20)"
+  - match: { area: "GZ 10418" }   # GZ 10418 Korean Peninsula, 2 records
+    not_placeable: spans several countries
+    measured: "North Korea 58%, South Korea 42% (2026-11-20)"
+  - match: { tdwg: 10IRE-NI }   # GA 34271 Northern Ireland (TDWG Level 4 10IRE-NI), 1 records
+    subdivision_of: { country: "United Kingdom" }
+    measured: "United Kingdom 99%, Ireland 1% (2026-11-20)"
+  - match: { tdwg: 50VIC }   # GA 33946 Victoria (TDWG Level 3 50VIC), 1 records
+    subdivision_of: { country: "Australia" }
+    measured: "Australia 100% (2026-11-20)"
+  - match: { tdwg: 80CPI-CO }   # GA 34163 Cocos I. (TDWG Level 4 80CPI-CO), 1 records
+    subdivision_of: { country: "Costa Rica" }
+    measured: "Costa Rica 100% (2026-11-20)"
+  - match: { tdwg: 14KRY-OO }   # GA 34302 Krym (TDWG Level 4 14KRY-OO), 1 records
+    subdivision_of: { country: "Ukraine" }
+    measured: "Ukraine 100% (2026-11-20)"
+  - match: { tdwg: 14RUN }   # GA 33878 North European Russia (TDWG Level 3 14RUN), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 85CLS-MG }   # GA 34152 Magellanes (TDWG Level 4 85CLS-MG), 1 records
+    subdivision_of: { country: "Chile" }
+    measured: "Chile 100% (2026-11-20)"
+  - match: { tdwg: 50WAU }   # GA 33952 Western Australia (TDWG Level 3 50WAU), 1 records
+    subdivision_of: { country: "Australia" }
+    measured: "Australia 100% (2026-11-20)"
+  - match: { tdwg: 36CHS-JS }   # GA 34137 Jiangsu (TDWG Level 4 36CHS-JS), 1 records
+    subdivision_of: { country: "China" }
+    measured: "China 100% (2026-11-20)"
+  - match: { tdwg: 31AMU-OO }   # GA 34001 Amur (TDWG Level 4 31AMU-OO), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100%, China 0% (2026-11-20)"
+  - match: { tdwg: 30 }   # GA 33563 Siberia (TDWG Level 2 30), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 30WSB }   # GA 33958 West Siberia (TDWG Level 3 30WSB), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 7 }   # GA 33545 Northern America (TDWG Level 1 7), 1 records
+    not_placeable: spans several countries
+    measured: "Canada 44%, United States 34%, Greenland 19%, Mexico 4% (2026-11-20)"
+  - match: { tdwg: 84 }   # GA 33597 Brazil (TDWG Level 2 84), 1 records
+    subdivision_of: { country: "Brazil" }
+    measured: "Brazil 100% (2026-11-20)"
+  - match: { tdwg: 85AGS-RN }   # GA 33990 Rio Negro (TDWG Level 4 85AGS-RN), 1 records
+    subdivision_of: { country: "Argentina" }
+    measured: "Argentina 100% (2026-11-20)"
+  - match: { tdwg: 79MXG-VC }   # GA 34365 Veracruz (TDWG Level 4 79MXG-VC), 1 records
+    subdivision_of: { country: "Mexico" }
+    measured: "Mexico 100% (2026-11-20)"
+  - match: { tdwg: 75 }   # GA 33588 Northeastern U.S.A. (TDWG Level 2 75), 1 records
+    subdivision_of: { country: "United States" }
+    measured: "United States 100% (2026-11-20)"
+  - match: { tdwg: 78 }   # GA 33591 Southeastern U.S.A. (TDWG Level 2 78), 1 records
+    subdivision_of: { country: "United States" }
+    measured: "United States 100% (2026-11-20)"
+  - match: { tdwg: 81LEE-MO }   # GA 34218 Montserrat (TDWG Level 4 81LEE-MO), 1 records
+    subdivision_of: { country: "Montserrat" }
+    measured: "Montserrat 100% (2026-11-20)"
+  - match: { tdwg: 40EHM-DJ }   # GA 34188 Darjiling (TDWG Level 4 40EHM-DJ), 1 records
+    subdivision_of: { country: "India" }
+    measured: "India 95%, Bhutan 5% (2026-11-20)"
+  - match: { tdwg: 40IND-DE }   # GA 34247 Delhi (TDWG Level 4 40IND-DE), 1 records
+    subdivision_of: { country: "India" }
+    measured: "India 100% (2026-11-20)"
+  - match: { tdwg: 40WHM-UT }   # GA 34553 Uttaranchal (TDWG Level 4 40WHM-UT), 1 records
+    subdivision_of: { country: "India" }
+    measured: "India 98%, China 1%, Nepal 0% (2026-11-20)"
+  - match: { tdwg: 25 }   # GA 33558 East Tropical Africa (TDWG Level 2 25), 1 records
+    not_placeable: spans several countries
+    measured: "Tanzania 54%, Kenya 32%, Uganda 14% (2026-11-20)"
+  - match: { tdwg: 1 }   # GA 33539 Europe (TDWG Level 1 1), 1 records
+    not_placeable: spans several countries
+    measured: "Russia 41%, Norway 7%, Ukraine 6%, Sweden 6% (2026-11-20)"
+  - match: { tdwg: 20 }   # GA 33553 Northern Africa (TDWG Level 2 20), 1 records
+    not_placeable: spans several countries
+    measured: "Algeria 39%, Libya 27%, Egypt 16%, Morocco 10% (2026-11-20)"
+  - match: { tdwg: 38KOR-SK }   # GA 34292 South Korea (TDWG Level 4 38KOR-SK), 1 records
+    subdivision_of: { country: "South Korea" }
+    measured: "South Korea 100% (2026-11-20)"
+  - match: { tdwg: 32UZB-OO }   # GA 34123 Uzbekistan (TDWG Level 4 32UZB-OO), 1 records
+    subdivision_of: { country: "Uzbekistan" }
+    measured: "Uzbekistan 99%, Turkmenistan 1%, Tajikistan 1% (2026-11-20)"
+  - match: { tdwg: 14UKR-UK }   # GA 34534 Ukraine (TDWG Level 4 14UKR-UK), 1 records
+    subdivision_of: { country: "Ukraine" }
+    measured: "Ukraine 100% (2026-11-20)"
+  - match: { tdwg: 14UKR }   # GA 33941 Ukraine (TDWG Level 3 14UKR), 1 records
+    subdivision_of: { country: "Ukraine" }
+    measured: "Ukraine 95%, Moldova 5% (2026-11-20)"
+  - match: { tdwg: 42MLY-PM }   # GA 34337 Peninsular Malaysia (TDWG Level 4 42MLY-PM), 1 records
+    subdivision_of: { country: "Malaysia" }
+    measured: "Malaysia 99%, Thailand 1% (2026-11-20)"
+  - match: { tdwg: 50QLD }   # GA 33869 Queensland (TDWG Level 3 50QLD), 1 records
+    subdivision_of: { country: "Australia" }
+    measured: "Australia 100% (2026-11-20)"
+  - match: { tdwg: 36CHQ }   # GA 33665 Qinghai (TDWG Level 3 36CHQ), 1 records
+    subdivision_of: { country: "China" }
+    measured: "China 100% (2026-11-20)"
+  - match: { tdwg: 36CHN-GS }   # GA 34092 Gansu (TDWG Level 4 36CHN-GS), 1 records
+    subdivision_of: { country: "China" }
+    measured: "China 100% (2026-11-20)"
+  - match: { tdwg: 30ALT-OO }   # GA 33999 Altay (TDWG Level 4 30ALT-OO), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { tdwg: 34IRN }   # GA 33748 Iran (TDWG Level 3 34IRN), 1 records
+    subdivision_of: { country: "Iran" }
+    measured: "Iran 100%, Afghanistan 0% (2026-11-20)"
+  - match: { tdwg: 30IRK-OO }   # GA 34272 Irkutsk (TDWG Level 4 30IRK-OO), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100% (2026-11-20)"
+  - match: { area: "GZ 10408" }   # GZ 10408 Illyria, 1 records
+    not_placeable: spans several countries
+    measured: "Bosnia and Herzegovina 33%, Serbia 17%, Croatia 17%, Albania 14% (2026-11-20)"
+  - match: { tdwg: 11AUT-AU }   # GA 34025 Austria (TDWG Level 4 11AUT-AU), 1 records
+    subdivision_of: { country: "Austria" }
+    measured: "Austria 99%, Czech Republic 1%, Germany 0%, Hungary 0% (2026-11-20)"
+  - match: { tdwg: 11SWI-OO }   # GA 34496 Switzerland (TDWG Level 4 11SWI-OO), 1 records
+    subdivision_of: { country: "Switzerland" }
+    measured: "Switzerland 96%, Italy 2%, France 1%, Germany 1% (2026-11-20)"
+  - match: { tdwg: 11CZE-CZ }   # GA 34171 Czech Republic (TDWG Level 4 11CZE-CZ), 1 records
+    subdivision_of: { country: "Czech Republic" }
+    measured: "Czech Republic 99%, Poland 1%, Slovakia 0% (2026-11-20)"
+  - match: { tdwg: 11HUN-OO }   # GA 34233 Hungary (TDWG Level 4 11HUN-OO), 1 records
+    subdivision_of: { country: "Hungary" }
+    measured: "Hungary 100% (2026-11-20)"
+  - match: { tdwg: 13ROM }   # GA 33875 Romania (TDWG Level 3 13ROM), 1 records
+    subdivision_of: { country: "Romania" }
+    measured: "Romania 98%, Bulgaria 1%, Serbia 0%, Hungary 0% (2026-11-20)"
+  - match: { tdwg: 36CHM-HJ }   # GA 34118 Heilongjiang (TDWG Level 4 36CHM-HJ), 1 records
+    subdivision_of: { country: "China" }
+    measured: "China 100% (2026-11-20)"
+  - match: { tdwg: 30CTA-OO }   # GA 34053 Chita (TDWG Level 4 30CTA-OO), 1 records
+    subdivision_of: { country: "Russia" }
+    measured: "Russia 100%, China 0% (2026-11-20)"
+  - match: { tdwg: 21SEL }   # GA 33892 Selvagens (TDWG Level 3 21SEL), 1 records
+    subdivision_of: { country: "Portugal" }
+    measured: "Portugal 100% (2026-11-20)"
+  - match: { tdwg: 50SOA }   # GA 33897 South Australia (TDWG Level 3 50SOA), 1 records
+    subdivision_of: { country: "Australia" }
+    measured: "Australia 100% (2026-11-20)"
+  - match: { tdwg: 80 }   # GA 33593 Central America (TDWG Level 2 80), 1 records
+    not_placeable: spans several countries
+    measured: "Honduras 24%, Guatemala 20%, Nicaragua 20%, Panama 14% (2026-11-20)"
+  - match: { tdwg: 14RUC }   # GA 33876 Central European Russia (TDWG Level 3 14RUC), 124 records
+    not_placeable: spans several states
+    measured: "Tver' 10%, Nizhegorod 9%, Kostroma 8%, Smolensk 7% (2026-11-20)"
+  - match: { area: "GA 19785" }   # GA 19785 Gorno-Altay, 97 records
+    subdivision_of: { country: "Russia", state: "Altai Republic" }
+    measured: "Altai Republic 98%, Altai Krai 1%, Khakass 1% (2026-11-20)"
+  - match: { tdwg: 14RUE }   # GA 33877 East European Russia (TDWG Level 3 14RUE), 82 records
+    not_placeable: spans several states
+    measured: "Perm' 24%, Bashkortostan 18%, Kirov 17%, Orenburg 15% (2026-11-20)"
+  - match: { area: "GA 20330" }   # GA 20330 Primor'ye, 60 records
+    subdivision_of: { country: "Russia", state: "Primorsky Krai" }
+    measured: "Primorsky Krai 100% (2026-11-20)"
+  - match: { area: "GA 21144" }   # GA 21144 Kabardin-Balkar, 55 records
+    subdivision_of: { country: "Russia", state: "Kabardino-Balkaria" }
+    measured: "Kabardino-Balkaria 97%, North Ossetia 1%, Stavropol' 1% (2026-11-20)"
+  - match: { area: "GA 32013" }   # GA 32013 Inner Mongol, 52 records
+    subdivision_of: { country: "China", state: "Inner Mongolia" }
+    measured: "Inner Mongolia 100% (2026-11-20)"
+  - match: { area: "GA 21668" }   # GA 21668 Buryat, 48 records
+    subdivision_of: { country: "Russia", state: "Republic of Buryatia" }
+    measured: "Republic of Buryatia 100%, Zabaykalsky Krai 0% (2026-11-20)"
+  - match: { area: "GA 19782" }   # GA 19782 Altay, 42 records
+    subdivision_of: { country: "Russia", state: "Altai Krai" }
+    measured: "Altai Krai 99%, Altai Republic 0%, Novosibirsk 0% (2026-11-20)"
+  - match: { area: "GA 20850" }   # GA 20850 Chita, 30 records
+    subdivision_of: { country: "Russia", state: "Zabaykalsky Krai" }
+    measured: "Zabaykalsky Krai 100%, Irkutsk 0% (2026-11-20)"
+  - match: { tdwg: 30YAK }   # GA 33962 Yakutskiya (TDWG Level 3 30YAK), 28 records
+    subdivision_of: { country: "Russia", state: "Sakha (Yakutia)" }
+    measured: "Sakha (Yakutia) 100% (2026-11-20)"
+  - match: { area: "GZ 3666" }   # GZ 3666 Hawai'i: Oahu, 24 records
+    subdivision_of: { country: "United States", state: "Hawaii" }
+    measured: "Hawaii 100% (2026-11-20)"
+  - match: { area: "GZ 10942" }   # GZ 10942 IBRA7: South Eastern Queensland, 22 records
+    not_placeable: spans several states
+    measured: "Queensland 78%, New South Wales 22% (2026-11-20)"
+  - match: { area: "GZ 3665" }   # GZ 3665 Australia: Lord Howe Island, 21 records
+    subdivision_of: { country: "Australia", state: "Lord Howe Island" }
+    measured: "Lord Howe Island 100% (2026-11-20)"
+  - match: { tdwg: 31KUR }   # GA 33786 Kuril Is. (TDWG Level 3 31KUR), 18 records
+    subdivision_of: { country: "Russia", state: "Sakhalin" }
+    measured: "Sakhalin 100% (2026-11-20)"
+  - match: { area: "GZ 10960" }   # GZ 10960 IBRA7: Wet Tropics, 16 records
+    subdivision_of: { country: "Australia", state: "Queensland" }
+    measured: "Queensland 100% (2026-11-20)"
+  - match: { area: "GZ 10915" }   # GZ 10915 IBRA7: Jarrah Forest, 15 records
+    subdivision_of: { country: "Australia", state: "Western Australia" }
+    measured: "Western Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10947" }   # GZ 10947 IBRA7: Swan Coastal Plain, 14 records
+    subdivision_of: { country: "Australia", state: "Western Australia" }
+    measured: "Western Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10948" }   # GZ 10948 IBRA7: Sydney Basin, 14 records
+    subdivision_of: { country: "Australia", state: "New South Wales" }
+    measured: "New South Wales 100% (2026-11-20)"
+  - match: { area: "GA 20525" }   # GA 20525 Evenk, 12 records
+    subdivision_of: { country: "Russia", state: "Krasnoyarsk" }
+    measured: "Krasnoyarsk 100%, Irkutsk 0% (2026-11-20)"
+  - match: { area: "GZ 10453" }   # GZ 10453 Hawai'i: Kaua'i, 12 records
+    subdivision_of: { country: "United States", state: "Hawaii" }
+    measured: "Hawaii 100% (2026-11-20)"
+  - match: { area: "GA 20860" }   # GA 20860 Maga Buryatdan, 11 records
+    subdivision_of: { country: "Russia", state: "Magadan Oblast" }
+    measured: "Magadan Oblast 100% (2026-11-20)"
+  - match: { area: "GZ 10452" }   # GZ 10452 Hawai'i: Maui, 10 records
+    subdivision_of: { country: "United States", state: "Hawaii" }
+    measured: "Hawaii 100% (2026-11-20)"
+  - match: { area: "GZ 10941" }   # GZ 10941 IBRA7: South Eastern Highlands, 9 records
+    not_placeable: spans several states
+    measured: "New South Wales 59%, Victoria 38%, Australian Capital Territory 3% (2026-11-20)"
+  - match: { area: "GZ 10929" }   # GZ 10929 IBRA7: NSW North Coast, 8 records
+    subdivision_of: { country: "Australia", state: "New South Wales" }
+    measured: "New South Wales 100% (2026-11-20)"
+  - match: { area: "GA 33083" }   # GA 33083 Moskovsskaya, 7 records
+    subdivision_of: { country: "Russia", state: "Moscow Oblast" }
+    measured: "Moscow Oblast 94%, Moscow 5%, Tver' 1%, Kaluga 0% (2026-11-20)"
+  - match: { tdwg: 50NFK-LH }   # GA 34374 Lord Howe I. (TDWG Level 4 50NFK-LH), 7 records
+    subdivision_of: { country: "Australia", state: "Lord Howe Island" }
+    measured: "Lord Howe Island 100% (2026-11-20)"
+  - match: { area: "GZ 10451" }   # GZ 10451 Hawai'i: Hawai'i, 7 records
+    subdivision_of: { country: "United States", state: "Hawaii" }
+    measured: "Hawaii 100% (2026-11-20)"
+  - match: { area: "GZ 10877" }   # GZ 10877 IBRA7: Brigalow Belt North, 7 records
+    subdivision_of: { country: "Australia", state: "Queensland" }
+    measured: "Queensland 100% (2026-11-20)"
+  - match: { area: "GZ 10906" }   # GZ 10906 IBRA7: Geraldton Sandplains, 6 records
+    subdivision_of: { country: "Australia", state: "Western Australia" }
+    measured: "Western Australia 100% (2026-11-20)"
+  - match: { tdwg: 30YAK-OO }   # GA 34564 Yakutskiya (TDWG Level 4 30YAK-OO), 5 records
+    subdivision_of: { country: "Russia", state: "Sakha (Yakutia)" }
+    measured: "Sakha (Yakutia) 100% (2026-11-20)"
+  - match: { area: "GZ 10954" }   # GZ 10954 IBRA7: Tasmanian South East, 5 records
+    subdivision_of: { country: "Australia", state: "Tasmania" }
+    measured: "Tasmania 100% (2026-11-20)"
+  - match: { area: "GZ 10902" }   # GZ 10902 IBRA7: Flinders Lofty Block, 4 records
+    subdivision_of: { country: "Australia", state: "South Australia" }
+    measured: "South Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10455" }   # GZ 10455 Hawai'i: Moloka'i, 3 records
+    subdivision_of: { country: "United States", state: "Hawaii" }
+    measured: "Hawaii 100% (2026-11-20)"
+  - match: { tdwg: 14RUS }   # GA 33879 South European Russia (TDWG Level 3 14RUS), 2 records
+    not_placeable: spans several states
+    measured: "Volgograd 26%, Saratov 25%, Rostov 22%, Kalmyk 16% (2026-11-20)"
+  - match: { tdwg: 31PRM-OO }   # GA 34445 Primorye (TDWG Level 4 31PRM-OO), 2 records
+    subdivision_of: { country: "Russia", state: "Primorsky Krai" }
+    measured: "Primorsky Krai 100% (2026-11-20)"
+  - match: { area: "GZ 10887" }   # GZ 10887 IBRA7: Central Mackay Coast, 2 records
+    subdivision_of: { country: "Australia", state: "Queensland" }
+    measured: "Queensland 100% (2026-11-20)"
+  - match: { area: "GZ 10891" }   # GZ 10891 IBRA7: Cape York Peninsula, 2 records
+    subdivision_of: { country: "Australia", state: "Queensland" }
+    measured: "Queensland 100% (2026-11-20)"
+  - match: { area: "GZ 10926" }   # GZ 10926 IBRA7: Nandewar, 2 records
+    not_placeable: spans several states
+    measured: "New South Wales 78%, Queensland 22% (2026-11-20)"
+  - match: { area: "GA 22258" }   # GA 22258 Yakutsk gorsovet, 1 records
+    subdivision_of: { country: "Russia", state: "Sakha (Yakutia)" }
+    measured: "Sakha (Yakutia) 100% (2026-11-20)"
+  - match: { tdwg: 30 }   # GA 33563 Siberia (TDWG Level 2 30), 1 records
+    not_placeable: spans several states
+    measured: "Sakha (Yakutia) 34%, Krasnoyarsk 26%, Yamal-Nenets 8%, Irkutsk 7% (2026-11-20)"
+  - match: { tdwg: 75 }   # GA 33588 Northeastern U.S.A. (TDWG Level 2 75), 1 records
+    not_placeable: spans several states
+    measured: "Michigan 18%, Pennsylvania 15%, New York 14%, Indiana 12% (2026-11-20)"
+  - match: { tdwg: 78 }   # GA 33591 Southeastern U.S.A. (TDWG Level 2 78), 1 records
+    not_placeable: spans several states
+    measured: "Arkansas 11%, Florida 10%, Georgia 10%, Tennessee 10% (2026-11-20)"
+  - match: { tdwg: 14RUN }   # GA 33878 North European Russia (TDWG Level 3 14RUN), 1 records
+    not_placeable: spans several states
+    measured: "Komi 31%, Arkhangel'sk 21%, Nenets 14%, Murmansk 12% (2026-11-20)"
+  - match: { tdwg: 30WSB }   # GA 33958 West Siberia (TDWG Level 3 30WSB), 1 records
+    not_placeable: spans several states
+    measured: "Yamal-Nenets 30%, Khanty-Mansiy 22%, Tomsk 10%, Sverdlovsk 8% (2026-11-20)"
+  - match: { tdwg: 30ALT-OO }   # GA 33999 Altay (TDWG Level 4 30ALT-OO), 1 records
+    not_placeable: spans several states
+    measured: "Altai Krai 67%, Altai Republic 33% (2026-11-20)"
+  - match: { tdwg: 30CTA-OO }   # GA 34053 Chita (TDWG Level 4 30CTA-OO), 1 records
+    subdivision_of: { country: "Russia", state: "Zabaykalsky Krai" }
+    measured: "Zabaykalsky Krai 100%, Irkutsk 0% (2026-11-20)"
+  - match: { area: "GZ 10407" }   # GZ 10407 European Russia, 1 records
+    not_placeable: spans several states
+    measured: "Komi 14%, Arkhangel'sk 9%, Nenets 8%, Karelia 6% (2026-11-20)"
+  - match: { area: "GZ 10893" }   # GZ 10893 IBRA7: Darwin Coastal, 1 records
+    subdivision_of: { country: "Australia", state: "Northern Territory" }
+    measured: "Northern Territory 100% (2026-11-20)"
+  - match: { area: "GZ 10894" }   # GZ 10894 IBRA7: Dampierland, 1 records
+    subdivision_of: { country: "Australia", state: "Western Australia" }
+    measured: "Western Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10898" }   # GZ 10898 IBRA7: Einasleigh Uplands, 1 records
+    subdivision_of: { country: "Australia", state: "Queensland" }
+    measured: "Queensland 100% (2026-11-20)"
+  - match: { area: "GZ 10900" }   # GZ 10900 IBRA7: Eyre Yorke Block, 1 records
+    subdivision_of: { country: "Australia", state: "South Australia" }
+    measured: "South Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10905" }   # GZ 10905 IBRA7: Gawler, 1 records
+    subdivision_of: { country: "Australia", state: "South Australia" }
+    measured: "South Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10916" }   # GZ 10916 IBRA7: Kanmantoo, 1 records
+    subdivision_of: { country: "Australia", state: "South Australia" }
+    measured: "South Australia 100% (2026-11-20)"
+  - match: { area: "GZ 10928" }   # GZ 10928 IBRA7: New England Tablelands, 1 records
+    subdivision_of: { country: "Australia", state: "New South Wales" }
+    measured: "New South Wales 94%, Queensland 6% (2026-11-20)"
+  - match: { area: "GZ 10937" }   # GZ 10937 IBRA7: Riverina, 1 records
+    not_placeable: spans several states
+    measured: "New South Wales 73%, Victoria 26%, South Australia 1% (2026-11-20)"
+  - match: { area: "GZ 10950" }   # GZ 10950 IBRA7: Tasmanian Central Highlands, 1 records
+    subdivision_of: { country: "Australia", state: "Tasmania" }
+    measured: "Tasmania 100% (2026-11-20)"
+  - match: { area: "GZ 10957" }   # GZ 10957 IBRA7: Victoria Bonaparte, 1 records
+    not_placeable: spans several states
+    measured: "Northern Territory 75%, Western Australia 25% (2026-11-20)"
+  - match: { area: "GZ 10959" }   # GZ 10959 IBRA7: Warren, 1 records
+    subdivision_of: { country: "Australia", state: "Western Australia" }
+    measured: "Western Australia 100% (2026-11-20)"
+  - match: { area: "GZ 3614" }   # GZ 3614 New Guinea, 39 records
+    not_placeable: spans several countries
+    measured: "Papua New Guinea 51%, Indonesia 49% (2026-11-20)"
+  - match: { area: "GZ 10454" }   # GZ 10454 Hawai'i: Lana'i, 4 records
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"
+  - match: { area: "GZ 10450" }   # GZ 10450 Australia: Torres Strait: Dauan Island, 2 records
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"
+  - match: { area: "GZ 10465" }   # GZ 10465 Australia: Torres Strait: Moa Island, 1 record
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"

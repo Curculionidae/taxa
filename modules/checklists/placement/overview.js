@@ -517,3 +517,55 @@ export function afterDecisionSteps(rules) {
 export function lineLink(route) {
   return (line) => ({ query: { ...route.query, tab: 'rules', line: undefined }, hash: `#L${line}` })
 }
+
+/**
+ * The deciding step of a placement in a few plain words, for the area tree's
+ * "because:" (R54): what kind of fact or rule decided, not the full step. The
+ * rules file line, when there is one, comes as `ref` (shown as a link).
+ *   TaxonWorks  'country area in TaxonWorks' (the area is a country),
+ *               'inside its TaxonWorks country (GA 77)', 'subdivision of
+ *               Cayenne's parent ... in TaxonWorks', 'gazetteer ISO code NZ',
+ *               'DwC country', 'no country in TaxonWorks and no rule'
+ *   manual      'spelling synonym', 'own checklist entry', 'part of the
+ *               checklist', 'manual rule', 'same area as GA 78 (manual rule)'
+ *   overlap     'measured 100% in Russia', 'measured: spans several
+ *               countries', 'coordinates inside the outline', 'coordinates
+ *               near the coast'
+ * @param {Object|null} placement  a Placement (areas.json or engine)
+ * @returns {{ text: string, ref: string|null } | null}  null without steps
+ */
+export function plainReason(placement) {
+  const step = placement ? decidingStep(placement) : null
+  if (!step) return null
+  const ref = step.ref ?? null
+  const text = step.text
+  const said = (words) => ({ text: words, ref })
+  if (step.source === 'TaxonWorks') {
+    if (/\) is a country$/.test(text)) return said('country area in TaxonWorks')
+    if (/ is part of /.test(text)) return said('country area under another country in TaxonWorks')
+    const inCountry = / is in .*\((GA \d+)\)$/.exec(text)
+    if (inCountry) return said(`inside its TaxonWorks country (${inCountry[1]})`)
+    const parent = / is a subdivision of .*\((GA \d+)\)/.exec(text)
+    if (parent) return said(`subdivision of ${parent[1]} in TaxonWorks`)
+    const iso = / has ISO code ([A-Z]{2})/.exec(text)
+    if (iso) return said(`gazetteer ISO code ${iso[1]}`)
+    if (/^DwC country is /.test(text)) return said('DwC country')
+    if (/has no country in TaxonWorks/.test(text)) return said('no country in TaxonWorks and no rule')
+    if (/is a country without a checklist|which has no checklist/.test(text)) return said('TaxonWorks country without a checklist')
+    return said('TaxonWorks')
+  }
+  if (step.source === 'manual') {
+    if (/ is a spelling of /.test(text)) return said('spelling synonym')
+    if (/belongs to the checklist |of the checklist /.test(text)) return said('own checklist entry')
+    const same = / is the same area as (G[AZ] \d+)/.exec(text)
+    if (same) return said(`same area as ${same[1]} (manual rule)`)
+    if (/ the part /.test(text)) return said('part of the checklist (manual rule)')
+    return said('manual rule')
+  }
+  if (/^coordinates .* within about \d+ km of the coast/.test(text)) return said('coordinates near the coast')
+  if (/^coordinates .* lie inside /.test(text)) return said('coordinates inside the outline')
+  if (step.pct !== undefined && step.pctOf) return said(`measured ${step.pct}% in ${step.pctOf}`)
+  const spans = /(spans several (?:countries|states)|outside every (?:checklist|state) outline)/.exec(text)
+  if (spans) return said(`measured: ${spans[1]}`)
+  return said('measured overlap')
+}

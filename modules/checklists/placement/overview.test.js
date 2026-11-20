@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
 import {
   areaRoot, buildAreaTree, filterTree, isProblem, decisionOf, reasonKind, reasonDetail, unplacedSections, summarizeOtu,
-  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, splitRefs, sourceTags, afterDecisionSteps, lineLink
+  cachedPlacement, differsFromCache, ruleSections, DECISION_ORDER, splitRefs, sourceTags, afterDecisionSteps, lineLink, plainReason
 } from './overview.js'
 
 const placed = (name, steps = [{ text: `x is in ${name}`, source: 'TaxonWorks' }], extra = {}) => ({
@@ -237,4 +237,24 @@ test('ruleSections: every rule of the rules file with its ref', () => {
 test('lineLink: the Rules tab with the route hash #L<N>, the rest of the query kept', () => {
   const to = lineLink({ query: { curator: '1', lookup: 'CO 1383195', line: '5' } })(168)
   assert.deepEqual(to, { query: { curator: '1', lookup: 'CO 1383195', tab: 'rules', line: undefined }, hash: '#L168' })
+})
+
+test('plainReason: the deciding step in a few words, with its rules line (R54)', () => {
+  const reason = (steps, extra) => plainReason(placed('X', steps, extra))
+  assert.deepEqual(reason([{ text: 'Cayman Is. (GA 31732) is a country', source: 'TaxonWorks' }, { text: 'Cayman Is. is a spelling of Cayman Islands', source: 'manual', ref: 'placement.yml:131' }]),
+    { text: 'spelling synonym', ref: 'placement.yml:131' })
+  assert.deepEqual(reason([{ text: 'Corse is in France (GA 77)', source: 'TaxonWorks' }]), { text: 'inside its TaxonWorks country (GA 77)', ref: null })
+  assert.deepEqual(reason([{ text: 'Spain (GA 210) is a country', source: 'TaxonWorks' }]), { text: 'country area in TaxonWorks', ref: null })
+  assert.deepEqual(reason([{ text: 'Auckland has ISO code NZ, New Zealand', source: 'TaxonWorks' }]), { text: 'gazetteer ISO code NZ', ref: null })
+  assert.deepEqual(reason([{ text: 'GA 32253 French Guiana belongs to the checklist French Guiana', source: 'manual', ref: 'placement.yml:74' }]),
+    { text: 'own checklist entry', ref: 'placement.yml:74' })
+  assert.deepEqual(reason([{ text: 'Yakutskiya (TDWG 30YAK) lies in Russia', source: 'overlap', ref: 'placement.yml:240', pct: 100, pctOf: 'Russia' },
+    { text: 'no state: not measured yet', source: 'TaxonWorks' }]), { text: 'measured 100% in Russia', ref: 'placement.yml:240' })
+  assert.deepEqual(plainReason(unplaced('spans several countries: A 60%, B 40%', [{ text: 'Borneo spans several countries: A 60%, B 40%', source: 'overlap', ref: 'placement.yml:226' }])),
+    { text: 'measured: spans several countries', ref: 'placement.yml:226' })
+  assert.deepEqual(reason([{ text: 'France (TDWG 12FRA) counts as France, part Mainland France (approximately)', source: 'manual', ref: 'placement.yml:182' }]),
+    { text: 'manual rule', ref: 'placement.yml:182' })
+  assert.deepEqual(reason([{ text: 'coordinates 44.5, 34.24 lie within about 5 km of the coast of Ukraine', source: 'overlap', ref: 'placement.yml:168' }]),
+    { text: 'coordinates near the coast', ref: 'placement.yml:168' })
+  assert.equal(plainReason(null), null)
 })

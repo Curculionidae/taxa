@@ -24,6 +24,9 @@
 -->
 <template>
   <section class="flex flex-col gap-3">
+    <p class="text-sm">
+      Each area: how many records point to it, the checklist it lands in, and why. Indentation shows the TaxonWorks hierarchy.
+    </p>
     <div class="flex flex-wrap items-end gap-3">
       <div class="min-w-[14rem] flex-1 sm:max-w-sm">
         <label

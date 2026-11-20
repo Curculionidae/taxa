@@ -925,11 +925,20 @@ area or as the parent of one; otherwise at the top of the TDWG root.
 Gazetteers carry no levels and are grouped by their ISO code (`ISO AU`, `No
 ISO code`). An area known only as an ancestor (a stub, `records: 0`, no
 placement) appears muted with "used by no record" in every root that has one
-of its descendants. Each area: name, key (link to
-`/geographic_areas/:id` or `/gazetteers/:id`), record count, its decision in
-one line (`French Guiana`, `France, part Corsica`, `Spain, no outline`, or
-`not placeable: <reason>` in red) and the deciding source tag. Each root
-header gives its number of areas and of problems.
+of its descendants.
+
+The tab starts with one line: "Each area: how many records point to it, the
+checklist it lands in, and why. Indentation shows the TaxonWorks hierarchy."
+Each area line (R54) reads `name (GA 237)` (a TaxonWorks link) · `n records`
+· `→ <checklist> checklist` with `, part P`, `, state S` (or `not placed:
+<reason>`) · `because: <plain words>`, a short wording of the deciding step
+(`overview.js` `plainReason`: "country area in TaxonWorks", "inside its
+TaxonWorks country (GA 77)", "spelling synonym", "own checklist entry",
+"gazetteer ISO code NZ", "measured 100% in Russia", "manual rule") with its
+rules line as a link when there is one. The full steps and source tags stay in
+the lookup tab; the OTU table keeps its source tags (R43). A line not
+placed, or placed without any outline, is in red. Each root header gives its
+number of areas and of problems.
 
 Only the top level is shown at first, and an area's children render only when
 it is opened, so the 2,600 areas stay fast. The filter box keeps areas whose

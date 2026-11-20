@@ -3,9 +3,15 @@
 Adapted, with permission, from the country checklists of Fleas of the World
 Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 
-Files: `pages/checklists/index.vue` (page), `pages/checklists/components/ChecklistMap.vue`
-(Leaflet map), `pages/checklists/data/` (map helpers, colour tokens),
-`scripts/build-checklists.mjs` (cache), `public/checklists/` (cache output).
+## Files
+
+- `ChecklistsPage.vue`: the page (route `checklists`, `/checklists`).
+- `router/index.js`, `package.json`: register the module with the framework.
+- `components/ChecklistMap.vue`: the Leaflet map.
+- `data/`: map helpers, the compact file format (`compact.js` and its test), colour tokens.
+- `scripts/build.mjs`: builds the cache (`npm run checklists`); `scripts/data/country-iso.json` holds extra ISO codes it uses.
+- `public/checklists/`: the cache output (outside the module, served as static files).
+- `DESIGN.md`, `PLAN.md`: design and implementation plan.
 
 ## Data
 
@@ -13,7 +19,7 @@ Nothing is fetched from TaxonWorks while browsing. `npm run checklists`
 writes `public/checklists/index.json` (countries, taxon counts, update date,
 each country's cached outline) and `countries/<id>.json` (that country's
 records, with citations and place names). Country files are compact
-(`pages/checklists/data/compact.js`): each taxon, record kind and reference
+(`data/compact.js`): each taxon, record kind and reference
 text once per file, records point to them; the page expands them on load into
 the same records. Only fields the page shows are kept (no collector, date or
 occurrenceID: they were CSV-only and made up most of the size). See the comment at the top of the

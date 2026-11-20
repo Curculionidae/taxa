@@ -593,7 +593,7 @@
 // Ported from Fleas of the World (https://github.com/jrpletch/fleasoftheworld,
 // pages/checklists.vue at 2afe35c), used with permission. Changes: weevil
 // wording, project-name exports, colour steps scaled to the counts, map colours
-// as --pp-checklist-* tokens in the aggregate-map green (pages/checklists/data/checklist-tokens.css).
+// as --pp-checklist-* tokens in the aggregate-map green (modules/checklists/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
@@ -612,7 +612,7 @@ const {
 
 const exportPrefix = projectName.replace(/[^A-Za-z0-9]+/g, '')
 
-// Map colours are --pp-checklist-* tokens (pages/checklists/data/checklist-tokens.css).
+// Map colours are --pp-checklist-* tokens (modules/checklists/data/checklist-tokens.css).
 // Leaflet needs literal colour strings, so resolve them when styling.
 function cssVar(name) {
   if (typeof document === 'undefined') return ''
@@ -721,7 +721,7 @@ let countryRequestId = 0
 let pendingCountryScrollY = null
 
 // Name variants mapped to one key. The checklist names come from the build
-// (TaxonWorks names, scripts/build-checklists.mjs ALIASES); the associated-area
+// (TaxonWorks names, modules/checklists/scripts/build.mjs ALIASES); the associated-area
 // lists below use Natural Earth names, so a TaxonWorks name that differs needs
 // an entry here to be grouped under its country.
 const countryAliases = {
@@ -967,7 +967,7 @@ async function loadCountryShapes() {
   }
 }
 
-// The checklist data is built ahead of time by scripts/build-checklists.mjs
+// The checklist data is built ahead of time by modules/checklists/scripts/build.mjs
 // (public/checklists/): index.json lists every country with its taxon count,
 // countries/<id>.json holds one country's records.
 // Retry after index.json failed: the index first, then what waited on it

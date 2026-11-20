@@ -1,5 +1,5 @@
 // Builds public/checklists/: the data of the country checklists page
-// (pages/checklists/index.vue), so a visitor loads one small file per country
+// (modules/checklists/ChecklistsPage.vue), so a visitor loads one small file per country
 // instead of paging through the project's 80,000 DwC occurrences.
 //
 //   index.json             updated date, every country with its taxon count
@@ -29,20 +29,20 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { compactChecklist } from '../pages/checklists/data/compact.js'
+import { compactChecklist } from '../data/compact.js'
 
 const PER = 500
 const PARALLEL = 6
-const OUT_DIR = fileURLToPath(new URL('../public/checklists/', import.meta.url))
+const OUT_DIR = fileURLToPath(new URL('../../../public/checklists/', import.meta.url))
 const COUNTRY_DIR = `${OUT_DIR}countries/`
-const SHAPE_DIR = fileURLToPath(new URL('../public/map-shapes/', import.meta.url))
+const SHAPE_DIR = fileURLToPath(new URL('../../../public/map-shapes/', import.meta.url))
 const FALLBACK_FILE = `${OUT_DIR}fallback-shapes.geojson`
 // ISO codes of countries whose TaxonWorks area has none (for the flag).
 const EXTRA_ISO = JSON.parse(readFileSync(new URL('./data/country-iso.json', import.meta.url), 'utf8'))
 const SUPERFAMILY = 'Curculionoidea'
 const RANKS = new Set(['species', 'subspecies'])
 
-const apiConfig = readFileSync(new URL('../config/api.yml', import.meta.url), 'utf8')
+const apiConfig = readFileSync(new URL('../../../config/api.yml', import.meta.url), 'utf8')
 const BASE = apiConfig.match(/^\s*url:\s*['"]?([^'"\s]+)/m)[1]
 const TOKEN = apiConfig.match(/^\s*project_token:\s*['"]?([^'"\s]+)/m)[1]
 
@@ -103,7 +103,7 @@ const BUILD_DATE = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD, local t
 // TaxonWorks links for overview.html, the same builders curator mode uses on
 // the site (panels/_shared/curatorMode/).
 globalThis.__APP_ENV__ = { url: BASE }
-const { twEditUrl, twOtuUrl, twRecordUrl } = await import('../panels/_shared/curatorMode/curatorMode.js')
+const { twEditUrl, twOtuUrl, twRecordUrl } = await import('../../../panels/_shared/curatorMode/curatorMode.js')
 const TW_BASE = BASE.replace(/\/api\/v1\/?$/, '')
 
 // 1. Every DwC occurrence, in one request.
@@ -774,7 +774,7 @@ const countsByChecklist = {}
 const index = []
 for (const [id, records] of byCountry) {
   const { name, iso2, ids } = checklistOf.get(id)
-  // Compact form (pages/checklists/data/compact.js), expanded again by the page.
+  // Compact form (modules/checklists/data/compact.js), expanded again by the page.
   writeFileSync(`${COUNTRY_DIR}${id}.json`, JSON.stringify(compactChecklist(records)))
   // Reassessed records do not count; a taxon known only from them is shown on
   // the page (as reassessed) but counted nowhere.
@@ -910,7 +910,7 @@ details.rec ul { text-align:left; margin:6px 0 4px; padding-left:1.1em; min-widt
 details.rec[open] summary { border:0 }
 </style></head><body><main>
 <h1>Checklist sources</h1>
-<p class="soft">Built ${esc(BUILD_DATE)} by <code>scripts/build-checklists.mjs</code> together with the cache it documents. ${num(index.length)} checklists, ${num(unplaced.records)} records of ${num(unplaced.taxa.size)} taxa left out.</p>
+<p class="soft">Built ${esc(BUILD_DATE)} by <code>modules/checklists/scripts/build.mjs</code> together with the cache it documents. ${num(index.length)} checklists, ${num(unplaced.records)} records of ${num(unplaced.taxa.size)} taxa left out.</p>
 <h2>How a record is placed</h2>
 <ul class="rules">
 <li><b>area country</b>: an asserted distribution whose TaxonWorks area carries a country (<code>level0_id</code>; a subdivision carries its country's).</li>

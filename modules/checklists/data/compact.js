@@ -1,6 +1,6 @@
 // Compact form of a country checklist file (public/checklists/countries/<id>.json).
 //
-// The build (scripts/build-checklists.mjs) writes compactChecklist(records),
+// The build (modules/checklists/scripts/build.mjs) writes compactChecklist(records),
 // the page reads expandChecklist(file) and gets the same records back, so
 // nothing after loading changes. What makes it small, per country:
 //   - taxa: each distinct taxon (name, authorship, rank, higher taxa, OTU)

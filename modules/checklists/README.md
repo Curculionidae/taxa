@@ -773,9 +773,15 @@ records only: no synonyms, no subordinate taxa. The page loads:
   `GET /dwc_occurrences.csv` with the same filter instead (the paged list has
   no fixed order and can repeat and miss rows). `otu_id[]` returns nothing on
   `/dwc_occurrences`, and a taxon name includes its subordinate taxa, so only
-  rows whose `otu_id` is this OTU are kept. Not loaded for an OTU above
-  species (the DwC index of a family is the whole family; the build leaves
-  those records out anyway).
+  rows whose `otu_id` is this OTU are kept. Not loaded for an OTU without
+  taxon name, nor for an OTU the build leaves out (above species: the DwC
+  index of a family is the whole family; outside Curculionoidea, such as a
+  host plant); a line says why.
+
+A record counts as left out (`live.js` `recordLeftOut`) for its own DwC
+reason, as absent, or for its OTU's reason: a specimen whose DwC row has no
+superfamily takes the OTU's parents, as the build does. The lookup tab asks
+TaxonWorks for the OTU in the same way when the cache does not list a record.
 
 Every record is placed with `placeLive` in the engine context of the cache
 files, as in the lookup, so the result equals the build's. The summary

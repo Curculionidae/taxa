@@ -81,7 +81,6 @@
       </p>
       <ul
         v-else
-        role="tree"
         class="text-sm"
       >
         <AreaTreeNode

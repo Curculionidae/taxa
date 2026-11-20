@@ -87,10 +87,10 @@
           {{ summary }}
         </p>
         <p
-          v-if="aboveSpecies"
+          v-if="specimensNote"
           class="text-sm"
         >
-          Specimens and field occurrences are not loaded for a taxon above species: the build leaves them out.
+          {{ specimensNote }}
         </p>
         <p
           v-if="differing"
@@ -170,7 +170,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import {
-  fetchOtuDistributions, fetchOtuSpecimens, fromDistribution, fromDwcRow, placeLive, leftOutReason, otuLeftOut, plainLabel
+  fetchOtuDistributions, fetchOtuSpecimens, fromDistribution, fromDwcRow, placeLive, recordLeftOut, otuLeftOut, plainLabel
 } from '../placement/live.js'
 import { decisionOf, summarizeOtu, cachedPlacement, differsFromCache } from '../placement/overview.js'
 import { twEditUrl, twRecordUrl, twOtuUrl } from '../../../panels/_shared/curatorMode/curatorMode.js'
@@ -188,7 +188,13 @@ const rows = shallowRef(null)
 const progress = ref('')
 const error = ref('')
 
-const aboveSpecies = computed(() => Boolean(otu.value?.leftOut?.startsWith('rank ')))
+// Why specimens are not loaded, '' when they are.
+const specimensNote = computed(() => {
+  if (!otu.value) return ''
+  if (!otu.value.taxonNameId) return 'Specimens not loaded: this OTU has no taxon name.'
+  if (otu.value.leftOut) return `Specimens not loaded: the build leaves out the records of this OTU (${otu.value.leftOut}).`
+  return ''
+})
 const summary = computed(() => summarizeOtu(rows.value ?? []))
 const differing = computed(() => (rows.value ?? []).filter((row) => row.differs).length)
 
@@ -224,9 +230,10 @@ async function load(id) {
           if (!stale()) progress.value = `Loading asserted distributions: ${loaded}${total ? ` of ${total}` : ''}`
         }
       }),
-      // Above species the DwC index of the taxon name is the whole subtree (all
-      // Curculionidae for the family), and the build leaves these records out.
-      aboveSpecies.value ? [] : fetchOtuSpecimens(otu.value),
+      // Not for an OTU the build leaves out: above species the DwC index of the
+      // taxon name is the whole subtree (all Curculionidae for the family), and
+      // the records of a host plant are not in any checklist either.
+      specimensNote.value ? [] : fetchOtuSpecimens(otu.value),
       props.cache.context()
     ])
     if (stale()) return
@@ -267,7 +274,7 @@ async function comparison(placements) {
 
 function rowOf(live, placement, { unplaced, records }) {
   const { kind, id } = live.subject
-  const leftOut = live.dwc ? leftOutReason(live.dwc) : live.absent ? 'absent' : otu.value.leftOut
+  const leftOut = recordLeftOut(live, otu.value.leftOut)
   const name = placement.checklist?.name ?? null
   const cached = cachedPlacement({ kind, id }, { checklistName: name, records: name ? records.get(name) : null, unplaced })
   return {

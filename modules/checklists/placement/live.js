@@ -188,6 +188,23 @@ export function otuLeftOut({ rank, parentNames }) {
 }
 
 /**
+ * Why the build leaves a record of an OTU out of every checklist: the
+ * record's own DwC reason (leftOutReason), else 'absent' for an absent
+ * distribution, else the OTU's reason (otuLeftOut). The OTU's reason also
+ * covers a specimen whose DwC row has no superfamily: the build then takes the
+ * classification of the OTU's parents and leaves it out when that is not
+ * Curculionoidea (buildContext.mjs, screenRow).
+ * @param {{ dwc?: Object|null, absent?: boolean }} live  what lookupLive, fromDistribution or fromDwcRow returned
+ * @param {string|null} otuReason  otuLeftOut of the record's OTU, null when it counts or is unknown
+ * @returns {string|null}
+ */
+export function recordLeftOut({ dwc = null, absent = false }, otuReason) {
+  if (dwc) return leftOutReason(dwc) ?? otuReason ?? null
+  if (absent) return 'absent'
+  return otuReason ?? null
+}
+
+/**
  * Every asserted distribution of one OTU (its own only: no synonyms, no
  * subordinate taxa; distributions of an association it is part of included,
  * as TaxonWorks returns them for otu_id), page by page.

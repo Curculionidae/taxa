@@ -12,10 +12,7 @@
     lookup (key)   look this area up ('GA 32253')
 -->
 <template>
-  <li
-    role="treeitem"
-    :aria-expanded="node.children.length ? isOpen : undefined"
-  >
+  <li>
     <div
       class="flex flex-wrap items-baseline gap-x-2 py-0.5"
       :style="{ paddingLeft: `${depth * 1.25}rem` }"
@@ -63,7 +60,6 @@
     </div>
     <ul
       v-if="isOpen && node.children.length"
-      role="group"
     >
       <AreaTreeNode
         v-for="child in node.children"

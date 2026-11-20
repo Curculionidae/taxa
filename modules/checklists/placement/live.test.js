@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   lookupLive, recordFromDwc, cacheStatus, plainLabel, fromDistribution, fromDwcRow, placeLive, leftOutReason,
-  fetchOtuDistributions, fetchDistributionsByIds, fetchOtuSpecimens, otuLeftOut
+  fetchOtuDistributions, fetchDistributionsByIds, fetchOtuSpecimens, otuLeftOut, recordLeftOut
 } from './live.js'
 import { compileRules } from './rules.js'
 import { toArea } from './areas.js'
@@ -278,4 +278,15 @@ test('otuLeftOut: the OTU of the distributions must be a species or subspecies o
   assert.equal(otuLeftOut({ rank: null, parentNames: [] }), 'rank none')
   assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] }), 'not in Curculionoidea')
   assert.equal(otuLeftOut({ rank: 'subspecies', parentNames: ['Root', 'Curculionoidea', 'Curculionidae'] }), null)
+})
+
+test('recordLeftOut: own DwC reason, absent, else the OTU reason (host plant specimen)', () => {
+  const plant = otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] })
+  // A host plant specimen: species rank, no superfamily in its DwC row.
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', superfamily: '' } }, plant), 'not in Curculionoidea')
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'genus' } }, plant), 'rank genus')
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', superfamily: '' } }, null), null)
+  assert.equal(recordLeftOut({ absent: true }, null), 'absent')
+  assert.equal(recordLeftOut({ absent: false }, 'rank family'), 'rank family')
+  assert.equal(recordLeftOut({}, null), null)
 })

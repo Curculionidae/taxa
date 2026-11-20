@@ -63,28 +63,35 @@
       </p>
 
       <template v-else>
-        <div
-          class="flex flex-wrap border-b border-base-border/60"
-          role="tablist"
-          aria-label="Curator views"
-          @keydown="onTabKey"
-        >
-          <button
-            v-for="item in TABS"
-            :id="`curator-tab-${item.id}`"
-            :key="item.id"
-            :ref="(el) => { if (el) tabButtons[item.id] = el }"
-            class="border-b-2 px-3 py-2 text-sm font-medium"
-            :class="tab === item.id ? 'border-secondary text-base-content' : 'border-transparent text-base-content/60 hover:text-base-content'"
-            type="button"
-            role="tab"
-            :aria-selected="tab === item.id"
-            :tabindex="tab === item.id ? 0 : -1"
-            :aria-controls="`curator-panel-${item.id}`"
-            @click="selectTab(item.id)"
+        <div class="rounded-lg border border-base-border bg-base-foreground px-4 pt-1">
+          <div
+            class="flex flex-wrap border-b border-base-border/60"
+            role="tablist"
+            aria-label="Curator views"
+            @keydown="onTabKey"
           >
-            {{ item.label }}
-          </button>
+            <button
+              v-for="item in TABS"
+              :id="`curator-tab-${item.id}`"
+              :key="item.id"
+              :ref="(el) => { if (el) tabButtons[item.id] = el }"
+              class="border-b-2 px-3 py-2 text-sm font-medium"
+              :class="tab === item.id ? 'border-secondary text-base-content' : 'border-transparent text-base-content/60 hover:text-base-content'"
+              type="button"
+              role="tab"
+              :aria-selected="tab === item.id"
+              :tabindex="tab === item.id ? 0 : -1"
+              :aria-controls="tab === item.id ? `curator-panel-${item.id}` : undefined"
+              @click="selectTab(item.id)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+          <p
+            class="py-2 text-sm text-base-soft"
+          >
+            {{ basis || '\u00a0' }}
+          </p>
         </div>
 
         <section
@@ -93,12 +100,6 @@
           :aria-labelledby="`curator-tab-${tab}`"
           class="flex min-w-0 flex-col gap-4"
         >
-          <p
-            v-if="basis"
-            class="text-sm text-base-soft"
-          >
-            {{ basis }}
-          </p>
 
           <template v-if="tab === 'lookup'">
             <div class="rounded-lg border border-base-border bg-base-foreground p-4">
@@ -333,9 +334,10 @@ async function recordStatus({ kind, id }, live, placement) {
   const entry = name ? index.countries.find((country) => country.name === name) : null
   const records = entry ? await countryRecords(entry.file) : null
   let status = cacheStatus({ kind, id, dwc: live.dwc ?? null, absent: live.absent }, { checklistName: name, records, unplaced })
-  // A distribution the cache does not list may belong to an OTU the build
-  // leaves out (a genus, a host plant): ask TaxonWorks for its rank and parents.
-  if (kind === 'AD' && !status.listed && status.text === 'not listed in the cache' && live.otuId) {
+  // A record the cache does not list may belong to an OTU the build leaves
+  // out (a genus, a host plant, whose specimens have no superfamily in their
+  // DwC row): ask TaxonWorks for the OTU's rank and parents.
+  if (!status.listed && status.text === 'not listed in the cache' && live.otuId) {
     const reason = await otuReason(live.otuId)
     if (reason) status = { listed: false, text: `not listed: ${reason}` }
   }

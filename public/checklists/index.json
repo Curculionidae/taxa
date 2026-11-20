@@ -1,810 +1,1121 @@
 {
- "updated": "2026-11-18",
+ "updated": "2026-11-20",
  "countries": [
   {
-   "id": 2,
+   "key": "afghanistan",
+   "file": "afghanistan.json",
    "name": "Afghanistan",
    "iso2": "AF",
-   "areas": [
-    2
-   ],
    "shape": "GeographicArea/2",
+   "bbox": [
+    60.4868,
+    29.3866,
+    74.8923,
+    38.4737
+   ],
+   "states": false,
    "taxa": 88,
    "records": 92
   },
   {
-   "id": 4,
+   "key": "albania",
+   "file": "albania.json",
    "name": "Albania",
    "iso2": "AL",
-   "areas": [
-    4
-   ],
    "shape": "GeographicArea/4",
+   "bbox": [
+    19.272,
+    39.637,
+    21.0353,
+    42.6548
+   ],
+   "states": false,
    "taxa": 277,
    "records": 291
   },
   {
-   "id": 5,
+   "key": "algeria",
+   "file": "algeria.json",
    "name": "Algeria",
    "iso2": "DZ",
-   "areas": [
-    5
-   ],
    "shape": "GeographicArea/5",
+   "bbox": [
+    -8.6824,
+    18.9769,
+    11.9689,
+    37.0939
+   ],
+   "states": false,
    "taxa": 425,
    "records": 429
   },
   {
-   "id": 6,
+   "key": "american-samoa",
+   "file": "american-samoa.json",
    "name": "American Samoa",
    "iso2": "AS",
-   "areas": [
-    6
-   ],
    "shape": "GeographicArea/6",
+   "bbox": [
+    -171.0856,
+    -14.5329,
+    -168.1605,
+    -11.0514
+   ],
+   "states": false,
    "taxa": 46,
    "records": 49
   },
   {
-   "id": 7,
+   "key": "andorra",
+   "file": "andorra.json",
    "name": "Andorra",
    "iso2": "AD",
-   "areas": [
-    7
-   ],
    "shape": "GeographicArea/7",
+   "bbox": [
+    1.4065,
+    42.4287,
+    1.7651,
+    42.6494
+   ],
+   "states": false,
    "taxa": 22,
    "records": 22
   },
   {
-   "id": 8,
+   "key": "angola",
+   "file": "angola.json",
    "name": "Angola",
    "iso2": "AO",
-   "areas": [
-    8
-   ],
    "shape": "GeographicArea/8",
+   "bbox": [
+    11.6694,
+    -18.0314,
+    24.0617,
+    -4.3912
+   ],
+   "states": false,
    "taxa": 103,
    "records": 105
   },
   {
-   "id": 9,
+   "key": "anguilla",
+   "file": "anguilla.json",
    "name": "Anguilla",
    "iso2": "AI",
-   "areas": [
-    9
-   ],
    "shape": "GeographicArea/9",
+   "bbox": [
+    -63.4296,
+    18.1543,
+    -62.9243,
+    18.5954
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 31720,
+   "key": "antigua-and-barbuda",
+   "file": "antigua-and-barbuda.json",
    "name": "Antigua and Barbuda",
    "iso2": "AG",
-   "areas": [
-    31720
-   ],
    "shape": "GeographicArea/31720",
-   "taxa": 1,
-   "records": 1
+   "bbox": [
+    -61.8942,
+    16.9892,
+    -61.6676,
+    17.7277
+   ],
+   "states": false,
+   "taxa": 2,
+   "records": 2
   },
   {
-   "id": 12,
+   "key": "argentina",
+   "file": "argentina.json",
    "name": "Argentina",
    "iso2": "AR",
-   "areas": [
-    12
-   ],
    "shape": "GeographicArea/12",
-   "taxa": 274,
-   "records": 379
+   "bbox": [
+    -73.588,
+    -55.052,
+    -53.6616,
+    -21.7869
+   ],
+   "states": false,
+   "taxa": 280,
+   "records": 386
   },
   {
-   "id": 13,
+   "key": "armenia",
+   "file": "armenia.json",
    "name": "Armenia",
    "iso2": "AM",
-   "areas": [
-    13
-   ],
    "shape": "GeographicArea/13",
+   "bbox": [
+    43.4363,
+    38.8637,
+    46.6026,
+    41.2905
+   ],
+   "states": false,
    "taxa": 236,
    "records": 247
   },
   {
-   "id": 15,
+   "key": "australia",
+   "file": "australia.json",
    "name": "Australia",
    "iso2": "AU",
-   "areas": [
-    15
-   ],
    "shape": "GeographicArea/15",
-   "taxa": 991,
-   "records": 1237
+   "bbox": [
+    112.9194,
+    -54.7504,
+    159.1065,
+    -9.2402
+   ],
+   "states": true,
+   "taxa": 1043,
+   "records": 1287
   },
   {
-   "id": 16,
+   "key": "austria",
+   "file": "austria.json",
    "name": "Austria",
    "iso2": "AT",
-   "areas": [
-    16
-   ],
    "shape": "GeographicArea/16",
+   "bbox": [
+    9.5212,
+    46.3786,
+    17.1483,
+    49.0098
+   ],
+   "states": false,
    "taxa": 482,
    "records": 517
   },
   {
-   "id": 17,
+   "key": "azerbaijan",
+   "file": "azerbaijan.json",
    "name": "Azerbaijan",
    "iso2": "AZ",
-   "areas": [
-    17
-   ],
    "shape": "GeographicArea/17",
+   "bbox": [
+    44.7746,
+    38.396,
+    50.6257,
+    41.8904
+   ],
+   "states": false,
    "taxa": 185,
    "records": 196
   },
   {
-   "id": 18,
+   "key": "bahamas",
+   "file": "bahamas.json",
    "name": "Bahamas",
    "iso2": "BS",
-   "areas": [
-    18
-   ],
    "shape": "GeographicArea/18",
+   "bbox": [
+    -79.5943,
+    20.9124,
+    -72.7462,
+    26.9284
+   ],
+   "states": false,
    "taxa": 9,
    "records": 9
   },
   {
-   "id": 20,
+   "key": "bangladesh",
+   "file": "bangladesh.json",
    "name": "Bangladesh",
    "iso2": "BD",
-   "areas": [
-    20
-   ],
    "shape": "GeographicArea/20",
+   "bbox": [
+    88.0218,
+    20.7387,
+    92.6429,
+    26.6235
+   ],
+   "states": false,
    "taxa": 19,
    "records": 20
   },
   {
-   "id": 21,
+   "key": "barbados",
+   "file": "barbados.json",
    "name": "Barbados",
    "iso2": "BB",
-   "areas": [
-    21
-   ],
    "shape": "GeographicArea/21",
+   "bbox": [
+    -59.6542,
+    13.0512,
+    -59.4269,
+    13.3445
+   ],
+   "states": false,
    "taxa": 5,
    "records": 6
   },
   {
-   "id": 22,
+   "key": "belarus",
+   "file": "belarus.json",
    "name": "Belarus",
    "iso2": "BY",
-   "areas": [
-    22
-   ],
    "shape": "GeographicArea/22",
+   "bbox": [
+    23.1656,
+    51.2352,
+    32.7195,
+    56.1568
+   ],
+   "states": false,
    "taxa": 151,
    "records": 168
   },
   {
-   "id": 23,
+   "key": "belgium",
+   "file": "belgium.json",
    "name": "Belgium",
    "iso2": "BE",
-   "areas": [
-    23
-   ],
    "shape": "GeographicArea/23",
+   "bbox": [
+    2.5218,
+    49.4952,
+    6.3745,
+    51.4954
+   ],
+   "states": false,
    "taxa": 210,
    "records": 212
   },
   {
-   "id": 24,
+   "key": "belize",
+   "file": "belize.json",
    "name": "Belize",
    "iso2": "BZ",
-   "areas": [
-    24
-   ],
    "shape": "GeographicArea/24",
-   "taxa": 17,
-   "records": 17
+   "bbox": [
+    -89.2365,
+    15.8797,
+    -87.7872,
+    18.4908
+   ],
+   "states": false,
+   "taxa": 19,
+   "records": 19
   },
   {
-   "id": 25,
+   "key": "benin",
+   "file": "benin.json",
    "name": "Benin",
    "iso2": "BJ",
-   "areas": [
-    25
-   ],
    "shape": "GeographicArea/25",
+   "bbox": [
+    0.7599,
+    6.2139,
+    3.8374,
+    12.3992
+   ],
+   "states": false,
    "taxa": 7,
    "records": 7
   },
   {
-   "id": 27,
+   "key": "bhutan",
+   "file": "bhutan.json",
    "name": "Bhutan",
    "iso2": "BT",
-   "areas": [
-    27
-   ],
    "shape": "GeographicArea/27",
+   "bbox": [
+    88.7301,
+    26.6961,
+    92.0888,
+    28.3584
+   ],
+   "states": false,
    "taxa": 6,
    "records": 6
   },
   {
-   "id": 31724,
+   "key": "bolivia",
+   "file": "bolivia.json",
    "name": "Bolivia",
    "iso2": "BO",
-   "areas": [
-    31724
-   ],
    "shape": "GeographicArea/31724",
+   "bbox": [
+    -69.6665,
+    -22.8973,
+    -57.4657,
+    -9.6801
+   ],
+   "states": false,
    "taxa": 191,
    "records": 198
   },
   {
-   "id": 4818,
+   "key": "bonaire-saint-eustatius-and-saba",
+   "file": "bonaire-saint-eustatius-and-saba.json",
    "name": "Bonaire, Saint Eustatius and Saba",
    "iso2": "BQ",
-   "areas": [
-    4818
-   ],
    "shape": "GeographicArea/4818",
+   "bbox": [
+    -68.4207,
+    12.026,
+    -62.9446,
+    17.6507
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 31721,
+   "key": "bosnia-and-herzegovina",
+   "file": "bosnia-and-herzegovina.json",
    "name": "Bosnia and Herzegovina",
    "iso2": "BA",
-   "areas": [
-    31721,
-    30
-   ],
    "shape": "GeographicArea/31721",
+   "bbox": [
+    15.7161,
+    42.5592,
+    19.6189,
+    45.2845
+   ],
+   "states": false,
    "taxa": 370,
    "records": 392
   },
   {
-   "id": 31,
+   "key": "botswana",
+   "file": "botswana.json",
    "name": "Botswana",
    "iso2": "BW",
-   "areas": [
-    31
-   ],
    "shape": "GeographicArea/31",
+   "bbox": [
+    19.9783,
+    -26.8918,
+    29.3501,
+    -17.7818
+   ],
+   "states": false,
    "taxa": 17,
    "records": 20
   },
   {
-   "id": 33,
+   "key": "brazil",
+   "file": "brazil.json",
    "name": "Brazil",
    "iso2": "BR",
-   "areas": [
-    33
-   ],
    "shape": "GeographicArea/33",
+   "bbox": [
+    -74.0185,
+    -33.7423,
+    -28.8771,
+    5.2672
+   ],
+   "states": false,
    "taxa": 906,
    "records": 1235
   },
   {
-   "id": 34,
+   "key": "british-indian-ocean-territory",
+   "file": "british-indian-ocean-territory.json",
    "name": "British Indian Ocean Territory",
    "iso2": "IO",
-   "areas": [
-    34
-   ],
    "shape": "GeographicArea/34",
+   "bbox": [
+    71.2374,
+    -7.4446,
+    72.4951,
+    -5.236
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 4856,
+   "key": "british-virgin-islands",
+   "file": "british-virgin-islands.json",
    "name": "British Virgin Islands",
    "iso2": "VG",
-   "areas": [
-    4856
-   ],
    "shape": "GeographicArea/4856",
+   "bbox": [
+    -64.8501,
+    18.3079,
+    -64.2715,
+    18.7496
+   ],
+   "states": false,
    "taxa": 2,
    "records": 2
   },
   {
-   "id": 4857,
+   "key": "brunei",
+   "file": "brunei.json",
    "name": "Brunei",
    "iso2": "BN",
-   "areas": [
-    4857
-   ],
    "shape": "GeographicArea/4857",
+   "bbox": [
+    113.9988,
+    4.0167,
+    115.3607,
+    5.0572
+   ],
+   "states": false,
    "taxa": 2,
    "records": 2
   },
   {
-   "id": 36,
+   "key": "bulgaria",
+   "file": "bulgaria.json",
    "name": "Bulgaria",
    "iso2": "BG",
-   "areas": [
-    36
-   ],
    "shape": "GeographicArea/36",
+   "bbox": [
+    22.345,
+    41.2394,
+    28.6035,
+    44.2284
+   ],
+   "states": false,
    "taxa": 632,
    "records": 678
   },
   {
-   "id": 37,
+   "key": "burkina-faso",
+   "file": "burkina-faso.json",
    "name": "Burkina Faso",
    "iso2": "BF",
-   "areas": [
-    37
-   ],
    "shape": "GeographicArea/37",
+   "bbox": [
+    -5.5226,
+    9.3919,
+    2.3902,
+    15.0799
+   ],
+   "states": false,
    "taxa": 4,
    "records": 4
   },
   {
-   "id": 38,
+   "key": "burundi",
+   "file": "burundi.json",
    "name": "Burundi",
    "iso2": "BI",
-   "areas": [
-    38
-   ],
    "shape": "GeographicArea/38",
+   "bbox": [
+    28.9869,
+    -4.4633,
+    30.8329,
+    -2.3031
+   ],
+   "states": false,
    "taxa": 8,
    "records": 9
   },
   {
-   "id": 39,
+   "key": "cambodia",
+   "file": "cambodia.json",
    "name": "Cambodia",
    "iso2": "KH",
-   "areas": [
-    39
-   ],
    "shape": "GeographicArea/39",
+   "bbox": [
+    102.3134,
+    10.4158,
+    107.607,
+    14.7046
+   ],
+   "states": false,
    "taxa": 30,
    "records": 32
   },
   {
-   "id": 40,
+   "key": "cameroon",
+   "file": "cameroon.json",
    "name": "Cameroon",
    "iso2": "CM",
-   "areas": [
-    40
-   ],
    "shape": "GeographicArea/40",
+   "bbox": [
+    8.5051,
+    1.6546,
+    16.2077,
+    13.0811
+   ],
+   "states": false,
    "taxa": 101,
    "records": 106
   },
   {
-   "id": 41,
+   "key": "canada",
+   "file": "canada.json",
    "name": "Canada",
    "iso2": "CA",
-   "areas": [
-    41
-   ],
    "shape": "GeographicArea/41",
+   "bbox": [
+    -141.0055,
+    41.6691,
+    -52.6166,
+    83.1165
+   ],
+   "states": true,
    "taxa": 155,
    "records": 364
   },
   {
-   "id": 42,
+   "key": "cape-verde",
+   "file": "cape-verde.json",
    "name": "Cape Verde",
    "iso2": "CV",
-   "areas": [
-    42
-   ],
    "shape": "GeographicArea/42",
+   "bbox": [
+    -25.3604,
+    14.8039,
+    -22.6666,
+    17.193
+   ],
+   "states": false,
    "taxa": 16,
    "records": 16
   },
   {
-   "id": 31732,
+   "key": "cayman-islands",
+   "file": "cayman-islands.json",
    "name": "Cayman Islands",
    "iso2": "KY",
-   "areas": [
-    31732,
-    43
-   ],
    "shape": "GeographicArea/31732",
+   "bbox": [
+    -81.4165,
+    19.2639,
+    -79.7266,
+    19.7576
+   ],
+   "states": false,
    "taxa": 1,
    "records": 3
   },
   {
-   "id": 31727,
+   "key": "central-african-republic",
+   "file": "central-african-republic.json",
    "name": "Central African Republic",
    "iso2": "CF",
-   "areas": [
-    31727
-   ],
    "shape": "GeographicArea/31727",
+   "bbox": [
+    14.3873,
+    2.2365,
+    27.4413,
+    11.0008
+   ],
+   "states": false,
    "taxa": 16,
    "records": 16
   },
   {
-   "id": 45,
+   "key": "chad",
+   "file": "chad.json",
    "name": "Chad",
    "iso2": "TD",
-   "areas": [
-    45
-   ],
    "shape": "GeographicArea/45",
+   "bbox": [
+    13.4492,
+    7.4556,
+    23.9844,
+    23.4447
+   ],
+   "states": false,
    "taxa": 21,
    "records": 21
   },
   {
-   "id": 46,
+   "key": "chile",
+   "file": "chile.json",
    "name": "Chile",
    "iso2": "CL",
-   "areas": [
-    46
-   ],
    "shape": "GeographicArea/46",
-   "taxa": 147,
-   "records": 188
+   "bbox": [
+    -109.4513,
+    -55.9185,
+    -66.4208,
+    -17.5066
+   ],
+   "states": false,
+   "taxa": 149,
+   "records": 190
   },
   {
-   "id": 47,
+   "key": "china",
+   "file": "china.json",
    "name": "China",
    "iso2": "CN",
-   "areas": [
-    47
-   ],
    "shape": "GeographicArea/47",
+   "bbox": [
+    73.6023,
+    15.7782,
+    134.7726,
+    53.5694
+   ],
+   "states": true,
    "taxa": 885,
-   "records": 1713
+   "records": 1709
   },
   {
-   "id": 48,
+   "key": "christmas-island",
+   "file": "christmas-island.json",
    "name": "Christmas Island",
    "iso2": "CX",
-   "areas": [
-    48
-   ],
    "shape": "GeographicArea/48",
+   "bbox": [
+    105.5328,
+    -10.5689,
+    105.7131,
+    -10.4131
+   ],
+   "states": false,
    "taxa": 5,
    "records": 5
   },
   {
-   "id": 6155,
+   "key": "cocos-islands",
+   "file": "cocos-islands.json",
    "name": "Cocos Islands",
    "iso2": "CC",
-   "areas": [
-    6155
-   ],
    "shape": "GeographicArea/6155",
+   "bbox": [
+    96.8152,
+    -12.2094,
+    96.9303,
+    -11.8206
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 50,
+   "key": "colombia",
+   "file": "colombia.json",
    "name": "Colombia",
    "iso2": "CO",
-   "areas": [
-    50
-   ],
    "shape": "GeographicArea/50",
+   "bbox": [
+    -81.7237,
+    -4.2365,
+    -66.8751,
+    13.5784
+   ],
+   "states": false,
    "taxa": 289,
    "records": 340
   },
   {
-   "id": 51,
+   "key": "comoros",
+   "file": "comoros.json",
    "name": "Comoros",
    "iso2": "KM",
-   "areas": [
-    51
-   ],
    "shape": "GeographicArea/51",
+   "bbox": [
+    43.216,
+    -12.3803,
+    44.5291,
+    -11.3613
+   ],
+   "states": false,
    "taxa": 10,
    "records": 10
   },
   {
-   "id": 52,
+   "key": "congo",
+   "file": "congo.json",
    "name": "Congo",
    "iso2": "CG",
-   "areas": [
-    52
-   ],
    "shape": "GeographicArea/52",
+   "bbox": [
+    11.114,
+    -5.0196,
+    18.6424,
+    3.7083
+   ],
+   "states": false,
    "taxa": 45,
    "records": 47
   },
   {
-   "id": 54,
+   "key": "cook-islands",
+   "file": "cook-islands.json",
    "name": "Cook Islands",
    "iso2": "CK",
-   "areas": [
-    54
-   ],
    "shape": "GeographicArea/54",
+   "bbox": [
+    -165.8794,
+    -21.9591,
+    -157.3236,
+    -8.9155
+   ],
+   "states": false,
    "taxa": 2,
    "records": 2
   },
   {
-   "id": 55,
+   "key": "costa-rica",
+   "file": "costa-rica.json",
    "name": "Costa Rica",
    "iso2": "CR",
-   "areas": [
-    55
-   ],
    "shape": "GeographicArea/55",
-   "taxa": 114,
-   "records": 128
+   "bbox": [
+    -87.1177,
+    5.5151,
+    -82.5628,
+    11.2099
+   ],
+   "states": false,
+   "taxa": 120,
+   "records": 135
   },
   {
-   "id": 31725,
+   "key": "cote-d-ivoire",
+   "file": "cote-d-ivoire.json",
    "name": "Côte d'Ivoire",
    "iso2": "CI",
-   "areas": [
-    31725
-   ],
    "shape": "GeographicArea/31725",
+   "bbox": [
+    -8.6187,
+    4.3441,
+    -2.5063,
+    10.7265
+   ],
+   "states": false,
    "taxa": 32,
    "records": 33
   },
   {
-   "id": 57,
+   "key": "croatia",
+   "file": "croatia.json",
    "name": "Croatia",
    "iso2": "HR",
-   "areas": [
-    57
-   ],
    "shape": "GeographicArea/57",
+   "bbox": [
+    13.5046,
+    42.4163,
+    19.4078,
+    46.547
+   ],
+   "states": false,
    "taxa": 440,
    "records": 466
   },
   {
-   "id": 58,
+   "key": "cuba",
+   "file": "cuba.json",
    "name": "Cuba",
    "iso2": "CU",
-   "areas": [
-    58
-   ],
    "shape": "GeographicArea/58",
+   "bbox": [
+    -84.9496,
+    19.8289,
+    -74.1329,
+    23.2656
+   ],
+   "states": false,
    "taxa": 94,
    "records": 127
   },
   {
-   "id": 60,
+   "key": "cyprus",
+   "file": "cyprus.json",
    "name": "Cyprus",
    "iso2": "CY",
-   "areas": [
-    60
-   ],
    "shape": "GeographicArea/60",
+   "bbox": [
+    32.2717,
+    34.625,
+    34.0991,
+    35.1871
+   ],
+   "states": false,
    "taxa": 115,
    "records": 115
   },
   {
-   "id": 61,
+   "key": "czech-republic",
+   "file": "czech-republic.json",
    "name": "Czech Republic",
    "iso2": "CZ",
-   "areas": [
-    31734,
-    61
-   ],
    "shape": "GeographicArea/31734",
+   "bbox": [
+    12.0761,
+    48.5586,
+    18.8345,
+    51.04
+   ],
+   "states": false,
    "taxa": 361,
-   "records": 427
+   "records": 430
   },
   {
-   "id": 31729,
+   "key": "democratic-republic-of-the-congo",
+   "file": "democratic-republic-of-the-congo.json",
    "name": "Democratic Republic of the Congo",
    "iso2": "CD",
-   "areas": [
-    31729,
-    32037
-   ],
    "shape": "GeographicArea/31729",
+   "bbox": [
+    12.2106,
+    -13.4576,
+    31.2804,
+    5.3753
+   ],
+   "states": false,
    "taxa": 392,
    "records": 441
   },
   {
-   "id": 62,
+   "key": "denmark",
+   "file": "denmark.json",
    "name": "Denmark",
    "iso2": "DK",
-   "areas": [
-    62
-   ],
    "shape": "GeographicArea/62",
+   "bbox": [
+    8.094,
+    54.5686,
+    15.1514,
+    57.7495
+   ],
+   "states": false,
    "taxa": 317,
    "records": 320
   },
   {
-   "id": 63,
+   "key": "djibouti",
+   "file": "djibouti.json",
    "name": "Djibouti",
    "iso2": "DJ",
-   "areas": [
-    63
-   ],
    "shape": "GeographicArea/63",
+   "bbox": [
+    41.7491,
+    10.9298,
+    43.4187,
+    12.7079
+   ],
+   "states": false,
    "taxa": 13,
    "records": 14
   },
   {
-   "id": 64,
+   "key": "dominica",
+   "file": "dominica.json",
    "name": "Dominica",
    "iso2": "DM",
-   "areas": [
-    64
-   ],
    "shape": "GeographicArea/64",
+   "bbox": [
+    -61.4889,
+    15.2018,
+    -61.2493,
+    15.6339
+   ],
+   "states": false,
    "taxa": 9,
    "records": 9
   },
   {
-   "id": 31735,
+   "key": "dominican-republic",
+   "file": "dominican-republic.json",
    "name": "Dominican Republic",
    "iso2": "DO",
-   "areas": [
-    31735,
-    65
-   ],
    "shape": "GeographicArea/31735",
+   "bbox": [
+    -72.0098,
+    17.5456,
+    -68.3286,
+    19.9377
+   ],
+   "states": false,
    "taxa": 80,
    "records": 107
   },
   {
-   "id": 66,
+   "key": "ecuador",
+   "file": "ecuador.json",
    "name": "Ecuador",
    "iso2": "EC",
-   "areas": [
-    66
-   ],
    "shape": "GeographicArea/66",
+   "bbox": [
+    -92.0116,
+    -5.0114,
+    -75.2273,
+    1.6644
+   ],
+   "states": false,
    "taxa": 120,
    "records": 127
   },
   {
-   "id": 67,
+   "key": "egypt",
+   "file": "egypt.json",
    "name": "Egypt",
    "iso2": "EG",
-   "areas": [
-    67
-   ],
    "shape": "GeographicArea/67",
+   "bbox": [
+    24.6883,
+    21.9944,
+    36.8984,
+    31.6565
+   ],
+   "states": false,
    "taxa": 57,
    "records": 58
   },
   {
-   "id": 68,
+   "key": "el-salvador",
+   "file": "el-salvador.json",
    "name": "El Salvador",
    "iso2": "SV",
-   "areas": [
-    68
-   ],
    "shape": "GeographicArea/68",
+   "bbox": [
+    -90.1143,
+    13.1586,
+    -87.7036,
+    14.4454
+   ],
+   "states": false,
    "taxa": 14,
    "records": 15
   },
   {
-   "id": 31739,
+   "key": "equatorial-guinea",
+   "file": "equatorial-guinea.json",
    "name": "Equatorial Guinea",
    "iso2": "GQ",
-   "areas": [
-    31739
-   ],
    "shape": "GeographicArea/31739",
-   "taxa": 2,
-   "records": 2
+   "bbox": [
+    5.612,
+    -1.4757,
+    11.3363,
+    3.7724
+   ],
+   "states": false,
+   "taxa": 17,
+   "records": 20
   },
   {
-   "id": 70,
+   "key": "eritrea",
+   "file": "eritrea.json",
    "name": "Eritrea",
    "iso2": "ER",
-   "areas": [
-    70
-   ],
    "shape": "GeographicArea/70",
-   "taxa": 24,
-   "records": 24
+   "bbox": [
+    36.4251,
+    12.36,
+    43.1239,
+    18.0048
+   ],
+   "states": false,
+   "taxa": 25,
+   "records": 25
   },
   {
-   "id": 71,
+   "key": "estonia",
+   "file": "estonia.json",
    "name": "Estonia",
    "iso2": "EE",
-   "areas": [
-    71
-   ],
    "shape": "GeographicArea/71",
+   "bbox": [
+    21.8324,
+    57.5158,
+    28.1865,
+    59.6709
+   ],
+   "states": false,
    "taxa": 160,
    "records": 164
   },
   {
-   "id": 72,
+   "key": "ethiopia",
+   "file": "ethiopia.json",
    "name": "Ethiopia",
    "iso2": "ET",
-   "areas": [
-    72
-   ],
    "shape": "GeographicArea/72",
+   "bbox": [
+    32.9898,
+    3.4033,
+    47.9792,
+    14.8795
+   ],
+   "states": false,
    "taxa": 158,
    "records": 169
   },
   {
-   "id": 8733,
+   "key": "falkland-islands",
+   "file": "falkland-islands.json",
    "name": "Falkland Islands",
    "iso2": "FK",
-   "areas": [
-    8733
-   ],
    "shape": "GeographicArea/8733",
+   "bbox": [
+    -61.4603,
+    -52.9193,
+    -57.6869,
+    -50.996
+   ],
+   "states": false,
    "taxa": 6,
    "records": 7
   },
   {
-   "id": 74,
+   "key": "faroe-islands",
+   "file": "faroe-islands.json",
    "name": "Faroe Islands",
    "iso2": "FO",
-   "areas": [
-    31738,
-    74
-   ],
    "shape": "GeographicArea/31738",
+   "bbox": [
+    -7.6442,
+    61.3941,
+    -6.2758,
+    62.3989
+   ],
+   "states": false,
    "taxa": 4,
    "records": 4
   },
   {
-   "id": 75,
+   "key": "fiji",
+   "file": "fiji.json",
    "name": "Fiji",
    "iso2": "FJ",
-   "areas": [
-    75
-   ],
    "shape": "GeographicArea/75",
+   "bbox": [
+    -180,
+    -21.7111,
+    180,
+    -12.4753
+   ],
+   "states": false,
    "taxa": 136,
    "records": 162
   },
   {
-   "id": 76,
+   "key": "finland",
+   "file": "finland.json",
    "name": "Finland",
    "iso2": "FI",
-   "areas": [
-    76
-   ],
    "shape": "GeographicArea/76",
+   "bbox": [
+    20.6232,
+    59.8112,
+    31.5695,
+    70.0753
+   ],
+   "states": false,
    "taxa": 153,
    "records": 155
   },
   {
-   "id": 77,
+   "key": "france",
+   "file": "france.json",
    "name": "France",
    "iso2": "FR",
-   "areas": [
-    77
-   ],
    "shape": "GeographicArea/77",
-   "exclude": [
-    [
-     -55,
-     1.8,
-     -51,
-     6.2
-    ],
-    [
-     -62,
-     15.7,
-     -60.8,
-     16.6
-    ],
-    [
-     -61.3,
-     14.3,
-     -60.7,
-     15
-    ],
-    [
-     55.1,
-     -21.5,
-     56,
-     -20.8
-    ],
-    [
-     44.9,
-     -13.1,
-     45.4,
-     -12.5
-    ]
+   "bbox": [
+    -61.7974,
+    -21.3708,
+    55.8545,
+    51.0875
    ],
    "parts": [
     {
@@ -813,1746 +1124,2572 @@
     },
     {
      "name": "Mainland France",
-     "shape": "GeographicArea/33696"
+     "shape": "GeographicArea/34185"
     }
    ],
-   "taxa": 781,
-   "records": 830
+   "states": false,
+   "taxa": 790,
+   "records": 867
   },
   {
-   "id": 32253,
+   "key": "french-guiana",
+   "file": "french-guiana.json",
    "name": "French Guiana",
    "iso2": "GF",
-   "areas": [
-    32253,
-    34200
-   ],
+   "of": "France",
    "shape": "GeographicArea/32253",
-   "taxa": 32,
-   "records": 32
+   "bbox": [
+    -54.6153,
+    2.1107,
+    -51.649,
+    5.7446
+   ],
+   "states": false,
+   "taxa": 34,
+   "records": 35
   },
   {
-   "id": 79,
+   "key": "french-polynesia",
+   "file": "french-polynesia.json",
    "name": "French Polynesia",
    "iso2": "PF",
-   "areas": [
-    79
-   ],
    "shape": "GeographicArea/79",
-   "taxa": 164,
-   "records": 194
+   "bbox": [
+    -154.7267,
+    -27.9006,
+    -134.4511,
+    -7.8988
+   ],
+   "states": false,
+   "taxa": 188,
+   "records": 220
   },
   {
-   "id": 80,
+   "key": "french-southern-territories",
+   "file": "french-southern-territories.json",
    "name": "French Southern Territories",
    "iso2": "TF",
-   "areas": [
-    80
-   ],
    "shape": null,
+   "fallback": "French Southern Territories",
+   "bbox": [
+    39.7283,
+    -49.7216,
+    77.5852,
+    -11.5506
+   ],
+   "states": false,
    "taxa": 33,
    "records": 35
   },
   {
-   "id": 81,
+   "key": "gabon",
+   "file": "gabon.json",
    "name": "Gabon",
    "iso2": "GA",
-   "areas": [
-    81
-   ],
    "shape": "GeographicArea/81",
+   "bbox": [
+    8.6956,
+    -3.9369,
+    14.499,
+    2.3225
+   ],
+   "states": false,
    "taxa": 72,
    "records": 72
   },
   {
-   "id": 82,
+   "key": "gambia",
+   "file": "gambia.json",
    "name": "Gambia",
    "iso2": "GM",
-   "areas": [
-    82
-   ],
    "shape": "GeographicArea/82",
+   "bbox": [
+    -16.8297,
+    13.065,
+    -13.8187,
+    13.82
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 83,
+   "key": "georgia",
+   "file": "georgia.json",
    "name": "Georgia",
    "iso2": "GE",
-   "areas": [
-    83
-   ],
    "shape": "GeographicArea/83",
+   "bbox": [
+    39.986,
+    41.0441,
+    46.6948,
+    43.5758
+   ],
+   "states": false,
    "taxa": 906,
    "records": 1084
   },
   {
-   "id": 84,
+   "key": "germany",
+   "file": "germany.json",
    "name": "Germany",
    "iso2": "DE",
-   "areas": [
-    84
-   ],
    "shape": "GeographicArea/84",
+   "bbox": [
+    5.8525,
+    47.2711,
+    15.0221,
+    55.0653
+   ],
+   "states": false,
    "taxa": 634,
    "records": 1105
   },
   {
-   "id": 85,
+   "key": "ghana",
+   "file": "ghana.json",
    "name": "Ghana",
    "iso2": "GH",
-   "areas": [
-    85
-   ],
    "shape": "GeographicArea/85",
+   "bbox": [
+    -3.2625,
+    4.7385,
+    1.188,
+    11.1629
+   ],
+   "states": false,
    "taxa": 8,
    "records": 8
   },
   {
-   "id": 86,
+   "key": "gibraltar",
+   "file": "gibraltar.json",
    "name": "Gibraltar",
    "iso2": "GI",
-   "areas": [
-    86
-   ],
    "shape": "GeographicArea/86",
+   "bbox": [
+    -5.3584,
+    36.1105,
+    -5.3388,
+    36.1411
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 87,
+   "key": "greece",
+   "file": "greece.json",
    "name": "Greece",
    "iso2": "GR",
-   "areas": [
-    87
-   ],
    "shape": "GeographicArea/87",
+   "bbox": [
+    19.6265,
+    34.815,
+    28.2398,
+    41.7505
+   ],
+   "states": false,
    "taxa": 777,
    "records": 951
   },
   {
-   "id": 88,
+   "key": "greenland",
+   "file": "greenland.json",
    "name": "Greenland",
    "iso2": "GL",
-   "areas": [
-    88
-   ],
    "shape": "GeographicArea/88",
+   "bbox": [
+    -73.0572,
+    59.7926,
+    -11.3768,
+    83.6341
+   ],
+   "states": false,
    "taxa": 2,
    "records": 2
   },
   {
-   "id": 89,
+   "key": "grenada",
+   "file": "grenada.json",
    "name": "Grenada",
    "iso2": "GD",
-   "areas": [
-    89
-   ],
    "shape": "GeographicArea/89",
-   "taxa": 4,
-   "records": 4
-  },
-  {
-   "id": 90,
-   "name": "Guadeloupe",
-   "iso2": "GP",
-   "areas": [
-    90,
-    32432,
-    34212
+   "bbox": [
+    -61.7905,
+    12.0028,
+    -61.4233,
+    12.5297
    ],
-   "shape": "GeographicArea/32432",
-   "taxa": 28,
-   "records": 30
-  },
-  {
-   "id": 91,
-   "name": "Guam",
-   "iso2": "GU",
-   "areas": [
-    91
-   ],
-   "shape": "GeographicArea/91",
-   "taxa": 50,
-   "records": 50
-  },
-  {
-   "id": 92,
-   "name": "Guatemala",
-   "iso2": "GT",
-   "areas": [
-    92
-   ],
-   "shape": "GeographicArea/92",
-   "taxa": 184,
-   "records": 205
-  },
-  {
-   "id": 93,
-   "name": "Guernsey",
-   "iso2": "GG",
-   "areas": [
-    93
-   ],
-   "shape": "GeographicArea/93",
-   "taxa": 1,
-   "records": 1
-  },
-  {
-   "id": 94,
-   "name": "Guinea",
-   "iso2": "GN",
-   "areas": [
-    94
-   ],
-   "shape": "GeographicArea/94",
-   "taxa": 30,
-   "records": 30
-  },
-  {
-   "id": 9490,
-   "name": "Guinea-Bissau",
-   "iso2": "GW",
-   "areas": [
-    9490
-   ],
-   "shape": "GeographicArea/9490",
-   "taxa": 3,
-   "records": 3
-  },
-  {
-   "id": 96,
-   "name": "Guyana",
-   "iso2": "GY",
-   "areas": [
-    96
-   ],
-   "shape": "GeographicArea/96",
-   "taxa": 11,
-   "records": 11
-  },
-  {
-   "id": 97,
-   "name": "Haiti",
-   "iso2": "HT",
-   "areas": [
-    97
-   ],
-   "shape": "GeographicArea/97",
-   "taxa": 43,
-   "records": 51
-  },
-  {
-   "id": 9869,
-   "name": "Heard Island and McDonald Islands",
-   "iso2": "HM",
-   "areas": [
-    9869
-   ],
-   "shape": "GeographicArea/9869",
-   "taxa": 4,
-   "records": 5
-  },
-  {
-   "id": 100,
-   "name": "Honduras",
-   "iso2": "HN",
-   "areas": [
-    100
-   ],
-   "shape": "GeographicArea/100",
-   "taxa": 43,
-   "records": 47
-  },
-  {
-   "id": 101,
-   "name": "Hong Kong",
-   "iso2": "HK",
-   "areas": [
-    101
-   ],
-   "shape": "GeographicArea/101",
-   "taxa": 6,
-   "records": 6
-  },
-  {
-   "id": 102,
-   "name": "Hungary",
-   "iso2": "HU",
-   "areas": [
-    102
-   ],
-   "shape": "GeographicArea/102",
-   "taxa": 972,
-   "records": 1098
-  },
-  {
-   "id": 103,
-   "name": "Iceland",
-   "iso2": "IS",
-   "areas": [
-    103
-   ],
-   "shape": "GeographicArea/103",
-   "taxa": 13,
-   "records": 13
-  },
-  {
-   "id": 104,
-   "name": "India",
-   "iso2": "IN",
-   "areas": [
-    104
-   ],
-   "shape": "GeographicArea/104",
-   "taxa": 711,
-   "records": 1158
-  },
-  {
-   "id": 105,
-   "name": "Indonesia",
-   "iso2": "ID",
-   "areas": [
-    105
-   ],
-   "shape": "GeographicArea/105",
-   "taxa": 831,
-   "records": 1142
-  },
-  {
-   "id": 9680,
-   "name": "Iran",
-   "iso2": "IR",
-   "areas": [
-    9680
-   ],
-   "shape": "GeographicArea/9680",
-   "taxa": 301,
-   "records": 319
-  },
-  {
-   "id": 107,
-   "name": "Iraq",
-   "iso2": "IQ",
-   "areas": [
-    107
-   ],
-   "shape": "GeographicArea/107",
-   "taxa": 38,
-   "records": 41
-  },
-  {
-   "id": 108,
-   "name": "Ireland",
-   "iso2": "IE",
-   "areas": [
-    108
-   ],
-   "shape": "GeographicArea/108",
-   "taxa": 74,
-   "records": 75
-  },
-  {
-   "id": 110,
-   "name": "Israel",
-   "iso2": "IL",
-   "areas": [
-    110
-   ],
-   "shape": "GeographicArea/110",
-   "taxa": 97,
-   "records": 103
-  },
-  {
-   "id": 111,
-   "name": "Italy",
-   "iso2": "IT",
-   "areas": [
-    111
-   ],
-   "shape": "GeographicArea/111",
-   "taxa": 1084,
-   "records": 1173
-  },
-  {
-   "id": 112,
-   "name": "Jamaica",
-   "iso2": "JM",
-   "areas": [
-    112
-   ],
-   "shape": "GeographicArea/112",
-   "taxa": 18,
-   "records": 24
-  },
-  {
-   "id": 113,
-   "name": "Japan",
-   "iso2": "JP",
-   "areas": [
-    113
-   ],
-   "shape": "GeographicArea/113",
-   "taxa": 422,
-   "records": 559
-  },
-  {
-   "id": 115,
-   "name": "Jordan",
-   "iso2": "JO",
-   "areas": [
-    115
-   ],
-   "shape": "GeographicArea/115",
-   "taxa": 27,
-   "records": 27
-  },
-  {
-   "id": 116,
-   "name": "Kazakhstan",
-   "iso2": "KZ",
-   "areas": [
-    116
-   ],
-   "shape": "GeographicArea/116",
-   "taxa": 562,
-   "records": 640
-  },
-  {
-   "id": 117,
-   "name": "Kenya",
-   "iso2": "KE",
-   "areas": [
-    117
-   ],
-   "shape": "GeographicArea/117",
-   "taxa": 294,
-   "records": 417
-  },
-  {
-   "id": 118,
-   "name": "Kiribati",
-   "iso2": "KI",
-   "areas": [
-    118
-   ],
-   "shape": "GeographicArea/118",
-   "taxa": 2,
-   "records": 3
-  },
-  {
-   "id": 122,
-   "name": "Kyrgyzstan",
-   "iso2": "KG",
-   "areas": [
-    122
-   ],
-   "shape": "GeographicArea/122",
-   "taxa": 184,
-   "records": 189
-  },
-  {
-   "id": 31747,
-   "name": "Laos",
-   "iso2": "LA",
-   "areas": [
-    31747,
-    13534
-   ],
-   "shape": "GeographicArea/31747",
-   "taxa": 30,
-   "records": 32
-  },
-  {
-   "id": 124,
-   "name": "Latvia",
-   "iso2": "LV",
-   "areas": [
-    124
-   ],
-   "shape": "GeographicArea/124",
-   "taxa": 177,
-   "records": 181
-  },
-  {
-   "id": 125,
-   "name": "Lebanon",
-   "iso2": "LB",
-   "areas": [
-    125
-   ],
-   "shape": "GeographicArea/125",
-   "taxa": 84,
-   "records": 91
-  },
-  {
-   "id": 126,
-   "name": "Lesotho",
-   "iso2": "LS",
-   "areas": [
-    126
-   ],
-   "shape": "GeographicArea/126",
-   "taxa": 3,
-   "records": 3
-  },
-  {
-   "id": 127,
-   "name": "Liberia",
-   "iso2": "LR",
-   "areas": [
-    127
-   ],
-   "shape": "GeographicArea/127",
+   "states": false,
    "taxa": 5,
    "records": 5
   },
   {
-   "id": 128,
-   "name": "Libya",
-   "iso2": "LY",
-   "areas": [
-    128
+   "key": "guadeloupe",
+   "file": "guadeloupe.json",
+   "name": "Guadeloupe",
+   "iso2": "GP",
+   "of": "France",
+   "shape": "GeographicArea/32432",
+   "bbox": [
+    -61.7974,
+    15.847,
+    -60.9892,
+    16.5131
    ],
-   "shape": "GeographicArea/128",
-   "taxa": 39,
-   "records": 39
+   "states": false,
+   "taxa": 28,
+   "records": 30
   },
   {
-   "id": 129,
-   "name": "Liechtenstein",
-   "iso2": "LI",
-   "areas": [
-    129
+   "key": "guam",
+   "file": "guam.json",
+   "name": "Guam",
+   "iso2": "GU",
+   "shape": "GeographicArea/91",
+   "bbox": [
+    144.6242,
+    13.2418,
+    144.9522,
+    13.6541
    ],
-   "shape": "GeographicArea/129",
-   "taxa": 47,
-   "records": 47
-  },
-  {
-   "id": 130,
-   "name": "Lithuania",
-   "iso2": "LT",
-   "areas": [
-    130
-   ],
-   "shape": "GeographicArea/130",
-   "taxa": 149,
-   "records": 150
-  },
-  {
-   "id": 131,
-   "name": "Luxembourg",
-   "iso2": "LU",
-   "areas": [
-    131
-   ],
-   "shape": "GeographicArea/131",
-   "taxa": 145,
-   "records": 147
-  },
-  {
-   "id": 132,
-   "name": "Macao",
-   "iso2": "MO",
-   "areas": [
-    132
-   ],
-   "shape": "GeographicArea/132",
-   "taxa": 1,
-   "records": 1
-  },
-  {
-   "id": 134,
-   "name": "Madagascar",
-   "iso2": "MG",
-   "areas": [
-    134
-   ],
-   "shape": "GeographicArea/134",
-   "taxa": 537,
-   "records": 541
-  },
-  {
-   "id": 135,
-   "name": "Malawi",
-   "iso2": "MW",
-   "areas": [
-    135
-   ],
-   "shape": "GeographicArea/135",
-   "taxa": 30,
+   "states": false,
+   "taxa": 50,
    "records": 50
   },
   {
-   "id": 136,
-   "name": "Malaysia",
-   "iso2": "MY",
-   "areas": [
-    136
+   "key": "guatemala",
+   "file": "guatemala.json",
+   "name": "Guatemala",
+   "iso2": "GT",
+   "shape": "GeographicArea/92",
+   "bbox": [
+    -92.2462,
+    13.7289,
+    -88.2209,
+    17.816
    ],
-   "shape": "GeographicArea/136",
-   "taxa": 207,
-   "records": 224
+   "states": false,
+   "taxa": 189,
+   "records": 210
   },
   {
-   "id": 137,
-   "name": "Maldives",
-   "iso2": "MV",
-   "areas": [
-    137
+   "key": "guernsey",
+   "file": "guernsey.json",
+   "name": "Guernsey",
+   "iso2": "GG",
+   "shape": "GeographicArea/93",
+   "bbox": [
+    -2.6782,
+    49.3996,
+    -2.1557,
+    49.736
    ],
-   "shape": "GeographicArea/137",
-   "taxa": 1,
-   "records": 2
-  },
-  {
-   "id": 138,
-   "name": "Mali",
-   "iso2": "ML",
-   "areas": [
-    138
-   ],
-   "shape": "GeographicArea/138",
-   "taxa": 7,
-   "records": 7
-  },
-  {
-   "id": 139,
-   "name": "Malta",
-   "iso2": "MT",
-   "areas": [
-    139
-   ],
-   "shape": "GeographicArea/139",
-   "taxa": 133,
-   "records": 133
-  },
-  {
-   "id": 140,
-   "name": "Marshall Islands",
-   "iso2": "MH",
-   "areas": [
-    140
-   ],
-   "shape": "GeographicArea/140",
-   "taxa": 3,
-   "records": 3
-  },
-  {
-   "id": 32213,
-   "name": "Martinique",
-   "iso2": "MQ",
-   "areas": [
-    32213,
-    34557
-   ],
-   "shape": "GeographicArea/32213",
-   "taxa": 8,
-   "records": 8
-  },
-  {
-   "id": 142,
-   "name": "Mauritania",
-   "iso2": "MR",
-   "areas": [
-    142
-   ],
-   "shape": "GeographicArea/142",
-   "taxa": 2,
-   "records": 2
-  },
-  {
-   "id": 143,
-   "name": "Mauritius",
-   "iso2": "MU",
-   "areas": [
-    143
-   ],
-   "shape": "GeographicArea/143",
-   "taxa": 60,
-   "records": 60
-  },
-  {
-   "id": 34156,
-   "name": "Mayotte",
-   "iso2": "YT",
-   "areas": [
-    34156
-   ],
-   "shape": "GeographicArea/34156",
-   "taxa": 7,
-   "records": 7
-  },
-  {
-   "id": 145,
-   "name": "Mexico",
-   "iso2": "MX",
-   "areas": [
-    145
-   ],
-   "shape": "GeographicArea/145",
-   "taxa": 432,
-   "records": 692
-  },
-  {
-   "id": 16211,
-   "name": "Micronesia",
-   "iso2": "FM",
-   "areas": [
-    16211
-   ],
-   "shape": "GeographicArea/16211",
-   "taxa": 8,
-   "records": 8
-  },
-  {
-   "id": 16215,
-   "name": "Moldova",
-   "iso2": "MD",
-   "areas": [
-    16215
-   ],
-   "shape": "GeographicArea/16215",
-   "taxa": 335,
-   "records": 365
-  },
-  {
-   "id": 148,
-   "name": "Monaco",
-   "iso2": "MC",
-   "areas": [
-    148
-   ],
-   "shape": "GeographicArea/148",
-   "taxa": 3,
-   "records": 3
-  },
-  {
-   "id": 149,
-   "name": "Mongolia",
-   "iso2": "MN",
-   "areas": [
-    149
-   ],
-   "shape": "GeographicArea/149",
-   "taxa": 155,
-   "records": 166
-  },
-  {
-   "id": 150,
-   "name": "Montenegro",
-   "iso2": "ME",
-   "areas": [
-    150
-   ],
-   "shape": "GeographicArea/150",
-   "taxa": 153,
-   "records": 191
-  },
-  {
-   "id": 151,
-   "name": "Montserrat",
-   "iso2": "MS",
-   "areas": [
-    151
-   ],
-   "shape": "GeographicArea/151",
-   "taxa": 3,
-   "records": 3
-  },
-  {
-   "id": 152,
-   "name": "Morocco",
-   "iso2": "MA",
-   "areas": [
-    152
-   ],
-   "shape": "GeographicArea/152",
-   "taxa": 345,
-   "records": 354
-  },
-  {
-   "id": 153,
-   "name": "Mozambique",
-   "iso2": "MZ",
-   "areas": [
-    153
-   ],
-   "shape": "GeographicArea/153",
-   "taxa": 85,
-   "records": 89
-  },
-  {
-   "id": 154,
-   "name": "Myanmar",
-   "iso2": "MM",
-   "areas": [
-    154
-   ],
-   "shape": "GeographicArea/154",
-   "taxa": 243,
-   "records": 254
-  },
-  {
-   "id": 155,
-   "name": "Namibia",
-   "iso2": "NA",
-   "areas": [
-    155
-   ],
-   "shape": "GeographicArea/155",
-   "taxa": 82,
-   "records": 96
-  },
-  {
-   "id": 157,
-   "name": "Nepal",
-   "iso2": "NP",
-   "areas": [
-    157
-   ],
-   "shape": "GeographicArea/157",
-   "taxa": 55,
-   "records": 56
-  },
-  {
-   "id": 158,
-   "name": "Netherlands",
-   "iso2": "NL",
-   "areas": [
-    158
-   ],
-   "shape": "GeographicArea/158",
-   "taxa": 493,
-   "records": 508
-  },
-  {
-   "id": 159,
-   "name": "New Caledonia",
-   "iso2": "NC",
-   "areas": [
-    159
-   ],
-   "shape": "GeographicArea/159",
-   "taxa": 112,
-   "records": 116
-  },
-  {
-   "id": 160,
-   "name": "New Zealand",
-   "iso2": "NZ",
-   "areas": [
-    160
-   ],
-   "shape": "GeographicArea/160",
-   "taxa": 555,
-   "records": 769
-  },
-  {
-   "id": 161,
-   "name": "Nicaragua",
-   "iso2": "NI",
-   "areas": [
-    161
-   ],
-   "shape": "GeographicArea/161",
-   "taxa": 37,
-   "records": 39
-  },
-  {
-   "id": 162,
-   "name": "Niger",
-   "iso2": "NE",
-   "areas": [
-    162
-   ],
-   "shape": "GeographicArea/162",
-   "taxa": 7,
-   "records": 7
-  },
-  {
-   "id": 163,
-   "name": "Nigeria",
-   "iso2": "NG",
-   "areas": [
-    163
-   ],
-   "shape": "GeographicArea/163",
-   "taxa": 34,
-   "records": 38
-  },
-  {
-   "id": 164,
-   "name": "Niue",
-   "iso2": "NU",
-   "areas": [
-    164
-   ],
-   "shape": "GeographicArea/164",
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 31753,
-   "name": "North Korea",
-   "iso2": "KP",
-   "areas": [
-    31753
+   "key": "guinea",
+   "file": "guinea.json",
+   "name": "Guinea",
+   "iso2": "GN",
+   "shape": "GeographicArea/94",
+   "bbox": [
+    -15.0811,
+    7.1902,
+    -7.6624,
+    12.6734
    ],
-   "shape": "GeographicArea/31753",
-   "taxa": 43,
-   "records": 46
-  },
-  {
-   "id": 13812,
-   "name": "North Macedonia",
-   "iso2": "MK",
-   "areas": [
-    13812
-   ],
-   "shape": "GeographicArea/13812",
-   "taxa": 201,
-   "records": 212
-  },
-  {
-   "id": 167,
-   "name": "Norway",
-   "iso2": "NO",
-   "areas": [
-    167
-   ],
-   "shape": "GeographicArea/167",
-   "taxa": 459,
-   "records": 488
-  },
-  {
-   "id": 168,
-   "name": "Oman",
-   "iso2": "OM",
-   "areas": [
-    168
-   ],
-   "shape": "GeographicArea/168",
-   "taxa": 9,
-   "records": 17
-  },
-  {
-   "id": 169,
-   "name": "Pakistan",
-   "iso2": "PK",
-   "areas": [
-    169
-   ],
-   "shape": "GeographicArea/169",
-   "taxa": 93,
-   "records": 111
-  },
-  {
-   "id": 170,
-   "name": "Palau",
-   "iso2": "PW",
-   "areas": [
-    170
-   ],
-   "shape": "GeographicArea/170",
-   "taxa": 10,
-   "records": 10
-  },
-  {
-   "id": 172,
-   "name": "Panama",
-   "iso2": "PA",
-   "areas": [
-    172
-   ],
-   "shape": "GeographicArea/172",
-   "taxa": 112,
-   "records": 118
-  },
-  {
-   "id": 173,
-   "name": "Papua New Guinea",
-   "iso2": "PG",
-   "areas": [
-    173
-   ],
-   "shape": "GeographicArea/173",
-   "taxa": 671,
-   "records": 886
-  },
-  {
-   "id": 174,
-   "name": "Paraguay",
-   "iso2": "PY",
-   "areas": [
-    174
-   ],
-   "shape": "GeographicArea/174",
-   "taxa": 112,
-   "records": 124
-  },
-  {
-   "id": 175,
-   "name": "Peru",
-   "iso2": "PE",
-   "areas": [
-    175
-   ],
-   "shape": "GeographicArea/175",
-   "taxa": 142,
-   "records": 150
-  },
-  {
-   "id": 176,
-   "name": "Philippines",
-   "iso2": "PH",
-   "areas": [
-    176
-   ],
-   "shape": "GeographicArea/176",
-   "taxa": 965,
-   "records": 1064
-  },
-  {
-   "id": 19328,
-   "name": "Pitcairn Islands",
-   "iso2": "PN",
-   "areas": [
-    19328
-   ],
-   "shape": "GeographicArea/19328",
-   "taxa": 1,
-   "records": 1
-  },
-  {
-   "id": 178,
-   "name": "Poland",
-   "iso2": "PL",
-   "areas": [
-    178
-   ],
-   "shape": "GeographicArea/178",
-   "taxa": 393,
-   "records": 428
-  },
-  {
-   "id": 179,
-   "name": "Portugal",
-   "iso2": "PT",
-   "areas": [
-    179
-   ],
-   "shape": "GeographicArea/179",
-   "taxa": 274,
-   "records": 311
-  },
-  {
-   "id": 180,
-   "name": "Puerto Rico",
-   "iso2": "PR",
-   "areas": [
-    180
-   ],
-   "shape": "GeographicArea/180",
-   "taxa": 30,
-   "records": 90
-  },
-  {
-   "id": 33048,
-   "name": "Réunion",
-   "iso2": "RE",
-   "areas": [
-    33048
-   ],
-   "shape": "GeographicArea/33048",
-   "taxa": 78,
-   "records": 79
-  },
-  {
-   "id": 183,
-   "name": "Romania",
-   "iso2": "RO",
-   "areas": [
-    183
-   ],
-   "shape": "GeographicArea/183",
-   "taxa": 693,
-   "records": 860
-  },
-  {
-   "id": 19713,
-   "name": "Russia",
-   "iso2": "RU",
-   "areas": [
-    19713
-   ],
-   "shape": "GeographicArea/19713",
-   "taxa": 831,
-   "records": 3377
-  },
-  {
-   "id": 185,
-   "name": "Rwanda",
-   "iso2": "RW",
-   "areas": [
-    185
-   ],
-   "shape": "GeographicArea/185",
-   "taxa": 39,
-   "records": 45
-  },
-  {
-   "id": 31880,
-   "name": "Saint Barthelemy",
-   "iso2": "BL",
-   "areas": [
-    31880
-   ],
-   "shape": null,
-   "taxa": 6,
-   "records": 6
-  },
-  {
-   "id": 22648,
-   "name": "Saint Helena",
-   "iso2": "SH",
-   "areas": [
-    22648
-   ],
-   "shape": "GeographicArea/22648",
-   "taxa": 6,
-   "records": 7
-  },
-  {
-   "id": 188,
-   "name": "Saint Kitts and Nevis",
-   "iso2": "KN",
-   "areas": [
-    31745,
-    188
-   ],
-   "shape": "GeographicArea/31745",
-   "taxa": 4,
-   "records": 4
-  },
-  {
-   "id": 189,
-   "name": "Saint Lucia",
-   "iso2": "LC",
-   "areas": [
-    189
-   ],
-   "shape": "GeographicArea/189",
-   "taxa": 3,
-   "records": 3
-  },
-  {
-   "id": 190,
-   "name": "Saint Martin",
-   "iso2": "MF",
-   "areas": [
-    190,
-    32686
-   ],
-   "shape": "GeographicArea/32686",
-   "taxa": 1,
-   "records": 2
-  },
-  {
-   "id": 31771,
-   "name": "Saint Vincent and the Grenadines",
-   "iso2": "VC",
-   "areas": [
-    31771,
-    22748
-   ],
-   "shape": "GeographicArea/31771",
-   "taxa": 12,
-   "records": 12
-  },
-  {
-   "id": 193,
-   "name": "Samoa",
-   "iso2": "WS",
-   "areas": [
-    193
-   ],
-   "shape": "GeographicArea/193",
-   "taxa": 67,
-   "records": 86
-  },
-  {
-   "id": 194,
-   "name": "San Marino",
-   "iso2": "SM",
-   "areas": [
-    194
-   ],
-   "shape": "GeographicArea/194",
-   "taxa": 1,
-   "records": 1
-  },
-  {
-   "id": 31763,
-   "name": "Sao Tome and Principe",
-   "iso2": "ST",
-   "areas": [
-    31763,
-    195
-   ],
-   "shape": "GeographicArea/31763",
-   "taxa": 6,
-   "records": 12
-  },
-  {
-   "id": 196,
-   "name": "Saudi Arabia",
-   "iso2": "SA",
-   "areas": [
-    196
-   ],
-   "shape": "GeographicArea/196",
-   "taxa": 25,
-   "records": 44
-  },
-  {
-   "id": 197,
-   "name": "Senegal",
-   "iso2": "SN",
-   "areas": [
-    197
-   ],
-   "shape": "GeographicArea/197",
-   "taxa": 54,
-   "records": 54
-  },
-  {
-   "id": 198,
-   "name": "Serbia",
-   "iso2": "RS",
-   "areas": [
-    198
-   ],
-   "shape": "GeographicArea/198",
-   "taxa": 253,
-   "records": 265
-  },
-  {
-   "id": 199,
-   "name": "Seychelles",
-   "iso2": "SC",
-   "areas": [
-    199
-   ],
-   "shape": "GeographicArea/199",
-   "taxa": 76,
-   "records": 113
-  },
-  {
-   "id": 200,
-   "name": "Sierra Leone",
-   "iso2": "SL",
-   "areas": [
-    200
-   ],
-   "shape": "GeographicArea/200",
-   "taxa": 16,
-   "records": 16
-  },
-  {
-   "id": 201,
-   "name": "Singapore",
-   "iso2": "SG",
-   "areas": [
-    201
-   ],
-   "shape": "GeographicArea/201",
+   "states": false,
    "taxa": 30,
    "records": 30
   },
   {
-   "id": 203,
-   "name": "Slovakia",
-   "iso2": "SK",
-   "areas": [
-    203
+   "key": "guinea-bissau",
+   "file": "guinea-bissau.json",
+   "name": "Guinea-Bissau",
+   "iso2": "GW",
+   "shape": "GeographicArea/9490",
+   "bbox": [
+    -16.7284,
+    10.9276,
+    -13.6634,
+    12.6794
    ],
-   "shape": "GeographicArea/203",
-   "taxa": 638,
-   "records": 726
+   "states": false,
+   "taxa": 3,
+   "records": 3
   },
   {
-   "id": 204,
-   "name": "Slovenia",
-   "iso2": "SI",
-   "areas": [
-    204
+   "key": "guyana",
+   "file": "guyana.json",
+   "name": "Guyana",
+   "iso2": "GY",
+   "shape": "GeographicArea/96",
+   "bbox": [
+    -61.3967,
+    1.1873,
+    -56.4818,
+    8.558
    ],
-   "shape": "GeographicArea/204",
-   "taxa": 259,
-   "records": 274
+   "states": false,
+   "taxa": 11,
+   "records": 11
   },
   {
-   "id": 31761,
-   "name": "Solomon Islands",
-   "iso2": "SB",
-   "areas": [
-    31761,
-    205
+   "key": "haiti",
+   "file": "haiti.json",
+   "name": "Haiti",
+   "iso2": "HT",
+   "shape": "GeographicArea/97",
+   "bbox": [
+    -74.4892,
+    18.0262,
+    -71.6391,
+    20.0898
    ],
-   "shape": "GeographicArea/31761",
-   "taxa": 123,
-   "records": 201
+   "states": false,
+   "taxa": 43,
+   "records": 51
   },
   {
-   "id": 206,
-   "name": "Somalia",
-   "iso2": "SO",
-   "areas": [
-    206
+   "key": "heard-island-and-mcdonald-islands",
+   "file": "heard-island-and-mcdonald-islands.json",
+   "name": "Heard Island and McDonald Islands",
+   "iso2": "HM",
+   "shape": "GeographicArea/9869",
+   "bbox": [
+    72.5844,
+    -53.195,
+    73.8733,
+    -52.9021
    ],
-   "shape": "GeographicArea/206",
-   "taxa": 33,
-   "records": 33
+   "states": false,
+   "taxa": 4,
+   "records": 5
   },
   {
-   "id": 31764,
-   "name": "Somaliland",
-   "iso2": "",
-   "areas": [
-    31764
+   "key": "honduras",
+   "file": "honduras.json",
+   "name": "Honduras",
+   "iso2": "HN",
+   "shape": "GeographicArea/100",
+   "bbox": [
+    -89.3638,
+    12.9798,
+    -83.1304,
+    17.4186
    ],
-   "shape": "GeographicArea/31764",
+   "states": false,
+   "taxa": 43,
+   "records": 47
+  },
+  {
+   "key": "hong-kong",
+   "file": "hong-kong.json",
+   "name": "Hong Kong",
+   "iso2": "HK",
+   "shape": "GeographicArea/101",
+   "bbox": [
+    113.8392,
+    22.1771,
+    114.4013,
+    22.5639
+   ],
+   "states": false,
+   "taxa": 10,
+   "records": 11
+  },
+  {
+   "key": "hungary",
+   "file": "hungary.json",
+   "name": "Hungary",
+   "iso2": "HU",
+   "shape": "GeographicArea/102",
+   "bbox": [
+    16.094,
+    45.7432,
+    22.8776,
+    48.5692
+   ],
+   "states": false,
+   "taxa": 972,
+   "records": 1098
+  },
+  {
+   "key": "iceland",
+   "file": "iceland.json",
+   "name": "Iceland",
+   "iso2": "IS",
+   "shape": "GeographicArea/103",
+   "bbox": [
+    -24.5399,
+    63.3967,
+    -13.5029,
+    66.5642
+   ],
+   "states": false,
+   "taxa": 13,
+   "records": 13
+  },
+  {
+   "key": "india",
+   "file": "india.json",
+   "name": "India",
+   "iso2": "IN",
+   "shape": "GeographicArea/104",
+   "bbox": [
+    68.1434,
+    6.7456,
+    97.3623,
+    35.4954
+   ],
+   "states": false,
+   "taxa": 712,
+   "records": 1161
+  },
+  {
+   "key": "indonesia",
+   "file": "indonesia.json",
+   "name": "Indonesia",
+   "iso2": "ID",
+   "shape": "GeographicArea/105",
+   "bbox": [
+    95.0127,
+    -10.9226,
+    140.9772,
+    5.9101
+   ],
+   "states": false,
+   "taxa": 844,
+   "records": 1221
+  },
+  {
+   "key": "iran",
+   "file": "iran.json",
+   "name": "Iran",
+   "iso2": "IR",
+   "shape": "GeographicArea/9680",
+   "bbox": [
+    44.0149,
+    25.0594,
+    63.3196,
+    39.7715
+   ],
+   "states": false,
+   "taxa": 301,
+   "records": 319
+  },
+  {
+   "key": "iraq",
+   "file": "iraq.json",
+   "name": "Iraq",
+   "iso2": "IQ",
+   "shape": "GeographicArea/107",
+   "bbox": [
+    38.7745,
+    29.0631,
+    48.5593,
+    37.3749
+   ],
+   "states": false,
+   "taxa": 38,
+   "records": 41
+  },
+  {
+   "key": "ireland",
+   "file": "ireland.json",
+   "name": "Ireland",
+   "iso2": "IE",
+   "shape": "GeographicArea/108",
+   "bbox": [
+    -10.4782,
+    51.4457,
+    -5.9935,
+    55.384
+   ],
+   "states": false,
+   "taxa": 73,
+   "records": 74
+  },
+  {
+   "key": "israel",
+   "file": "israel.json",
+   "name": "Israel",
+   "iso2": "IL",
+   "shape": "GeographicArea/110",
+   "bbox": [
+    34.2484,
+    29.4899,
+    35.8881,
+    33.4067
+   ],
+   "states": false,
+   "taxa": 97,
+   "records": 103
+  },
+  {
+   "key": "italy",
+   "file": "italy.json",
+   "name": "Italy",
+   "iso2": "IT",
+   "shape": "GeographicArea/111",
+   "bbox": [
+    6.6027,
+    35.4892,
+    18.5161,
+    47.0852
+   ],
+   "states": false,
+   "taxa": 1085,
+   "records": 1174
+  },
+  {
+   "key": "jamaica",
+   "file": "jamaica.json",
+   "name": "Jamaica",
+   "iso2": "JM",
+   "shape": "GeographicArea/112",
+   "bbox": [
+    -78.3747,
+    17.7042,
+    -76.188,
+    18.5234
+   ],
+   "states": false,
+   "taxa": 18,
+   "records": 24
+  },
+  {
+   "key": "japan",
+   "file": "japan.json",
+   "name": "Japan",
+   "iso2": "JP",
+   "shape": "GeographicArea/113",
+   "bbox": [
+    122.9386,
+    24.2138,
+    153.9837,
+    45.5204
+   ],
+   "states": false,
+   "taxa": 428,
+   "records": 578
+  },
+  {
+   "key": "jordan",
+   "file": "jordan.json",
+   "name": "Jordan",
+   "iso2": "JO",
+   "shape": "GeographicArea/115",
+   "bbox": [
+    34.9494,
+    29.1909,
+    39.292,
+    33.3717
+   ],
+   "states": false,
+   "taxa": 27,
+   "records": 27
+  },
+  {
+   "key": "kazakhstan",
+   "file": "kazakhstan.json",
+   "name": "Kazakhstan",
+   "iso2": "KZ",
+   "shape": "GeographicArea/116",
+   "bbox": [
+    46.4783,
+    40.5847,
+    87.3238,
+    55.4337
+   ],
+   "states": false,
+   "taxa": 562,
+   "records": 640
+  },
+  {
+   "key": "kenya",
+   "file": "kenya.json",
+   "name": "Kenya",
+   "iso2": "KE",
+   "shape": "GeographicArea/117",
+   "bbox": [
+    33.8905,
+    -4.6775,
+    41.885,
+    5.0304
+   ],
+   "states": false,
+   "taxa": 294,
+   "records": 417
+  },
+  {
+   "key": "kiribati",
+   "file": "kiribati.json",
+   "name": "Kiribati",
+   "iso2": "KI",
+   "shape": "GeographicArea/118",
+   "bbox": [
+    -174.5419,
+    -17.8517,
+    176.8464,
+    4.6994
+   ],
+   "states": false,
    "taxa": 2,
+   "records": 3
+  },
+  {
+   "key": "kosovo",
+   "file": "kosovo.json",
+   "name": "Kosovo",
+   "iso2": "XK",
+   "shape": null,
+   "fallback": "Kosovo",
+   "bbox": [
+    20.0248,
+    41.844,
+    21.7728,
+    43.2631
+   ],
+   "states": false,
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "key": "kyrgyzstan",
+   "file": "kyrgyzstan.json",
+   "name": "Kyrgyzstan",
+   "iso2": "KG",
+   "shape": "GeographicArea/122",
+   "bbox": [
+    69.2263,
+    39.1892,
+    80.2576,
+    43.2617
+   ],
+   "states": false,
+   "taxa": 184,
+   "records": 189
+  },
+  {
+   "key": "laos",
+   "file": "laos.json",
+   "name": "Laos",
+   "iso2": "LA",
+   "shape": "GeographicArea/31747",
+   "bbox": [
+    100.0973,
+    13.9165,
+    107.6641,
+    22.4955
+   ],
+   "states": false,
+   "taxa": 30,
+   "records": 32
+  },
+  {
+   "key": "latvia",
+   "file": "latvia.json",
+   "name": "Latvia",
+   "iso2": "LV",
+   "shape": "GeographicArea/124",
+   "bbox": [
+    20.9686,
+    55.667,
+    28.2153,
+    58.0751
+   ],
+   "states": false,
+   "taxa": 177,
+   "records": 181
+  },
+  {
+   "key": "lebanon",
+   "file": "lebanon.json",
+   "name": "Lebanon",
+   "iso2": "LB",
+   "shape": "GeographicArea/125",
+   "bbox": [
+    35.0996,
+    33.0556,
+    36.6041,
+    34.6875
+   ],
+   "states": false,
+   "taxa": 84,
+   "records": 91
+  },
+  {
+   "key": "lesotho",
+   "file": "lesotho.json",
+   "name": "Lesotho",
+   "iso2": "LS",
+   "shape": "GeographicArea/126",
+   "bbox": [
+    27.0022,
+    -30.6588,
+    29.4359,
+    -28.5708
+   ],
+   "states": false,
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "key": "liberia",
+   "file": "liberia.json",
+   "name": "Liberia",
+   "iso2": "LR",
+   "shape": "GeographicArea/127",
+   "bbox": [
+    -11.4762,
+    4.3472,
+    -7.3841,
+    8.5654
+   ],
+   "states": false,
+   "taxa": 5,
+   "records": 5
+  },
+  {
+   "key": "libya",
+   "file": "libya.json",
+   "name": "Libya",
+   "iso2": "LY",
+   "shape": "GeographicArea/128",
+   "bbox": [
+    9.2865,
+    19.4961,
+    25.1563,
+    33.1812
+   ],
+   "states": false,
+   "taxa": 39,
+   "records": 39
+  },
+  {
+   "key": "liechtenstein",
+   "file": "liechtenstein.json",
+   "name": "Liechtenstein",
+   "iso2": "LI",
+   "shape": "GeographicArea/129",
+   "bbox": [
+    9.4759,
+    47.0524,
+    9.6157,
+    47.2628
+   ],
+   "states": false,
+   "taxa": 47,
+   "records": 47
+  },
+  {
+   "key": "lithuania",
+   "file": "lithuania.json",
+   "name": "Lithuania",
+   "iso2": "LT",
+   "shape": "GeographicArea/130",
+   "bbox": [
+    20.9246,
+    53.8868,
+    26.8007,
+    56.4426
+   ],
+   "states": false,
+   "taxa": 149,
+   "records": 150
+  },
+  {
+   "key": "luxembourg",
+   "file": "luxembourg.json",
+   "name": "Luxembourg",
+   "iso2": "LU",
+   "shape": "GeographicArea/131",
+   "bbox": [
+    5.7149,
+    49.4413,
+    6.5026,
+    50.175
+   ],
+   "states": false,
+   "taxa": 145,
+   "records": 147
+  },
+  {
+   "key": "macao",
+   "file": "macao.json",
+   "name": "Macao",
+   "iso2": "MO",
+   "shape": "GeographicArea/132",
+   "bbox": [
+    113.5202,
+    22.1054,
+    113.5875,
+    22.2208
+   ],
+   "states": false,
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "key": "madagascar",
+   "file": "madagascar.json",
+   "name": "Madagascar",
+   "iso2": "MG",
+   "shape": "GeographicArea/134",
+   "bbox": [
+    43.2229,
+    -25.5986,
+    50.5039,
+    -11.9436
+   ],
+   "states": false,
+   "taxa": 537,
+   "records": 541
+  },
+  {
+   "key": "malawi",
+   "file": "malawi.json",
+   "name": "Malawi",
+   "iso2": "MW",
+   "shape": "GeographicArea/135",
+   "bbox": [
+    32.6633,
+    -17.1353,
+    35.9043,
+    -9.3812
+   ],
+   "states": false,
+   "taxa": 30,
+   "records": 50
+  },
+  {
+   "key": "malaysia",
+   "file": "malaysia.json",
+   "name": "Malaysia",
+   "iso2": "MY",
+   "shape": "GeographicArea/136",
+   "bbox": [
+    99.6452,
+    0.8514,
+    119.2759,
+    7.3558
+   ],
+   "states": false,
+   "taxa": 208,
+   "records": 225
+  },
+  {
+   "key": "maldives",
+   "file": "maldives.json",
+   "name": "Maldives",
+   "iso2": "MV",
+   "shape": "GeographicArea/137",
+   "bbox": [
+    72.6382,
+    -0.7032,
+    73.7604,
+    7.1065
+   ],
+   "states": false,
+   "taxa": 1,
    "records": 2
   },
   {
-   "id": 207,
-   "name": "South Africa",
-   "iso2": "ZA",
-   "areas": [
-    207
+   "key": "mali",
+   "file": "mali.json",
+   "name": "Mali",
+   "iso2": "ML",
+   "shape": "GeographicArea/138",
+   "bbox": [
+    -12.2641,
+    10.1401,
+    4.2356,
+    24.9948
    ],
-   "shape": "GeographicArea/207",
-   "taxa": 849,
-   "records": 983
+   "states": false,
+   "taxa": 7,
+   "records": 7
   },
   {
-   "id": 31746,
-   "name": "South Korea",
-   "iso2": "KR",
-   "areas": [
-    31746,
-    19720
+   "key": "malta",
+   "file": "malta.json",
+   "name": "Malta",
+   "iso2": "MT",
+   "shape": "GeographicArea/139",
+   "bbox": [
+    14.184,
+    35.786,
+    14.5765,
+    36.0824
    ],
-   "shape": "GeographicArea/31746",
-   "taxa": 90,
-   "records": 92
+   "states": false,
+   "taxa": 133,
+   "records": 133
   },
   {
-   "id": 31759,
-   "name": "South Sudan",
-   "iso2": "SS",
-   "areas": [
-    31759
+   "key": "marshall-islands",
+   "file": "marshall-islands.json",
+   "name": "Marshall Islands",
+   "iso2": "MH",
+   "shape": "GeographicArea/140",
+   "bbox": [
+    160.7953,
+    4.5725,
+    172.1715,
+    14.7214
    ],
-   "shape": "GeographicArea/31759",
-   "taxa": 10,
-   "records": 10
+   "states": false,
+   "taxa": 3,
+   "records": 3
   },
   {
-   "id": 210,
-   "name": "Spain",
-   "iso2": "ES",
-   "areas": [
-    210
+   "key": "martinique",
+   "file": "martinique.json",
+   "name": "Martinique",
+   "iso2": "MQ",
+   "of": "France",
+   "shape": "GeographicArea/32213",
+   "bbox": [
+    -61.2288,
+    14.4081,
+    -60.8104,
+    14.8769
    ],
-   "shape": null,
-   "taxa": 1035,
-   "records": 1149
-  },
-  {
-   "id": 211,
-   "name": "Sri Lanka",
-   "iso2": "LK",
-   "areas": [
-    211
-   ],
-   "shape": "GeographicArea/211",
-   "taxa": 87,
-   "records": 89
-  },
-  {
-   "id": 212,
-   "name": "Sudan",
-   "iso2": "SD",
-   "areas": [
-    212
-   ],
-   "shape": "GeographicArea/212",
-   "taxa": 18,
-   "records": 18
-  },
-  {
-   "id": 213,
-   "name": "Suriname",
-   "iso2": "SR",
-   "areas": [
-    213
-   ],
-   "shape": "GeographicArea/213",
+   "states": false,
    "taxa": 8,
    "records": 8
   },
   {
-   "id": 216,
-   "name": "Sweden",
-   "iso2": "SE",
-   "areas": [
-    216
+   "key": "mauritania",
+   "file": "mauritania.json",
+   "name": "Mauritania",
+   "iso2": "MR",
+   "shape": "GeographicArea/142",
+   "bbox": [
+    -17.0812,
+    14.7344,
+    -4.8216,
+    27.2854
    ],
-   "shape": "GeographicArea/216",
-   "taxa": 226,
-   "records": 228
+   "states": false,
+   "taxa": 2,
+   "records": 2
   },
   {
-   "id": 217,
-   "name": "Switzerland",
-   "iso2": "CH",
-   "areas": [
-    217
+   "key": "mauritius",
+   "file": "mauritius.json",
+   "name": "Mauritius",
+   "iso2": "MU",
+   "shape": "GeographicArea/143",
+   "bbox": [
+    56.5246,
+    -20.5173,
+    63.4939,
+    -10.3239
    ],
-   "shape": "GeographicArea/217",
-   "taxa": 322,
-   "records": 333
+   "states": false,
+   "taxa": 60,
+   "records": 60
   },
   {
-   "id": 24651,
-   "name": "Syria",
-   "iso2": "SY",
-   "areas": [
-    24651
+   "key": "mayotte",
+   "file": "mayotte.json",
+   "name": "Mayotte",
+   "iso2": "YT",
+   "of": "France",
+   "shape": "GeographicArea/34156",
+   "bbox": [
+    45.04,
+    -12.9925,
+    45.2933,
+    -12.6625
    ],
-   "shape": "GeographicArea/24651",
-   "taxa": 493,
-   "records": 499
+   "states": false,
+   "taxa": 7,
+   "records": 7
   },
   {
-   "id": 24726,
-   "name": "Taiwan",
-   "iso2": "TW",
-   "areas": [
-    24726
+   "key": "mexico",
+   "file": "mexico.json",
+   "name": "Mexico",
+   "iso2": "MX",
+   "shape": "GeographicArea/145",
+   "bbox": [
+    -118.3688,
+    14.5463,
+    -86.7006,
+    32.7128
    ],
-   "shape": "GeographicArea/24726",
-   "taxa": 79,
-   "records": 85
+   "states": false,
+   "taxa": 443,
+   "records": 708
   },
   {
-   "id": 220,
-   "name": "Tajikistan",
-   "iso2": "TJ",
-   "areas": [
-    220
+   "key": "micronesia",
+   "file": "micronesia.json",
+   "name": "Micronesia",
+   "iso2": "FM",
+   "shape": "GeographicArea/16211",
+   "bbox": [
+    138.0638,
+    0.9182,
+    163.0437,
+    9.7756
    ],
-   "shape": "GeographicArea/220",
-   "taxa": 156,
-   "records": 161
-  },
-  {
-   "id": 31770,
-   "name": "Tanzania",
-   "iso2": "TZ",
-   "areas": [
-    31770,
-    33318
-   ],
-   "shape": "GeographicArea/31770",
-   "taxa": 397,
-   "records": 720
-  },
-  {
-   "id": 222,
-   "name": "Thailand",
-   "iso2": "TH",
-   "areas": [
-    222
-   ],
-   "shape": "GeographicArea/222",
-   "taxa": 34,
-   "records": 37
-  },
-  {
-   "id": 31768,
-   "name": "Timor-Leste",
-   "iso2": "TL",
-   "areas": [
-    31768
-   ],
-   "shape": "GeographicArea/31768",
-   "taxa": 4,
-   "records": 4
-  },
-  {
-   "id": 224,
-   "name": "Togo",
-   "iso2": "TG",
-   "areas": [
-    224
-   ],
-   "shape": "GeographicArea/224",
-   "taxa": 26,
-   "records": 26
-  },
-  {
-   "id": 226,
-   "name": "Tonga",
-   "iso2": "TO",
-   "areas": [
-    226
-   ],
-   "shape": "GeographicArea/226",
-   "taxa": 10,
-   "records": 12
-  },
-  {
-   "id": 227,
-   "name": "Trinidad and Tobago",
-   "iso2": "TT",
-   "areas": [
-    227
-   ],
-   "shape": "GeographicArea/227",
+   "states": false,
    "taxa": 9,
    "records": 9
   },
   {
-   "id": 228,
+   "key": "moldova",
+   "file": "moldova.json",
+   "name": "Moldova",
+   "iso2": "MD",
+   "shape": "GeographicArea/16215",
+   "bbox": [
+    26.6179,
+    45.4618,
+    30.1316,
+    48.486
+   ],
+   "states": false,
+   "taxa": 335,
+   "records": 365
+  },
+  {
+   "key": "monaco",
+   "file": "monaco.json",
+   "name": "Monaco",
+   "iso2": "MC",
+   "shape": "GeographicArea/148",
+   "bbox": [
+    7.3658,
+    43.718,
+    7.4375,
+    43.7635
+   ],
+   "states": false,
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "key": "mongolia",
+   "file": "mongolia.json",
+   "name": "Mongolia",
+   "iso2": "MN",
+   "shape": "GeographicArea/149",
+   "bbox": [
+    87.7357,
+    41.5861,
+    119.907,
+    52.1296
+   ],
+   "states": false,
+   "taxa": 155,
+   "records": 166
+  },
+  {
+   "key": "montenegro",
+   "file": "montenegro.json",
+   "name": "Montenegro",
+   "iso2": "ME",
+   "shape": "GeographicArea/150",
+   "bbox": [
+    18.4335,
+    41.8524,
+    20.3536,
+    43.5479
+   ],
+   "states": false,
+   "taxa": 153,
+   "records": 191
+  },
+  {
+   "key": "montserrat",
+   "file": "montserrat.json",
+   "name": "Montserrat",
+   "iso2": "MS",
+   "shape": "GeographicArea/151",
+   "bbox": [
+    -62.2418,
+    16.6751,
+    -62.1446,
+    16.8221
+   ],
+   "states": false,
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "key": "morocco",
+   "file": "morocco.json",
+   "name": "Morocco",
+   "iso2": "MA",
+   "shape": "GeographicArea/152",
+   "bbox": [
+    -17.0137,
+    21.42,
+    -1.032,
+    35.9265
+   ],
+   "states": false,
+   "taxa": 345,
+   "records": 354
+  },
+  {
+   "key": "mozambique",
+   "file": "mozambique.json",
+   "name": "Mozambique",
+   "iso2": "MZ",
+   "shape": "GeographicArea/153",
+   "bbox": [
+    30.2145,
+    -26.8603,
+    40.848,
+    -10.4726
+   ],
+   "states": false,
+   "taxa": 85,
+   "records": 89
+  },
+  {
+   "key": "myanmar",
+   "file": "myanmar.json",
+   "name": "Myanmar",
+   "iso2": "MM",
+   "shape": "GeographicArea/154",
+   "bbox": [
+    92.175,
+    9.7907,
+    101.1739,
+    28.5385
+   ],
+   "states": false,
+   "taxa": 248,
+   "records": 259
+  },
+  {
+   "key": "namibia",
+   "file": "namibia.json",
+   "name": "Namibia",
+   "iso2": "NA",
+   "shape": "GeographicArea/155",
+   "bbox": [
+    11.7176,
+    -28.9594,
+    25.2598,
+    -16.9511
+   ],
+   "states": false,
+   "taxa": 82,
+   "records": 96
+  },
+  {
+   "key": "nepal",
+   "file": "nepal.json",
+   "name": "Nepal",
+   "iso2": "NP",
+   "shape": "GeographicArea/157",
+   "bbox": [
+    80.0303,
+    26.3438,
+    88.1678,
+    30.4169
+   ],
+   "states": false,
+   "taxa": 55,
+   "records": 56
+  },
+  {
+   "key": "netherlands",
+   "file": "netherlands.json",
+   "name": "Netherlands",
+   "iso2": "NL",
+   "shape": "GeographicArea/158",
+   "bbox": [
+    -68.4174,
+    12.022,
+    7.1954,
+    53.5581
+   ],
+   "states": false,
+   "taxa": 493,
+   "records": 508
+  },
+  {
+   "key": "new-caledonia",
+   "file": "new-caledonia.json",
+   "name": "New Caledonia",
+   "iso2": "NC",
+   "shape": "GeographicArea/159",
+   "bbox": [
+    159.9261,
+    -22.6707,
+    171.3438,
+    -19.1091
+   ],
+   "states": false,
+   "taxa": 112,
+   "records": 116
+  },
+  {
+   "key": "new-zealand",
+   "file": "new-zealand.json",
+   "name": "New Zealand",
+   "iso2": "NZ",
+   "shape": "GeographicArea/160",
+   "bbox": [
+    -177.958,
+    -52.6003,
+    178.8439,
+    -8.5432
+   ],
+   "states": false,
+   "taxa": 569,
+   "records": 783
+  },
+  {
+   "key": "nicaragua",
+   "file": "nicaragua.json",
+   "name": "Nicaragua",
+   "iso2": "NI",
+   "shape": "GeographicArea/161",
+   "bbox": [
+    -87.6858,
+    10.7135,
+    -82.729,
+    15.031
+   ],
+   "states": false,
+   "taxa": 41,
+   "records": 43
+  },
+  {
+   "key": "niger",
+   "file": "niger.json",
+   "name": "Niger",
+   "iso2": "NE",
+   "shape": "GeographicArea/162",
+   "bbox": [
+    0.1529,
+    11.6958,
+    15.9703,
+    23.5174
+   ],
+   "states": false,
+   "taxa": 7,
+   "records": 7
+  },
+  {
+   "key": "nigeria",
+   "file": "nigeria.json",
+   "name": "Nigeria",
+   "iso2": "NG",
+   "shape": "GeographicArea/163",
+   "bbox": [
+    2.6711,
+    4.2722,
+    14.6699,
+    13.8803
+   ],
+   "states": false,
+   "taxa": 34,
+   "records": 38
+  },
+  {
+   "key": "niue",
+   "file": "niue.json",
+   "name": "Niue",
+   "iso2": "NU",
+   "shape": "GeographicArea/164",
+   "bbox": [
+    -169.9504,
+    -19.1428,
+    -169.7829,
+    -18.9651
+   ],
+   "states": false,
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "key": "norfolk-island",
+   "file": "norfolk-island.json",
+   "name": "Norfolk Island",
+   "iso2": "NF",
+   "shape": "GeographicArea/33700",
+   "bbox": [
+    159.0449,
+    -31.6,
+    167.9977,
+    -29.002
+   ],
+   "states": false,
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "key": "north-korea",
+   "file": "north-korea.json",
+   "name": "North Korea",
+   "iso2": "KP",
+   "shape": "GeographicArea/31753",
+   "bbox": [
+    124.2113,
+    37.6756,
+    130.7,
+    43.0103
+   ],
+   "states": false,
+   "taxa": 44,
+   "records": 47
+  },
+  {
+   "key": "north-macedonia",
+   "file": "north-macedonia.json",
+   "name": "North Macedonia",
+   "iso2": "MK",
+   "shape": "GeographicArea/13812",
+   "bbox": [
+    20.4442,
+    40.8494,
+    23.0096,
+    42.3703
+   ],
+   "states": false,
+   "taxa": 201,
+   "records": 211
+  },
+  {
+   "key": "northern-mariana-islands",
+   "file": "northern-mariana-islands.json",
+   "name": "Northern Mariana Islands",
+   "iso2": "MP",
+   "shape": null,
+   "fallback": "Northern Mariana Islands",
+   "bbox": [
+    144.9021,
+    14.1107,
+    145.8689,
+    20.5554
+   ],
+   "states": false,
+   "taxa": 23,
+   "records": 31
+  },
+  {
+   "key": "norway",
+   "file": "norway.json",
+   "name": "Norway",
+   "iso2": "NO",
+   "shape": "GeographicArea/167",
+   "bbox": [
+    -9.1174,
+    -54.4625,
+    33.6404,
+    80.7701
+   ],
+   "states": false,
+   "taxa": 459,
+   "records": 488
+  },
+  {
+   "key": "oman",
+   "file": "oman.json",
+   "name": "Oman",
+   "iso2": "OM",
+   "shape": "GeographicArea/168",
+   "bbox": [
+    51.9786,
+    16.6424,
+    59.8446,
+    26.386
+   ],
+   "states": false,
+   "taxa": 9,
+   "records": 17
+  },
+  {
+   "key": "pakistan",
+   "file": "pakistan.json",
+   "name": "Pakistan",
+   "iso2": "PK",
+   "shape": "GeographicArea/169",
+   "bbox": [
+    60.8444,
+    23.6945,
+    77.049,
+    37.0545
+   ],
+   "states": false,
+   "taxa": 93,
+   "records": 111
+  },
+  {
+   "key": "palau",
+   "file": "palau.json",
+   "name": "Palau",
+   "iso2": "PW",
+   "shape": "GeographicArea/170",
+   "bbox": [
+    131.1311,
+    2.949,
+    134.6602,
+    7.7297
+   ],
+   "states": false,
+   "taxa": 10,
+   "records": 10
+  },
+  {
+   "key": "panama",
+   "file": "panama.json",
+   "name": "Panama",
+   "iso2": "PA",
+   "shape": "GeographicArea/172",
+   "bbox": [
+    -83.0532,
+    7.2057,
+    -77.1633,
+    9.6293
+   ],
+   "states": false,
+   "taxa": 116,
+   "records": 122
+  },
+  {
+   "key": "papua-new-guinea",
+   "file": "papua-new-guinea.json",
+   "name": "Papua New Guinea",
+   "iso2": "PG",
+   "shape": "GeographicArea/173",
+   "bbox": [
+    140.8504,
+    -11.6357,
+    155.9675,
+    -1.3464
+   ],
+   "states": false,
+   "taxa": 671,
+   "records": 886
+  },
+  {
+   "key": "paraguay",
+   "file": "paraguay.json",
+   "name": "Paraguay",
+   "iso2": "PY",
+   "shape": "GeographicArea/174",
+   "bbox": [
+    -62.6504,
+    -27.5868,
+    -54.2453,
+    -19.2867
+   ],
+   "states": false,
+   "taxa": 112,
+   "records": 124
+  },
+  {
+   "key": "peru",
+   "file": "peru.json",
+   "name": "Peru",
+   "iso2": "PE",
+   "shape": "GeographicArea/175",
+   "bbox": [
+    -81.3376,
+    -18.3377,
+    -68.6843,
+    -0.0291
+   ],
+   "states": false,
+   "taxa": 142,
+   "records": 150
+  },
+  {
+   "key": "philippines",
+   "file": "philippines.json",
+   "name": "Philippines",
+   "iso2": "PH",
+   "shape": "GeographicArea/176",
+   "bbox": [
+    116.9558,
+    4.6557,
+    126.6177,
+    21.1184
+   ],
+   "states": false,
+   "taxa": 965,
+   "records": 1064
+  },
+  {
+   "key": "pitcairn-islands",
+   "file": "pitcairn-islands.json",
+   "name": "Pitcairn Islands",
+   "iso2": "PN",
+   "shape": "GeographicArea/19328",
+   "bbox": [
+    -130.7547,
+    -25.0799,
+    -124.7726,
+    -23.9083
+   ],
+   "states": false,
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "key": "poland",
+   "file": "poland.json",
+   "name": "Poland",
+   "iso2": "PL",
+   "shape": "GeographicArea/178",
+   "bbox": [
+    14.1239,
+    48.994,
+    24.1432,
+    54.8383
+   ],
+   "states": false,
+   "taxa": 393,
+   "records": 428
+  },
+  {
+   "key": "portugal",
+   "file": "portugal.json",
+   "name": "Portugal",
+   "iso2": "PT",
+   "shape": "GeographicArea/179",
+   "bbox": [
+    -31.2849,
+    30.0292,
+    -6.2059,
+    42.1536
+   ],
+   "states": false,
+   "taxa": 278,
+   "records": 320
+  },
+  {
+   "key": "puerto-rico",
+   "file": "puerto-rico.json",
+   "name": "Puerto Rico",
+   "iso2": "PR",
+   "shape": "GeographicArea/180",
+   "bbox": [
+    -67.9378,
+    17.9229,
+    -65.2446,
+    18.5228
+   ],
+   "states": false,
+   "taxa": 30,
+   "records": 90
+  },
+  {
+   "key": "reunion",
+   "file": "reunion.json",
+   "name": "Réunion",
+   "iso2": "RE",
+   "of": "France",
+   "shape": "GeographicArea/33048",
+   "bbox": [
+    55.2254,
+    -21.3708,
+    55.8545,
+    -20.8614
+   ],
+   "states": false,
+   "taxa": 78,
+   "records": 79
+  },
+  {
+   "key": "romania",
+   "file": "romania.json",
+   "name": "Romania",
+   "iso2": "RO",
+   "shape": "GeographicArea/183",
+   "bbox": [
+    20.2428,
+    43.65,
+    29.6996,
+    48.2748
+   ],
+   "states": false,
+   "taxa": 693,
+   "records": 860
+  },
+  {
+   "key": "russia",
+   "file": "russia.json",
+   "name": "Russia",
+   "iso2": "RU",
+   "shape": "GeographicArea/19713",
+   "bbox": [
+    -180,
+    41.1927,
+    180,
+    81.8587
+   ],
+   "states": true,
+   "taxa": 946,
+   "records": 3614
+  },
+  {
+   "key": "rwanda",
+   "file": "rwanda.json",
+   "name": "Rwanda",
+   "iso2": "RW",
+   "shape": "GeographicArea/185",
+   "bbox": [
+    28.8572,
+    -2.8269,
+    30.8878,
+    -1.0587
+   ],
+   "states": false,
+   "taxa": 39,
+   "records": 45
+  },
+  {
+   "key": "saint-barthelemy",
+   "file": "saint-barthelemy.json",
+   "name": "Saint Barthélemy",
+   "iso2": "BL",
+   "shape": null,
+   "fallback": "Saint Barthelemy",
+   "bbox": [
+    -62.8673,
+    17.882,
+    -62.7917,
+    17.9291
+   ],
+   "states": false,
+   "taxa": 6,
+   "records": 6
+  },
+  {
+   "key": "saint-helena",
+   "file": "saint-helena.json",
+   "name": "Saint Helena",
+   "iso2": "SH",
+   "shape": "GeographicArea/22648",
+   "bbox": [
+    -14.4177,
+    -40.3979,
+    -5.6504,
+    -7.8779
+   ],
+   "states": false,
+   "taxa": 14,
+   "records": 16
+  },
+  {
+   "key": "saint-kitts-and-nevis",
+   "file": "saint-kitts-and-nevis.json",
+   "name": "Saint Kitts and Nevis",
+   "iso2": "KN",
+   "shape": "GeographicArea/31745",
+   "bbox": [
+    -62.8611,
+    17.1042,
+    -62.5368,
+    17.4158
+   ],
+   "states": false,
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "key": "saint-lucia",
+   "file": "saint-lucia.json",
+   "name": "Saint Lucia",
+   "iso2": "LC",
+   "shape": "GeographicArea/189",
+   "bbox": [
+    -61.0785,
+    13.7147,
+    -60.883,
+    14.1119
+   ],
+   "states": false,
+   "taxa": 3,
+   "records": 3
+  },
+  {
+   "key": "saint-martin",
+   "file": "saint-martin.json",
+   "name": "Saint Martin",
+   "iso2": "MF",
+   "shape": "GeographicArea/32686",
+   "bbox": [
+    -63.1468,
+    18.0334,
+    -63.0107,
+    18.1221
+   ],
+   "states": false,
+   "taxa": 1,
+   "records": 2
+  },
+  {
+   "key": "saint-vincent-and-the-grenadines",
+   "file": "saint-vincent-and-the-grenadines.json",
+   "name": "Saint Vincent and the Grenadines",
+   "iso2": "VC",
+   "shape": "GeographicArea/31771",
+   "bbox": [
+    -61.4559,
+    12.5861,
+    -61.1239,
+    13.3804
+   ],
+   "states": false,
+   "taxa": 12,
+   "records": 12
+  },
+  {
+   "key": "samoa",
+   "file": "samoa.json",
+   "name": "Samoa",
+   "iso2": "WS",
+   "shape": "GeographicArea/193",
+   "bbox": [
+    -172.7826,
+    -14.0519,
+    -171.4377,
+    -13.4628
+   ],
+   "states": false,
+   "taxa": 67,
+   "records": 86
+  },
+  {
+   "key": "san-marino",
+   "file": "san-marino.json",
+   "name": "San Marino",
+   "iso2": "SM",
+   "shape": "GeographicArea/194",
+   "bbox": [
+    12.3856,
+    43.8921,
+    12.4924,
+    43.9826
+   ],
+   "states": false,
+   "taxa": 1,
+   "records": 1
+  },
+  {
+   "key": "sao-tome-and-principe",
+   "file": "sao-tome-and-principe.json",
+   "name": "Sao Tome and Principe",
+   "iso2": "ST",
+   "shape": "GeographicArea/31763",
+   "bbox": [
+    6.4617,
+    0.0241,
+    7.4627,
+    1.6998
+   ],
+   "states": false,
+   "taxa": 6,
+   "records": 12
+  },
+  {
+   "key": "saudi-arabia",
+   "file": "saudi-arabia.json",
+   "name": "Saudi Arabia",
+   "iso2": "SA",
+   "shape": "GeographicArea/196",
+   "bbox": [
+    34.5728,
+    16.3709,
+    55.6376,
+    32.1213
+   ],
+   "states": false,
+   "taxa": 25,
+   "records": 44
+  },
+  {
+   "key": "senegal",
+   "file": "senegal.json",
+   "name": "Senegal",
+   "iso2": "SN",
+   "shape": "GeographicArea/197",
+   "bbox": [
+    -17.536,
+    12.3056,
+    -11.3778,
+    16.6914
+   ],
+   "states": false,
+   "taxa": 54,
+   "records": 54
+  },
+  {
+   "key": "serbia",
+   "file": "serbia.json",
+   "name": "Serbia",
+   "iso2": "RS",
+   "shape": "GeographicArea/198",
+   "bbox": [
+    18.845,
+    42.2349,
+    22.9846,
+    46.1739
+   ],
+   "states": false,
+   "taxa": 253,
+   "records": 265
+  },
+  {
+   "key": "seychelles",
+   "file": "seychelles.json",
+   "name": "Seychelles",
+   "iso2": "SC",
+   "shape": "GeographicArea/199",
+   "bbox": [
+    46.2029,
+    -10.2274,
+    56.294,
+    -3.7126
+   ],
+   "states": false,
+   "taxa": 76,
+   "records": 115
+  },
+  {
+   "key": "sierra-leone",
+   "file": "sierra-leone.json",
+   "name": "Sierra Leone",
+   "iso2": "SL",
+   "shape": "GeographicArea/200",
+   "bbox": [
+    -13.3011,
+    6.9194,
+    -10.2822,
+    9.996
+   ],
+   "states": false,
+   "taxa": 16,
+   "records": 16
+  },
+  {
+   "key": "singapore",
+   "file": "singapore.json",
+   "name": "Singapore",
+   "iso2": "SG",
+   "shape": "GeographicArea/201",
+   "bbox": [
+    103.6169,
+    1.1664,
+    104.0858,
+    1.4714
+   ],
+   "states": false,
+   "taxa": 30,
+   "records": 30
+  },
+  {
+   "key": "slovakia",
+   "file": "slovakia.json",
+   "name": "Slovakia",
+   "iso2": "SK",
+   "shape": "GeographicArea/203",
+   "bbox": [
+    16.8445,
+    47.75,
+    22.5396,
+    49.6018
+   ],
+   "states": false,
+   "taxa": 638,
+   "records": 726
+  },
+  {
+   "key": "slovenia",
+   "file": "slovenia.json",
+   "name": "Slovenia",
+   "iso2": "SI",
+   "shape": "GeographicArea/204",
+   "bbox": [
+    13.3653,
+    45.4236,
+    16.5153,
+    46.864
+   ],
+   "states": false,
+   "taxa": 259,
+   "records": 274
+  },
+  {
+   "key": "solomon-islands",
+   "file": "solomon-islands.json",
+   "name": "Solomon Islands",
+   "iso2": "SB",
+   "shape": "GeographicArea/31761",
+   "bbox": [
+    155.508,
+    -12.2906,
+    168.8259,
+    -6.5999
+   ],
+   "states": false,
+   "taxa": 123,
+   "records": 201
+  },
+  {
+   "key": "somalia",
+   "file": "somalia.json",
+   "name": "Somalia",
+   "iso2": "SO",
+   "shape": "GeographicArea/206",
+   "bbox": [
+    40.9654,
+    -1.6963,
+    51.417,
+    11.9891
+   ],
+   "states": false,
+   "taxa": 33,
+   "records": 33
+  },
+  {
+   "key": "somaliland",
+   "file": "somaliland.json",
+   "name": "Somaliland",
+   "iso2": "",
+   "shape": "GeographicArea/31764",
+   "bbox": [
+    42.6472,
+    7.9966,
+    48.9391,
+    11.4989
+   ],
+   "states": false,
+   "taxa": 2,
+   "records": 2
+  },
+  {
+   "key": "south-africa",
+   "file": "south-africa.json",
+   "name": "South Africa",
+   "iso2": "ZA",
+   "shape": "GeographicArea/207",
+   "bbox": [
+    16.47,
+    -46.9658,
+    37.9778,
+    -22.1265
+   ],
+   "states": false,
+   "taxa": 863,
+   "records": 998
+  },
+  {
+   "key": "south-korea",
+   "file": "south-korea.json",
+   "name": "South Korea",
+   "iso2": "KR",
+   "shape": "GeographicArea/31746",
+   "bbox": [
+    124.6136,
+    33.1976,
+    131.8625,
+    38.6243
+   ],
+   "states": false,
+   "taxa": 90,
+   "records": 92
+  },
+  {
+   "key": "south-sudan",
+   "file": "south-sudan.json",
+   "name": "South Sudan",
+   "iso2": "SS",
+   "shape": "GeographicArea/31759",
+   "bbox": [
+    24.1216,
+    3.4902,
+    35.9208,
+    12.2162
+   ],
+   "states": false,
+   "taxa": 10,
+   "records": 10
+  },
+  {
+   "key": "spain",
+   "file": "spain.json",
+   "name": "Spain",
+   "iso2": "ES",
+   "shape": null,
+   "fallback": "Spain",
+   "bbox": [
+    -18.1672,
+    27.6422,
+    4.3371,
+    43.7934
+   ],
+   "states": false,
+   "taxa": 1035,
+   "records": 1150
+  },
+  {
+   "key": "sri-lanka",
+   "file": "sri-lanka.json",
+   "name": "Sri Lanka",
+   "iso2": "LK",
+   "shape": "GeographicArea/211",
+   "bbox": [
+    79.6558,
+    5.9237,
+    81.8903,
+    9.8259
+   ],
+   "states": false,
+   "taxa": 87,
+   "records": 89
+  },
+  {
+   "key": "sudan",
+   "file": "sudan.json",
+   "name": "Sudan",
+   "iso2": "SD",
+   "shape": "GeographicArea/212",
+   "bbox": [
+    21.8094,
+    8.6816,
+    38.6039,
+    22.227
+   ],
+   "states": false,
+   "taxa": 18,
+   "records": 18
+  },
+  {
+   "key": "suriname",
+   "file": "suriname.json",
+   "name": "Suriname",
+   "iso2": "SR",
+   "shape": "GeographicArea/213",
+   "bbox": [
+    -58.0677,
+    1.8335,
+    -53.9864,
+    6.0116
+   ],
+   "states": false,
+   "taxa": 8,
+   "records": 8
+  },
+  {
+   "key": "sweden",
+   "file": "sweden.json",
+   "name": "Sweden",
+   "iso2": "SE",
+   "shape": "GeographicArea/216",
+   "bbox": [
+    11.1082,
+    55.3454,
+    24.1634,
+    69.0364
+   ],
+   "states": false,
+   "taxa": 226,
+   "records": 228
+  },
+  {
+   "key": "switzerland",
+   "file": "switzerland.json",
+   "name": "Switzerland",
+   "iso2": "CH",
+   "shape": "GeographicArea/217",
+   "bbox": [
+    5.9548,
+    45.8207,
+    10.4659,
+    47.8012
+   ],
+   "states": false,
+   "taxa": 322,
+   "records": 333
+  },
+  {
+   "key": "syria",
+   "file": "syria.json",
+   "name": "Syria",
+   "iso2": "SY",
+   "shape": "GeographicArea/24651",
+   "bbox": [
+    35.7234,
+    32.3135,
+    42.3772,
+    37.3249
+   ],
+   "states": false,
+   "taxa": 493,
+   "records": 499
+  },
+  {
+   "key": "taiwan",
+   "file": "taiwan.json",
+   "name": "Taiwan",
+   "iso2": "TW",
+   "shape": "GeographicArea/24726",
+   "bbox": [
+    118.2796,
+    21.9046,
+    122.0054,
+    25.2874
+   ],
+   "states": false,
+   "taxa": 82,
+   "records": 89
+  },
+  {
+   "key": "tajikistan",
+   "file": "tajikistan.json",
+   "name": "Tajikistan",
+   "iso2": "TJ",
+   "shape": "GeographicArea/220",
+   "bbox": [
+    67.3427,
+    36.6786,
+    75.1641,
+    41.04
+   ],
+   "states": false,
+   "taxa": 156,
+   "records": 161
+  },
+  {
+   "key": "tanzania",
+   "file": "tanzania.json",
+   "name": "Tanzania",
+   "iso2": "TZ",
+   "shape": "GeographicArea/31770",
+   "bbox": [
+    29.321,
+    -11.7294,
+    40.4494,
+    -0.9858
+   ],
+   "states": false,
+   "taxa": 397,
+   "records": 720
+  },
+  {
+   "key": "thailand",
+   "file": "thailand.json",
+   "name": "Thailand",
+   "iso2": "TH",
+   "shape": "GeographicArea/222",
+   "bbox": [
+    97.3514,
+    5.6299,
+    105.651,
+    20.444
+   ],
+   "states": false,
+   "taxa": 34,
+   "records": 37
+  },
+  {
+   "key": "timor-leste",
+   "file": "timor-leste.json",
+   "name": "Timor-Leste",
+   "iso2": "TL",
+   "shape": "GeographicArea/31768",
+   "bbox": [
+    124.03,
+    -9.5012,
+    127.3132,
+    -8.135
+   ],
+   "states": false,
+   "taxa": 4,
+   "records": 4
+  },
+  {
+   "key": "togo",
+   "file": "togo.json",
+   "name": "Togo",
+   "iso2": "TG",
+   "shape": "GeographicArea/224",
+   "bbox": [
+    -0.1661,
+    6.1005,
+    1.7824,
+    11.135
+   ],
+   "states": false,
+   "taxa": 26,
+   "records": 26
+  },
+  {
+   "key": "tonga",
+   "file": "tonga.json",
+   "name": "Tonga",
+   "iso2": "TO",
+   "shape": "GeographicArea/226",
+   "bbox": [
+    -176.2183,
+    -22.3388,
+    -173.9143,
+    -15.5595
+   ],
+   "states": false,
+   "taxa": 10,
+   "records": 12
+  },
+  {
+   "key": "trinidad-and-tobago",
+   "file": "trinidad-and-tobago.json",
+   "name": "Trinidad and Tobago",
+   "iso2": "TT",
+   "shape": "GeographicArea/227",
+   "bbox": [
+    -61.9287,
+    10.0421,
+    -60.5231,
+    11.3511
+   ],
+   "states": false,
+   "taxa": 9,
+   "records": 9
+  },
+  {
+   "key": "tunisia",
+   "file": "tunisia.json",
    "name": "Tunisia",
    "iso2": "TN",
-   "areas": [
-    228
-   ],
    "shape": "GeographicArea/228",
+   "bbox": [
+    7.4798,
+    30.2289,
+    11.5641,
+    37.3452
+   ],
+   "states": false,
    "taxa": 140,
    "records": 144
   },
   {
-   "id": 229,
+   "key": "turkey",
+   "file": "turkey.json",
    "name": "Turkey",
    "iso2": "TR",
-   "areas": [
-    229
-   ],
    "shape": "GeographicArea/229",
+   "bbox": [
+    25.6633,
+    35.8198,
+    44.807,
+    42.0988
+   ],
+   "states": false,
    "taxa": 984,
    "records": 1137
   },
   {
-   "id": 230,
+   "key": "turkmenistan",
+   "file": "turkmenistan.json",
    "name": "Turkmenistan",
    "iso2": "TM",
-   "areas": [
-    230
-   ],
    "shape": "GeographicArea/230",
+   "bbox": [
+    52.4377,
+    35.1406,
+    66.6458,
+    42.7912
+   ],
+   "states": false,
    "taxa": 146,
    "records": 156
   },
   {
-   "id": 231,
+   "key": "turks-and-caicos-islands",
+   "file": "turks-and-caicos-islands.json",
    "name": "Turks and Caicos Islands",
    "iso2": "TC",
-   "areas": [
-    231
+   "shape": "GeographicArea/31766",
+   "bbox": [
+    -72.4813,
+    21.2919,
+    -71.1304,
+    21.9592
    ],
-   "shape": null,
+   "states": false,
    "taxa": 2,
    "records": 4
   },
   {
-   "id": 233,
+   "key": "uganda",
+   "file": "uganda.json",
    "name": "Uganda",
    "iso2": "UG",
-   "areas": [
-    233
-   ],
    "shape": "GeographicArea/233",
+   "bbox": [
+    29.5485,
+    -1.4729,
+    35.0065,
+    4.2197
+   ],
+   "states": false,
    "taxa": 71,
    "records": 85
   },
   {
-   "id": 234,
+   "key": "ukraine",
+   "file": "ukraine.json",
    "name": "Ukraine",
    "iso2": "UA",
-   "areas": [
-    234
-   ],
    "shape": "GeographicArea/234",
+   "bbox": [
+    22.1328,
+    44.381,
+    40.1595,
+    52.3689
+   ],
+   "states": false,
    "taxa": 1366,
-   "records": 18542
+   "records": 18543
   },
   {
-   "id": 235,
+   "key": "united-arab-emirates",
+   "file": "united-arab-emirates.json",
    "name": "United Arab Emirates",
    "iso2": "AE",
-   "areas": [
-    235
-   ],
    "shape": "GeographicArea/235",
+   "bbox": [
+    51.5693,
+    22.6234,
+    56.3836,
+    26.0736
+   ],
+   "states": false,
    "taxa": 17,
    "records": 33
   },
   {
-   "id": 236,
+   "key": "united-kingdom",
+   "file": "united-kingdom.json",
    "name": "United Kingdom",
    "iso2": "GB",
-   "areas": [
-    236
-   ],
    "shape": "GeographicArea/236",
-   "taxa": 330,
-   "records": 344
+   "bbox": [
+    -13.6913,
+    49.9136,
+    1.7712,
+    60.8479
+   ],
+   "states": true,
+   "taxa": 331,
+   "records": 345
   },
   {
-   "id": 237,
+   "key": "united-states",
+   "file": "united-states.json",
    "name": "United States",
    "iso2": "US",
-   "areas": [
-    237,
-    33412
-   ],
    "shape": "GeographicArea/237",
-   "taxa": 1102,
-   "records": 4098
+   "bbox": [
+    -179.1435,
+    18.9061,
+    179.7809,
+    71.4125
+   ],
+   "states": true,
+   "taxa": 1107,
+   "records": 4127
   },
   {
-   "id": 238,
+   "key": "united-states-minor-outlying-islands",
+   "file": "united-states-minor-outlying-islands.json",
    "name": "United States Minor Outlying Islands",
    "iso2": "UM",
-   "areas": [
-    238
-   ],
    "shape": null,
+   "fallback": "United States Minor Outlying Islands",
+   "bbox": [
+    -177.3896,
+    -0.3888,
+    166.6524,
+    28.2153
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 239,
+   "key": "uruguay",
+   "file": "uruguay.json",
    "name": "Uruguay",
    "iso2": "UY",
-   "areas": [
-    239
-   ],
    "shape": "GeographicArea/239",
+   "bbox": [
+    -58.4394,
+    -34.9734,
+    -53.1108,
+    -30.0969
+   ],
+   "states": false,
    "taxa": 49,
    "records": 51
   },
   {
-   "id": 240,
+   "key": "uzbekistan",
+   "file": "uzbekistan.json",
    "name": "Uzbekistan",
    "iso2": "UZ",
-   "areas": [
-    240
-   ],
    "shape": "GeographicArea/240",
+   "bbox": [
+    55.9778,
+    37.1851,
+    73.1486,
+    45.5587
+   ],
+   "states": false,
    "taxa": 213,
    "records": 217
   },
   {
-   "id": 241,
+   "key": "vanuatu",
+   "file": "vanuatu.json",
    "name": "Vanuatu",
    "iso2": "VU",
-   "areas": [
-    241
-   ],
    "shape": "GeographicArea/241",
+   "bbox": [
+    166.5205,
+    -20.2531,
+    169.8989,
+    -13.0649
+   ],
+   "states": false,
    "taxa": 48,
    "records": 61
   },
   {
-   "id": 26375,
+   "key": "venezuela",
+   "file": "venezuela.json",
    "name": "Venezuela",
    "iso2": "VE",
-   "areas": [
-    26375
-   ],
    "shape": "GeographicArea/26375",
+   "bbox": [
+    -73.3911,
+    0.6493,
+    -59.8156,
+    15.7029
+   ],
+   "states": false,
    "taxa": 183,
    "records": 203
   },
   {
-   "id": 243,
+   "key": "vietnam",
+   "file": "vietnam.json",
    "name": "Vietnam",
    "iso2": "VN",
-   "areas": [
-    31774,
-    243
-   ],
    "shape": "GeographicArea/31774",
-   "taxa": 74,
-   "records": 75
+   "bbox": [
+    102.1187,
+    8.5656,
+    109.4724,
+    23.3663
+   ],
+   "states": false,
+   "taxa": 75,
+   "records": 76
   },
   {
-   "id": 31773,
+   "key": "virgin-islands-u-s",
+   "file": "virgin-islands-u-s.json",
    "name": "Virgin Islands, U.S.",
    "iso2": "VI",
-   "areas": [
-    31773,
-    245
-   ],
    "shape": "GeographicArea/31773",
+   "bbox": [
+    -65.0415,
+    17.6828,
+    -64.5594,
+    18.3866
+   ],
+   "states": false,
    "taxa": 62,
    "records": 66
   },
   {
-   "id": 247,
+   "key": "western-sahara",
+   "file": "western-sahara.json",
    "name": "Western Sahara",
    "iso2": "EH",
-   "areas": [
-    247
-   ],
    "shape": null,
+   "fallback": "Western Sahara",
+   "bbox": [
+    -17.1046,
+    20.7669,
+    -8.6808,
+    27.6667
+   ],
+   "states": false,
    "taxa": 1,
    "records": 1
   },
   {
-   "id": 248,
+   "key": "yemen",
+   "file": "yemen.json",
    "name": "Yemen",
    "iso2": "YE",
-   "areas": [
-    248
-   ],
    "shape": "GeographicArea/248",
-   "taxa": 15,
-   "records": 34
+   "bbox": [
+    42.5457,
+    12.1114,
+    54.5403,
+    18.9956
+   ],
+   "states": false,
+   "taxa": 37,
+   "records": 58
   },
   {
-   "id": 249,
+   "key": "zambia",
+   "file": "zambia.json",
    "name": "Zambia",
    "iso2": "ZM",
-   "areas": [
-    249
-   ],
    "shape": "GeographicArea/249",
+   "bbox": [
+    21.9799,
+    -18.0692,
+    33.6742,
+    -8.1941
+   ],
+   "states": false,
    "taxa": 35,
    "records": 36
   },
   {
-   "id": 250,
+   "key": "zimbabwe",
+   "file": "zimbabwe.json",
    "name": "Zimbabwe",
    "iso2": "ZW",
-   "areas": [
-    250
-   ],
    "shape": "GeographicArea/250",
+   "bbox": [
+    25.2194,
+    -22.3973,
+    33.0428,
+    -15.6148
+   ],
+   "states": false,
    "taxa": 91,
    "records": 99
   }
  ],
  "unplaced": {
-  "records": 5434,
-  "taxa": 1986
+  "records": 4897,
+  "taxa": 1692
  }
 }

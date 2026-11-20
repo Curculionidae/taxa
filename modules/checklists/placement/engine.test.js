@@ -359,7 +359,8 @@ test('Hawaiian gazetteer gets state Hawaii by overlap rule', async () => {
     text: "Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii",
     source: 'overlap',
     ref: recordRefOf("gazetteer_prefix: \"Hawai'i\""),
-    pct: 100
+    pct: 100,
+    pctOf: 'Hawaii'
   })
 })
 
@@ -381,7 +382,8 @@ test('Central European Russia has no state, reason spans', async () => {
     text: "no state: spans several states: Moscow Oblast 18%, Tver' 12%, Smolensk 9%",
     source: 'overlap',
     ref: recordRefOf('match: { tdwg: 14RUC }'),
-    pct: 18
+    pct: 18,
+    pctOf: 'Moscow Oblast'
   })
 })
 
@@ -432,4 +434,10 @@ test('coordinates without geometry are not checked', async () => {
   const placement = await placeRecord(specimen({ lat: 50.4, lng: 30.5 }), bare)
   assert.equal(placement.reason, 'coordinates not checked')
   assert.deepEqual(sources(placement), ['TaxonWorks'])
+})
+
+test('an overlap step names what its share refers to', () => {
+  const placement = placeArea(ga(fx.ga33876), ctx)
+  assert.equal(placement.steps[0].pct, 100)
+  assert.equal(placement.steps[0].pctOf, 'Russia')
 })

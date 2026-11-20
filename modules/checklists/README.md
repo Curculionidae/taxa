@@ -261,6 +261,44 @@ step. Borneo is a TDWG area with no country; the measuring script found it in
 three countries and wrote a `not_placeable` overlap line, whose shares become
 the reason.
 
+### Reading an explanation
+
+`placement/format.js` turns one decision into plain text. The build prints it
+with `--verbose` and `--explain`, and the curator page shows the same text.
+`formatPlacement(subject, placement)` takes the subject (`kind`, `id`, `label`
+and optionally the `area` behind it) and the `Placement`. Example:
+
+```
+AD 556796  Phaedropus candidus
+  area     GA 8837 Cayenne (GA)
+  step     Cayenne is a subdivision of French Guiana (GA 78)        [TaxonWorks]
+  step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:3]
+  result   French Guiana checklist
+  shape    GeographicArea/32253 (French Guiana)
+```
+
+The first line is the kind, the id and the label. `area` appears only when an
+area is given. Each `step` is one sentence of the decision, in order, followed
+by its source tag in an aligned column. `result` names the checklist, with
+`, part <P>` and `, state <S>` when set, or says `not placeable:` and the
+reason. `shape` is the outline shown (`none (<reason>)` when the record could
+not be placed, `none (no outline cached)` when it was placed but has no
+cached outline).
+
+Source tags:
+
+- `[TaxonWorks]`: a fact from TaxonWorks data (parent area, ISO code).
+- `[manual, placement.yml:N]`: a hand-written rule, with its line in the rules file.
+- `[overlap 72% Russia, placement.yml:N]`: a measured overlap rule; the share
+  and the country (or state) it refers to.
+- `[overlap, placement.yml:N]`: an overlap rule without a share.
+- `[overlap]`: a live coordinate step (a point tested against the cached outlines), no rule line.
+
+The lookup box takes a kind and an id: `GA`, `GZ`, `AD`, `CO` or `FO`, in any
+case, with or without a space (`ad 556796`, `AD556796`, `GZ 10453`).
+`parseLookup(text)` returns `{ kind, id }`; a bare number or any other kind
+gives `null`.
+
 ### Specimens and field occurrences
 
 A specimen or field occurrence is placed by its DwC fields (`RecordInput`:

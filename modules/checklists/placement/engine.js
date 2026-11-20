@@ -80,6 +80,8 @@ export const SEVERAL_STATES = 'spans several states'
  *   line of the rules file, or a measured overlap line of the rules file
  * @property {string} [ref]  'placement.yml:12', the rules file line, for manual and overlap
  * @property {number} [pct]  the measured share of an overlap step
+ * @property {string} [pctOf]  the name the share refers to (the country of a country
+ *   rule, the state of a state rule); set on every step that has `pct`
  *
  * @typedef {Object} Placement
  * @property {{ id: number|string, name: string } | null} checklist  null when not placeable
@@ -288,13 +290,13 @@ function isStateRule(rule) {
 }
 
 // A step citing a rule: its line, and for an overlap rule its measured share.
-function ruleStep(rule, source, text) {
-  return {
-    text,
-    source,
-    ref: rule.ref,
-    ...(source === 'overlap' && rule.pct !== undefined ? { pct: rule.pct } : {})
-  }
+// `pctOf` names what the share refers to; without it the name of the first
+// measured share ('Indonesia 72%, ...' gives Indonesia) is used.
+function ruleStep(rule, source, text, pctOf) {
+  if (source !== 'overlap' || rule.pct === undefined) return { text, source, ref: rule.ref }
+  const first = /^(.+?)\s+\d+(?:\.\d+)?\s*%/.exec(rule.measured ?? '')
+  const of = pctOf ?? first?.[1]
+  return { text, source, ref: rule.ref, pct: rule.pct, ...(of ? { pctOf: of } : {}) }
 }
 
 // 'Indonesia 72%, Malaysia 28%': the measured shares without the date.
@@ -304,7 +306,7 @@ function sharesOf(rule) {
 
 // A manual or overlap rule turned into a decision. `suffix` ends the step text.
 function applyRule(rule, source, area, ctx, suffix) {
-  const step = (text) => ruleStep(rule, source, text + suffix)
+  const step = (text, pctOf) => ruleStep(rule, source, text + suffix, pctOf)
   const why = rule.why ? ` (${rule.why})` : ''
   const { action } = rule
 
@@ -322,15 +324,15 @@ function applyRule(rule, source, area, ctx, suffix) {
     if (!checklist) {
       return notPlaced(`no checklist for ${country}`, [step(`${lead} ${country}${partText}, which has no checklist${why}`)])
     }
-    return placed(checklist, [step(`${lead} ${checklist.name}${partText}${why}`)], part ?? null)
+    return placed(checklist, [step(`${lead} ${checklist.name}${partText}${why}`, checklist.name)], part ?? null)
   }
 
   // synonymousWith: the area is the same as another area, given by its key.
   const target = action.synonymousWith
   const [kind, idText] = target.split(' ')
-  const first = step(`${label(area)} is the same area as ${target}${why}`)
   const entry = ctx.rules.checklists.find((e) => e.areas.includes(target))
   const checklist = entry ? ctx.byName.get(normalizeName(entry.name)) : kind === 'GA' ? ctx.byAreaId.get(Number(idText)) : null
+  const first = step(`${label(area)} is the same area as ${target}${why}`, checklist?.name)
   if (!checklist) return notPlaced(`no checklist for ${target}`, [first])
   return placed(checklist, [first, entry
     ? { text: `${target} belongs to the checklist ${checklist.name}`, source: 'manual', ref: entry.ref }
@@ -545,7 +547,7 @@ function areaState(area, checklist, ctx, steps) {
       if (!sub?.state || !ruleMatches(rule, area) || ctx.byName.get(normalizeName(sub.country)) !== checklist) continue
       const state = resolveSubdivision(index, sub.state) || sub.state
       const why = rule.why ? ` (${rule.why})` : ''
-      steps.push(ruleStep(rule, source, `${label(area)} ${source === 'overlap' ? 'lies in' : 'counts as'} the state ${state}${why}`))
+      steps.push(ruleStep(rule, source, `${label(area)} ${source === 'overlap' ? 'lies in' : 'counts as'} the state ${state}${why}`, state))
       return state
     }
   }

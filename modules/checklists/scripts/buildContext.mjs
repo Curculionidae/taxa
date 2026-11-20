@@ -23,12 +23,12 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { compileRules } from '../placement/rules.js'
+import { compileRules, validateRules } from '../placement/rules.js'
 import { toArea, normalizeName } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
-import { createContext, placeRecord } from '../placement/engine.js'
+import { createContext, placeRecord, ruleMatches } from '../placement/engine.js'
 import { formatPlacement, formatExplanation } from '../placement/format.js'
-import { createNodeGeometry, listShapes } from './geometry-node.mjs'
+import { createNodeGeometry, listShapes, unusableOutlines } from './geometry-node.mjs'
 import { loadData, parseTsv, level0NamesFrom, beetleSides } from './download.mjs'
 import { assignKeys } from './cacheFiles.mjs'
 
@@ -167,7 +167,18 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   const checklistById = new Map(checklists.map((checklist) => [checklist.id, checklist]))
   const shapes = listShapes(SHAPE_DIR)
   const geometry = createNodeGeometry({ shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, checklists, rules })
-  const ctx = createContext({ checklists, rules, geometry, shapes })
+  // Every country, part and state the rules name must exist (throws with the
+  // line); rules that match no used area are reported.
+  const { warnings: ruleWarnings } = validateRules(rules, {
+    checklists,
+    areas: [...areas.values()],
+    stateNamesOf: (checklist) => geometry.stateNames(checklist.id),
+    matches: ruleMatches
+  })
+  for (const warning of ruleWarnings) warn(`warning: ${warning}`)
+  const unusable = unusableOutlines(areas.values(), shapes, geometry)
+  const outlines = new Map(geometry.checklistTargets().map(({ id, outline }) => [id, outline]))
+  const ctx = createContext({ checklists, rules, geometry, shapes, unusable, outlines })
 
   // An area's placement, the same for every distribution on it.
   const areaPlacements = new Map()
@@ -256,7 +267,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
 
   return {
     rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
-    checklistById, shapes, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+    checklistById, shapes, unusable, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
     parentClassification, screenRow, rowsOf, placementOf
   }
 }

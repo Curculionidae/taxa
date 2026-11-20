@@ -29,11 +29,13 @@
 //   checklist  the first of its areaIds with a cached GeographicArea/<id>.json,
 //              else the fallback outline named like the checklist or one of
 //              its synonyms (rules file `synonyms`, compared with normalizeName:
-//              "Saint Barthelemy" for Saint Barthélemy), else none
+//              "Saint Barthelemy" for Saint Barthélemy), else none; a rules
+//              file entry with `outline: natural_earth` takes the fallback
+//              outline first (placement/geometry.js checklistOutline)
 //   part       the first of its GA areas with a cached outline, else its `box`
 //   state      the subdivisions feature with that country and name
 //
-// Point tests, the coastal fallback (NEAR) and R22 come from
+// Point tests, the coastal tolerance (rules file coastal_tolerance_degrees) and R22 come from
 // placement/geometry.js, shared with the browser geometry of the curator page
 // (placement/geometry-browser.js), so both answer every point question alike.
 //
@@ -49,13 +51,12 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeName } from '../placement/areas.js'
-import { findByName } from '../placement/checklists.js'
 import {
-  NEAR, polygonsOf, prepared, preparedTarget, entriesOf, contains, nearest, ownOverOf, ofByName,
-  checklistsAtPoint, stateAtPoint, stateTargetsOf, partOutlineId, partAtPoint
+  polygonsOf, prepared, preparedTarget, entriesOf, contains, nearest, ownOverOf, ofByName, toleranceOf,
+  checklistsAtPoint, stateAtPoint, stateTargetsOf, partOutlineId, partAtPoint, checklistOutline
 } from '../placement/geometry.js'
 
-export { NEAR, polygonsOf }
+export { polygonsOf }
 
 const GRID = 24
 const FINE_GRID = 80
@@ -91,13 +92,14 @@ export function listShapes(shapeDir) {
  * the sampling).
  * @param {Polygon[]} polygons  the area's outline
  * @param {Target[]} targets   countries, or the states of one country
- * @param {{ near?: number }} [options]  coastal tolerance for vertex samples (default NEAR)
+ * @param {{ near?: number }} [options]  coastal tolerance in degrees for vertex samples
+ *   (the measuring script passes the rules file's coastal_tolerance_degrees; default 0)
  * @returns {Shares}
  * @example
  *   measureShares(borneo, countries)
  *   // { points: 412, outside: 3, shares: [['Indonesia', 72.1], ['Malaysia', 27.6], ['Brunei', 0.7]] }
  */
-export function measureShares(polygons, targets, { near = NEAR } = {}) {
+export function measureShares(polygons, targets, { near = 0 } = {}) {
   const area = prepared(polygons)
   const { points, fromVertices } = samplesOf(area)
   const prepTargets = targets.map((target) => ({ target, shape: preparedTarget(target) }))
@@ -127,6 +129,8 @@ export function measureShares(polygons, targets, { near = NEAR } = {}) {
  * @param {import('../placement/rules.js').CompiledRules} [input.rules]  parts, `of` and synonyms
  * @returns {import('../placement/engine.js').Geometry & {
  *   checklistTargets: () => Target[],
+ *   outlineOf: (checklist: import('../placement/checklists.js').Checklist) =>
+ *     { key: string|null, fallback: string|null, ref: string|null },
  *   stateTargets: (checklistId: number|string) => Target[],
  *   areaPolygons: (kind: 'GA'|'GZ', id: number) => Polygon[] | null }}
  */
@@ -145,6 +149,8 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
       fallback.set(normalizeName(feature.properties.name), { name: feature.properties.name, polygons: polygonsOf(feature.geometry) })
     }
   }
+  const fallbackNames = new Map([...fallback].map(([key, { name }]) => [key, name]))
+  const tolerance = toleranceOf(rules)
   const subdivisions = subdivisionsFile && existsSync(subdivisionsFile)
     ? JSON.parse(readFileSync(subdivisionsFile, 'utf8')).features
     : []
@@ -152,19 +158,23 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
   const ofOf = ofByName(rules) // Réunion -> France
   const byId = new Map(checklists.map((checklist) => [checklist.id, checklist]))
 
+  // The outline of a checklist (placement/geometry.js checklistOutline): key,
+  // fallback feature name and the rules line that chose it.
+  const outlineOf = (checklist) => checklistOutline(checklist, {
+    rules, fallbackNames, isCached: (key) => Boolean(readShape(key)?.length)
+  })
+
   // Checklist outlines as targets, in checklist order; checklists without one
   // are left out. `outline` says which file it came from (written to
   // context.json for the curator page): 'GeographicArea/<id>' or 'fallback/<name>'.
   let targets = null
   const checklistTargets = () => {
     targets ??= checklists.flatMap((checklist) => {
-      const id = checklist.areaIds.find((areaId) => readShape(`GeographicArea/${areaId}`))
-      const found = id != null ? null : findByName(fallback, checklist.name, rules)
-      const polygons = id != null ? readShape(`GeographicArea/${id}`) : found?.polygons
+      const { key, fallback: name } = outlineOf(checklist)
+      const polygons = !key ? null : name != null ? fallback.get(normalizeName(name))?.polygons : readShape(key)
       if (!polygons?.length) return []
       const of = ofOf.get(normalizeName(checklist.name))
-      const outline = id != null ? `GeographicArea/${id}` : `fallback/${found.name}`
-      return [{ name: checklist.name, id: checklist.id, polygons, outline, ...(of ? { of } : {}) }]
+      return [{ name: checklist.name, id: checklist.id, polygons, outline: key, ...(of ? { of } : {}) }]
     })
     return targets
   }
@@ -196,10 +206,10 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
 
   return {
     async checklistsAt(point) {
-      return checklistsAtPoint(checklistShapes(), point)
+      return checklistsAtPoint(checklistShapes(), point, tolerance)
     },
     async stateAt(checklistId, point) {
-      return stateAtPoint(entriesOf(stateTargets(checklistId)), point)
+      return stateAtPoint(entriesOf(stateTargets(checklistId)), point, tolerance)
     },
     async partAt(checklistId, point) {
       return partAtPoint(partsOf(checklistId), point)
@@ -209,11 +219,32 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
     },
     checklistTargets,
     stateTargets,
+    outlineOf,
     areaPolygons(kind, id) {
       const polygons = readShape(`${kind === 'GZ' ? 'Gazetteer' : 'GeographicArea'}/${id}`)
       return polygons?.length ? polygons : null
     }
   }
+}
+
+/**
+ * The cached outlines of some areas that hold no polygon to measure or test
+ * points against (GZ 10497 Low Beskids is a Point): the engine says "no
+ * usable outline" for them instead of "not measured yet" (engine.js
+ * createContext `unusable`). Written to context.json, so the curator page
+ * knows them too.
+ * @param {Iterable<import('../placement/areas.js').Area>} areas
+ * @param {Set<string>} shapes  cached outline keys (listShapes)
+ * @param {{ areaPolygons: (kind: 'GA'|'GZ', id: number) => Polygon[]|null }} geometry
+ * @returns {Set<string>}  'Gazetteer/10497'
+ */
+export function unusableOutlines(areas, shapes, geometry) {
+  const keys = new Set()
+  for (const area of areas) {
+    const key = `${area.kind === 'GZ' ? 'Gazetteer' : 'GeographicArea'}/${area.id}`
+    if (shapes.has(key) && !geometry.areaPolygons(area.kind, area.id)) keys.add(key)
+  }
+  return keys
 }
 
 // Sample points of a prepared area (see the header).

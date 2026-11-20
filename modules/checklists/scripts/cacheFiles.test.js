@@ -188,13 +188,15 @@ test('cacheContext: checklists, their outlines with bbox, and the cached outline
     { id: 2, name: 'Spain', outline: 'fallback/Spain', polygons: [[[[-3, 0], [-1, 0], [-1, 2], [-3, 0]]]] }
   ]
   const shapes = new Set(['GeographicArea/5', 'Gazetteer/7', 'GeographicArea/12', 'GeographicArea/2'])
-  assert.deepEqual(cacheContext({ built: '2026-11-20', checklists, targets, shapes }), {
+  const unusable = new Set(['Gazetteer/7'])
+  assert.deepEqual(cacheContext({ built: '2026-11-20', checklists, targets, shapes, unusable }), {
     built: '2026-11-20',
     checklists,
     outlines: [
       { id: 1, outline: 'GeographicArea/5', bbox: [0, 0, 2.1235, 1] },
       { id: 2, outline: 'fallback/Spain', bbox: [-3, 0, -1, 2] }
     ],
-    shapes: { GeographicArea: [2, 5, 12], Gazetteer: [7] }
+    shapes: { GeographicArea: [2, 5, 12], Gazetteer: [7] },
+    unusable: { GeographicArea: [], Gazetteer: [7] }
   })
 })

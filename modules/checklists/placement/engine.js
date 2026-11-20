@@ -11,8 +11,10 @@
 // Input:  an Area (areas.js, toArea) or a RecordInput (see the typedef), and a
 //         Context made once by createContext from the checklists
 //         (checklists.js, deriveChecklists), the compiled rules file (rules.js,
-//         compileRules), a Geometry (point lookups on outlines, see the typedef)
-//         and the set of cached outline keys ('GeographicArea/32253').
+//         compileRules), a Geometry (point lookups on outlines, see the typedef),
+//         the set of cached outline keys ('GeographicArea/32253'), those of
+//         them that hold no polygon (`unusable`) and the outline that stands
+//         for each checklist (`outlines`, geometry.js checklistOutline).
 // Output: a Placement (see the typedef): the checklist or null with a reason,
 //         the part (France: Corsica, Mainland France), the state, the outline
 //         to show, and the steps of the decision.
@@ -32,8 +34,13 @@
 //     that belongs to a checklist
 //  4. the ISO code of a gazetteer
 //  5. an overlap rule for the area (rules file, overlap section)
-//  6. otherwise not placeable, with the reason
-// Then the part of the checklist (France) and the outline.
+//  6. otherwise not placeable, with the reason: 'no outline' (none cached),
+//     'no usable outline (no polygon)' (the cached outline is a point or a
+//     line, context `unusable`), else 'not measured yet'
+// Then the part of the checklist (France) and the outline: the part's first
+// cached GA outline, else the checklist's (context `outlines`: its first
+// cached area, else the Natural Earth fallback outline; a rules entry with
+// `outline: natural_earth` takes the fallback first, cited by a step).
 //
 // Decision order for a specimen or field occurrence (placeRecord):
 //  1. a checklist of its own: a word of its `names` is in the DwC country,
@@ -42,13 +49,16 @@
 //     collecting event's area), through the synonyms of the rules file; a DwC
 //     country without checklist is not placeable ('no checklist for Kosovo')
 //  3. no DwC country but coordinates: the checklist outline that contains
-//     them (Geometry.checklistsAt), when exactly one does
+//     them (Geometry.checklistsAt), when exactly one does; when none does, the
+//     one within the coastal tolerance (rules file coastal_tolerance_degrees),
+//     and the step says "within about 5 km of the coast of" and cites that line
 //  4. otherwise not placeable: 'locality text only' or 'no locality at all'
 //  Step 1 reads stateProvince and county only when the DwC country is empty
 //  or is the entry's `of` country (France), so a county abroad is never captured.
 // Then the part (France: a part name in stateProvince or county, else the part
-// holding the coordinates (Geometry.partAt), else the rest part when the record
-// has a stateProvince or coordinates).
+// whose outline holds the coordinates, else the part whose rough `box` (rules
+// file) holds them (Geometry.partAt), else the rest part when the record has a
+// stateProvince or coordinates).
 //
 // The state, only for checklists with `states` (placeRecord):
 //  asserted distribution: the area's own name is a state of the checklist, but
@@ -60,12 +70,14 @@
 //    Washington (R30); else an overlap rule for the area gives `state`. A
 //    manual rule for the area that gives `state` comes before all of these,
 //    as manual rules do for countries. Else no state, with the reason as a
-//    step 'no state: ...' (record is for the whole country, spans several
-//    states: <shares>, not measured yet). Never calls the Geometry for
-//    outlines, only for the names.
+//    step 'no state: ...' (record is for the whole country; spans several
+//    states: <shares> or outside every state outline, both from an overlap
+//    rule; no outline to measure; no usable outline (no polygon); not
+//    measured yet). Never calls the Geometry for outlines, only for the names.
 //  specimen: the DwC stateProvince is a state [TaxonWorks]; else the state
-//    outline that contains the coordinates (Geometry.stateAt) [overlap]; else
-//    no state, with the reason.
+//    outline that contains the coordinates, else the only one within the
+//    coastal tolerance (Geometry.stateAt) [overlap]; else no state, with the
+//    reason.
 // State names are matched only against the states of the chosen checklist
 // (states.js), never against countries, so the US state Georgia never meets
 // the country Georgia. A name matches a state's own name [TaxonWorks], one of
@@ -84,6 +96,21 @@ import { stateIndex, resolveSubdivision, matchSubdivision } from './states.js'
 export const SEVERAL_STATES = 'spans several states'
 
 /**
+ * The `not_placeable` text the measuring script writes for an area of a
+ * checklist with states whose outline lies in none of its state outlines
+ * (GZ 10454 Hawai'i: Lana'i, whose Natural Earth state outline misses it).
+ * Like SEVERAL_STATES it never decides the country, only the reason for no state.
+ */
+export const OUTSIDE_STATES = 'outside every state outline'
+
+/**
+ * The `not_placeable` text the measuring script writes for an area whose
+ * outline lies outside every checklist outline (in the sea, or on land
+ * without an outline). It decides like any not_placeable rule.
+ */
+export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
+
+/**
  * @typedef {Object} Step  one sentence of an explanation
  * @property {string} text  short plain sentence; the source tag and line are not part of it
  * @property {'TaxonWorks'|'Natural Earth'|'manual'|'overlap'} source  TaxonWorks data,
@@ -99,23 +126,27 @@ export const SEVERAL_STATES = 'spans several states'
  * @property {string|null} part   part of the checklist (France: 'Corsica'), else null
  * @property {string|null} state  state or province (only for checklists with `states`);
  *   always null from placeArea, filled by placeRecord
- * @property {{ key: string, name: string } | null} shape  cached outline to show,
- *   key 'GeographicArea/32253'; null when not placeable or when no outline is cached
- * @property {string|null} reason  why it is not placeable ('no outline', 'not measured
- *   yet', 'no checklist for Kosovo', 'spans several countries: ...', 'coordinates in
- *   several countries (Russia, Ukraine)', 'coordinates outside every outline', 'locality
- *   text only', 'no locality at all'), null when placed
+ * @property {{ key: string, name: string } | null} shape  outline to show, key
+ *   'GeographicArea/32253' or 'fallback/Norfolk Island' (a Natural Earth outline of
+ *   fallback-shapes.geojson); null when not placeable or when there is no outline
+ * @property {string|null} reason  why it is not placeable ('no outline', 'no usable outline
+ *   (no polygon)', 'not measured yet', 'no checklist for Kosovo', 'spans several countries:
+ *   ...', 'outside every checklist outline', 'coordinates in several countries (Russia,
+ *   Ukraine)', 'coordinates outside every outline', 'locality text only', 'no locality at
+ *   all'), null when placed
  * @property {Step[]} steps  the decision, in order
  *
  * @typedef {Object} Geometry  lookups on cached outlines, injected so the engine stays
  *   pure (the build reads files, the browser fetches; implemented in Task 7 and 11)
- * @property {(point: [number, number]) => Promise<Array<number|string>>} checklistsAt
- *   ids of the checklists whose outline contains the point [lng, lat]
- * @property {(checklistId: number|string, point: [number, number]) => Promise<string|null>} stateAt
- *   the state of that checklist whose outline contains the point, null when none
- * @property {(checklistId: number|string, point: [number, number]) => Promise<string|null>} partAt
- *   the part of that checklist (France: Corsica) whose outline holds the point, else
- *   whose `box` from the rules file holds it; null when none (R19)
+ * @property {(point: [number, number]) => Promise<{ ids: Array<number|string>, near: boolean }>} checklistsAt
+ *   ids of the checklists whose outline contains the point [lng, lat]; when none does,
+ *   those within the coastal tolerance, with near true (geometry.js checklistsAtPoint)
+ * @property {(checklistId: number|string, point: [number, number]) => Promise<{ name: string, near: boolean }|null>} stateAt
+ *   the state of that checklist whose outline contains the point, else the only one
+ *   within the coastal tolerance (near true); null when none
+ * @property {(checklistId: number|string, point: [number, number]) => Promise<{ name: string, by: 'outline'|'box' }|null>} partAt
+ *   the part of that checklist (France: Corsica) whose outline holds the point (by
+ *   'outline'), else whose `box` from the rules file holds it (by 'box'); null when none (R19)
  * @property {(checklistId: number|string) => { name: string, aliases: string[] }[]} stateNames
  *   the states of a checklist with `states`, each with its Natural Earth aliases
  *   (subdivisions.geojson `properties.aliases`, [] when none); [] for any other checklist
@@ -137,6 +168,11 @@ export const SEVERAL_STATES = 'spans several states'
  * @property {import('./rules.js').CompiledRules} rules
  * @property {Geometry|null} geometry
  * @property {Set<string>} shapes  cached outline keys, 'GeographicArea/32253' or 'Gazetteer/3529'
+ * @property {Set<string>} unusable  cached outline keys of areas whose outline holds no
+ *   polygon (a Point gazetteer), as the build found them (geometry-node.mjs unusableOutlines)
+ * @property {Map<number|string, string>|null} outlines  the outline that stands for each
+ *   checklist, by checklist id ('GeographicArea/237', 'fallback/Norfolk Island'); null:
+ *   the first cached area of the checklist
  * @property {Map<number, import('./checklists.js').Checklist>} byAreaId  GA id to checklist
  * @property {Map<string, import('./checklists.js').Checklist>} byIso  upper case ISO code to checklist
  * @property {Map<string, import('./checklists.js').Checklist>} byName  normalized name or synonym to checklist
@@ -153,9 +189,11 @@ export const SEVERAL_STATES = 'spans several states'
  * @param {import('./rules.js').CompiledRules} input.rules  from compileRules
  * @param {Geometry|null} [input.geometry]  outline lookups, used by placeRecord
  * @param {Set<string>} [input.shapes]  keys of cached outlines, 'GeographicArea/32253'
+ * @param {Set<string>} [input.unusable]  those of them that hold no polygon
+ * @param {Map<number|string, string>|null} [input.outlines]  outline key by checklist id
  * @returns {Context}
  */
-export function createContext({ checklists, rules, geometry = null, shapes = new Set() }) {
+export function createContext({ checklists, rules, geometry = null, shapes = new Set(), unusable = new Set(), outlines = null }) {
   const byAreaId = new Map()
   const byIso = new Map()
   const byName = new Map()
@@ -172,7 +210,7 @@ export function createContext({ checklists, rules, geometry = null, shapes = new
     if (!checklist) continue
     for (const name of names) if (!byName.has(normalizeName(name))) byName.set(normalizeName(name), checklist)
   }
-  return { checklists, rules, geometry, shapes, byAreaId, byIso, byName, byId, stateIndexes: new Map() }
+  return { checklists, rules, geometry, shapes, unusable, outlines, byAreaId, byIso, byName, byId, stateIndexes: new Map() }
 }
 
 /**
@@ -234,6 +272,12 @@ function finish(decision, state, ctx) {
   const { checklist, part } = decision
   const shape = chooseShape(checklist, part, ctx)
   if (!shape) steps.push({ text: `no outline cached for ${checklist.name}`, source: 'TaxonWorks' })
+  else if (shape.key.startsWith('fallback/')) {
+    const entry = ctx.rules.checklists.find((candidate) => normalizeName(candidate.name) === normalizeName(checklist.name))
+    if (entry?.outline === 'natural_earth') {
+      steps.push({ text: `outline of ${checklist.name} from Natural Earth`, source: 'manual', ref: entry.outlineRef ?? entry.ref })
+    }
+  }
   return {
     checklist: { id: checklist.id, name: checklist.name },
     part,
@@ -273,14 +317,21 @@ function decide(area, ctx) {
 
   if (overlap) return applyRule(overlap, 'overlap', area, ctx, '')
 
-  const cached = ctx.shapes.has(shapeKey(area.kind, area.id))
-  return notPlaced(cached ? 'not measured yet' : 'no outline', [{
-    text: cached
-      ? `${label(area)} has no country in TaxonWorks and no rule; the next measuring run measures it`
-      : `${label(area)} has no country in TaxonWorks, no rule and no cached outline to measure`,
+  const key = shapeKey(area.kind, area.id)
+  if (!ctx.shapes.has(key)) {
+    return notPlaced('no outline', [{ text: `${label(area)} has no country in TaxonWorks, no rule and no cached outline to measure`, source: 'TaxonWorks' }])
+  }
+  if (ctx.unusable?.has(key)) {
+    return notPlaced(NO_POLYGON, [{ text: `${label(area)} has no country in TaxonWorks and no rule; its cached outline holds no polygon to measure`, source: 'TaxonWorks' }])
+  }
+  return notPlaced('not measured yet', [{
+    text: `${label(area)} has no country in TaxonWorks and no rule; the next measuring run measures it`,
     source: 'TaxonWorks'
   }])
 }
+
+/** The reason for an area whose cached outline is a point or a line. */
+const NO_POLYGON = 'no usable outline (no polygon)'
 
 // First rule of a section that decides the country of the area (rules that
 // only say "spans several states" never do).
@@ -288,8 +339,13 @@ function findRule(rules, area) {
   return rules.find((rule) => !isStateRule(rule) && ruleMatches(rule, area)) ?? null
 }
 
-// Does every match field of the rule fit the area?
-function ruleMatches({ match }, area) {
+/**
+ * Does every match field of the rule fit the area?
+ * @param {import('./rules.js').Rule} rule
+ * @param {import('./areas.js').Area} area
+ * @returns {boolean}
+ */
+export function ruleMatches({ match }, area) {
   if (match.area && match.area !== area.key) return false
   if (match.tdwg && match.tdwg !== area.tdwg) return false
   if (match.iso2 && match.iso2.toUpperCase() !== (area.iso2 ?? '').toUpperCase()) return false
@@ -298,8 +354,10 @@ function ruleMatches({ match }, area) {
   return true
 }
 
+// A rule that only gives the reason for no state (SEVERAL_STATES, OUTSIDE_STATES).
 function isStateRule(rule) {
-  return normalizeName(rule.action.notPlaceable).startsWith(SEVERAL_STATES)
+  const text = normalizeName(rule.action.notPlaceable)
+  return text.startsWith(SEVERAL_STATES) || text.startsWith(OUTSIDE_STATES)
 }
 
 // A step citing a rule: its line, and for an overlap rule its measured share.
@@ -311,9 +369,11 @@ function ruleStep(rule, source, text, pctOf) {
   return { text, source, ref: rule.ref, pct: rule.pct, pctOf }
 }
 
-// 'Indonesia 72%, Malaysia 28%': the measured shares without the date.
+// 'Indonesia 72%, Malaysia 28%': the measured shares without the date; ''
+// for a measurement without shares ('no sample in any outline (2026-11-20)').
 function sharesOf(rule) {
-  return rule.measured ? rule.measured.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '') : ''
+  if (!rule.measured || !rule.measured.includes('%')) return ''
+  return rule.measured.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')
 }
 
 // A manual or overlap rule turned into a decision. `suffix` ends the step text.
@@ -481,12 +541,19 @@ async function decideRecord(record, point, ctx) {
     if (!ctx.geometry) {
       return notPlaced('coordinates not checked', [{ text: `${where} were not checked: no outlines given`, source: 'TaxonWorks' }])
     }
-    const ids = await ctx.geometry.checklistsAt([point.lng, point.lat])
+    const { ids, near } = await ctx.geometry.checklistsAt([point.lng, point.lat])
     const hits = [...new Set(ids.map((id) => ctx.byId.get(id)).filter(Boolean))]
-    if (hits.length === 1) return placed(hits[0], [{ text: `${where} lie inside ${hits[0].name}`, source: 'overlap' }])
+    const coast = coastStep(ctx)
+    if (hits.length === 1) {
+      return placed(hits[0], [near
+        ? coast(`${where} lie ${coast.within} of the coast of ${hits[0].name}`)
+        : { text: `${where} lie inside ${hits[0].name}`, source: 'overlap' }])
+    }
     if (hits.length > 1) {
       const names = hits.map((checklist) => checklist.name).sort((a, b) => a.localeCompare(b, 'en')).join(', ')
-      return notPlaced(`coordinates in several countries (${names})`, [{ text: `${where} lie inside ${names}`, source: 'overlap' }])
+      return notPlaced(`coordinates in several countries (${names})`, [near
+        ? coast(`${where} lie ${coast.within} of the coasts of ${names}`)
+        : { text: `${where} lie inside ${names}`, source: 'overlap' }])
     }
     return notPlaced('coordinates outside every outline', [{ text: `${where} lie outside every checklist outline`, source: 'overlap' }])
   }
@@ -517,10 +584,13 @@ async function recordPart(record, point, checklist, ctx, steps) {
   }
   const where = point ? `coordinates ${point.lat}, ${point.lng}` : ''
   if (point && ctx.geometry?.partAt) {
-    const name = await ctx.geometry.partAt(checklist.id, [point.lng, point.lat])
-    if (name && parts.some((part) => part.name === name)) {
-      steps.push({ text: `${where} lie inside ${name}`, source: 'overlap' })
-      return name
+    const hit = await ctx.geometry.partAt(checklist.id, [point.lng, point.lat])
+    const part = hit && parts.find((candidate) => candidate.name === hit.name)
+    if (part) {
+      steps.push(hit.by === 'box'
+        ? { text: `${where} lie inside the rough box of the part ${part.name}`, source: 'manual', ref: part.ref }
+        : { text: `${where} lie inside ${part.name}`, source: 'overlap' })
+      return part.name
     }
   }
   const rest = parts.find((part) => part.rest)
@@ -581,11 +651,14 @@ function areaState(area, checklist, ctx, steps) {
     const spans = rules.find((rule) => isStateRule(rule) && ruleMatches(rule, area))
     if (spans) {
       const shares = sharesOf(spans)
-      steps.push(ruleStep(spans, source, `no state: ${SEVERAL_STATES}${shares ? `: ${shares}` : ''}`))
+      steps.push(ruleStep(spans, source, `no state: ${spans.action.notPlaceable}${shares ? `: ${shares}` : ''}`))
       return null
     }
   }
-  steps.push({ text: 'no state: not measured yet', source: 'TaxonWorks' })
+  const key = shapeKey(area.kind, area.id)
+  if (!ctx.shapes.has(key)) steps.push({ text: 'no state: no outline to measure', source: 'TaxonWorks' })
+  else if (ctx.unusable?.has(key)) steps.push({ text: `no state: ${NO_POLYGON}`, source: 'TaxonWorks' })
+  else steps.push({ text: 'no state: not measured yet', source: 'TaxonWorks' })
   return null
 }
 
@@ -618,10 +691,13 @@ async function recordState(record, point, checklist, ctx, steps) {
   }
   if (point && ctx.geometry) {
     const where = `coordinates ${point.lat}, ${point.lng}`
-    const state = await ctx.geometry.stateAt(checklist.id, [point.lng, point.lat])
-    if (state) {
-      steps.push({ text: `${where} lie inside the state ${state}`, source: 'overlap' })
-      return state
+    const hit = await ctx.geometry.stateAt(checklist.id, [point.lng, point.lat])
+    if (hit) {
+      const coast = coastStep(ctx)
+      steps.push(hit.near
+        ? coast(`${where} lie ${coast.within} of the coast of the state ${hit.name}`)
+        : { text: `${where} lie inside the state ${hit.name}`, source: 'overlap' })
+      return hit.name
     }
     steps.push({ text: `no state: ${where} lie in no state outline of ${checklist.name}`, source: 'overlap' })
     return null
@@ -704,14 +780,29 @@ function choosePart(area, checklist, ctx, steps) {
   return null
 }
 
-// The outline to show: the part's first cached GA area, else the checklist's.
+// The outline to show: the part's first cached GA area, else the checklist's
+// (context `outlines`, else its first cached area).
 function chooseShape(checklist, part, ctx) {
   const partEntry = part ? (ctx.rules.parts[checklist.name] ?? []).find((p) => p.name === part) : null
   const partIds = (partEntry?.areas ?? []).filter((key) => key.startsWith('GA ')).map((key) => Number(key.slice(3)))
   const partId = partIds.find((id) => ctx.shapes.has(shapeKey('GA', id)))
   if (partId != null) return { key: shapeKey('GA', partId), name: part }
+  if (ctx.outlines) {
+    const key = ctx.outlines.get(checklist.id)
+    return key ? { key, name: checklist.name } : null
+  }
   const id = checklist.areaIds.find((areaId) => ctx.shapes.has(shapeKey('GA', areaId)))
   return id != null ? { key: shapeKey('GA', id), name: checklist.name } : null
+}
+
+// A step for a point that lies outside every outline but within the coastal
+// tolerance of one: the rules file line of coastal_tolerance_degrees.
+// `within` is 'within about 5 km' (degrees times 111, rounded down).
+function coastStep(ctx) {
+  const { degrees = 0, ref = null } = ctx.rules.coastalTolerance ?? {}
+  const step = (text) => ({ text, source: 'overlap', ...(ref ? { ref } : {}) })
+  step.within = `within about ${Math.max(1, Math.floor(degrees * 111))} km`
+  return step
 }
 
 function shapeKey(kind, id) {

@@ -43,8 +43,14 @@
 //            else `not_placeable: spans several states` (engine.js
 //            SEVERAL_STATES), which never decides the country.
 // Samples outside every outline (sea, land without outline) do not count, so
-// shares are shares of land. Areas without a cached outline get no rule and
-// are printed.
+// shares are shares of land. An area with no land sample at all gets a rule
+// that says so: `not_placeable: outside every checklist outline` (engine.js
+// OUTSIDE_CHECKLISTS) for the country, `not_placeable: outside every state
+// outline` (OUTSIDE_STATES, which never decides the country) for the state;
+// its `measured` text has no share ("no sample in any outline"). Areas
+// without a cached outline, or whose outline holds no polygon (a Point
+// gazetteer), get no rule and are printed; the engine gives them the reason
+// "no outline" or "no usable outline (no polygon)" by itself.
 //
 // Output: rules appended to the end of the overlap section, never anything
 // else changed, so line references to other rules stay valid. Each rule:
@@ -59,8 +65,9 @@ import { join, resolve } from 'node:path'
 import { compileRules } from '../placement/rules.js'
 import { toArea, normalizeName } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
-import { createContext, placeArea, placeRecord, SEVERAL_STATES } from '../placement/engine.js'
-import { createNodeGeometry, measureShares, listShapes } from './geometry-node.mjs'
+import { createContext, placeArea, placeRecord, SEVERAL_STATES, OUTSIDE_STATES, OUTSIDE_CHECKLISTS } from '../placement/engine.js'
+import { toleranceOf } from '../placement/geometry.js'
+import { createNodeGeometry, measureShares, listShapes, unusableOutlines } from './geometry-node.mjs'
 import { parseTsv, level0NamesFrom } from './download.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -117,7 +124,10 @@ function setUp(text) {
     checklists,
     rules
   })
-  return { rules, checklists, geometry, ctx: createContext({ checklists, rules, geometry, shapes }) }
+  const unusable = unusableOutlines(areas.values(), shapes, geometry)
+  const outlines = new Map(geometry.checklistTargets().map(({ id, outline }) => [id, outline]))
+  const near = toleranceOf(rules)
+  return { rules, checklists, geometry, near, ctx: createContext({ checklists, rules, geometry, shapes, unusable, outlines }) }
 }
 
 const originalText = readFileSync(RULES_FILE, 'utf8')
@@ -132,7 +142,7 @@ async function runMeasure() {
   const noOutline = []
   const outside = []
   const written = new Set()
-  const counts = { country: 0, severalCountries: 0, state: 0, severalStates: 0 }
+  const counts = { country: 0, severalCountries: 0, state: 0, severalStates: 0, outside: 0 }
   let measuredCountry = 0
   let measuredState = 0
 
@@ -142,16 +152,21 @@ async function runMeasure() {
   for (const area of ordered) {
     const placement = placeArea(area, setup.ctx)
     if (placement.checklist) continue
-    if (placement.reason === 'no outline') { noOutline.push(`${describe(area)} (country)`); continue }
+    if (placement.reason === 'no outline' || placement.reason.startsWith('no usable outline')) { noOutline.push(`${describe(area)} (country, ${placement.reason})`); continue }
     if (placement.reason !== 'not measured yet') continue
     const polygons = setup.geometry.areaPolygons(area.kind, area.id)
     if (!polygons) { noOutline.push(`${describe(area)} (country)`); continue }
     measuredCountry += 1
-    const { shares } = measureShares(polygons, setup.geometry.checklistTargets())
-    if (!shares.length) { outside.push(`${describe(area)}: outside every checklist outline`); continue }
+    const { shares } = measureShares(polygons, setup.geometry.checklistTargets(), { near: setup.near })
     const match = matchOf(area)
     if (written.has(`country ${match}`)) continue
     written.add(`country ${match}`)
+    if (!shares.length) {
+      outside.push(`${describe(area)}: ${OUTSIDE_CHECKLISTS}`)
+      counts.outside += 1
+      countryLines.push(...ruleLines(area, match, `not_placeable: ${OUTSIDE_CHECKLISTS}`, shares, date))
+      continue
+    }
     const [top, pct] = shares[0]
     const action = pct >= THRESHOLD
       ? `subdivision_of: { country: ${quote(top)} }`
@@ -174,11 +189,16 @@ async function runMeasure() {
     const polygons = setup.geometry.areaPolygons(area.kind, area.id)
     if (!polygons) { noOutline.push(`${describe(area)} (state in ${checklist.name})`); continue }
     measuredState += 1
-    const { shares } = measureShares(polygons, targets)
-    if (!shares.length) { outside.push(`${describe(area)}: outside every state outline of ${checklist.name}`); continue }
+    const { shares } = measureShares(polygons, targets, { near: setup.near })
     const match = matchOf(area)
     if (written.has(`state ${match}`)) continue
     written.add(`state ${match}`)
+    if (!shares.length) {
+      outside.push(`${describe(area)}: ${OUTSIDE_STATES} of ${checklist.name}`)
+      counts.outside += 1
+      stateLines.push(...ruleLines(area, match, `not_placeable: ${OUTSIDE_STATES}`, shares, date))
+      continue
+    }
     const [top, pct] = shares[0]
     const action = pct >= THRESHOLD
       ? `subdivision_of: { country: ${quote(checklist.name)}, state: ${quote(top)} }`
@@ -196,14 +216,14 @@ async function runMeasure() {
   const seconds = ((Date.now() - started) / 1000).toFixed(1)
   console.log(`${areas.size} used areas; measured ${measuredCountry} for their country, ${measuredState} for their state`)
   console.log(`rules ${dryRun ? 'that would be ' : ''}written: ${counts.country} subdivision_of country, ${counts.severalCountries} spans several countries, ` +
-    `${counts.state} subdivision_of state, ${counts.severalStates} spans several states`)
-  if (outside.length) console.log(`no rule, outside every outline (${outside.length}):\n  ${outside.join('\n  ')}`)
-  if (noOutline.length) console.log(`no rule, no cached outline (${noOutline.length}):\n  ${noOutline.join('\n  ')}`)
+    `${counts.state} subdivision_of state, ${counts.severalStates} spans several states, ${counts.outside} outside every outline`)
+  if (outside.length) console.log(`outside every outline (${outside.length}):\n  ${outside.join('\n  ')}`)
+  if (noOutline.length) console.log(`no rule, no usable cached outline (${noOutline.length}):\n  ${noOutline.join('\n  ')}`)
   console.log(`done in ${seconds} s`)
 }
 
 // Re-measure every overlap rule; print the ones whose top share moved.
-async function runRecheck({ rules, geometry, ctx }) {
+async function runRecheck({ rules, geometry, ctx, near }) {
   let checked = 0
   const moved = []
   const skipped = []
@@ -213,7 +233,8 @@ async function runRecheck({ rules, geometry, ctx }) {
     const polygons = geometry.areaPolygons(area.kind, area.id)
     if (!polygons) { skipped.push(`${rule.ref}: ${describe(area)} has no cached outline`); continue }
     const forState = Boolean(rule.action.subdivisionOf?.state) ||
-      normalizeName(rule.action.notPlaceable).startsWith(normalizeName(SEVERAL_STATES))
+      normalizeName(rule.action.notPlaceable).startsWith(normalizeName(SEVERAL_STATES)) ||
+      normalizeName(rule.action.notPlaceable).startsWith(normalizeName(OUTSIDE_STATES))
     let targets = geometry.checklistTargets()
     if (forState) {
       const country = rule.action.subdivisionOf?.country
@@ -222,7 +243,7 @@ async function runRecheck({ rules, geometry, ctx }) {
     }
     if (!targets.length) { skipped.push(`${rule.ref}: no outlines to measure against`); continue }
     checked += 1
-    const { shares } = measureShares(polygons, targets)
+    const { shares } = measureShares(polygons, targets, { near })
     const old = /^(.*?)\s+(\d+(?:\.\d+)?)\s*%/.exec(rule.measured ?? '')
     if (!old) { skipped.push(`${rule.ref}: no measured share to compare`); continue }
     const [, oldName, oldPct] = old
@@ -246,8 +267,10 @@ function ruleLines(area, match, action, shares, date) {
   ]
 }
 
-// 'Indonesia 72%, Malaysia 28%, Brunei 1%': the top four shares, rounded.
+// 'Indonesia 72%, Malaysia 28%, Brunei 1%': the top four shares, rounded;
+// 'no sample in any outline' when there is none.
 function sharesText(shares) {
+  if (!shares.length) return 'no sample in any outline'
   return shares.slice(0, 4).map(([name, pct]) => `${name} ${Math.round(pct)}%`).join(', ')
 }
 

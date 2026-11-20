@@ -224,11 +224,13 @@ const ukraine = { id: 234, name: 'Ukraine', iso2: 'UA', areaIds: [234], states: 
 const georgia = { id: 81, name: 'Georgia', iso2: 'GE', areaIds: [81], states: false }
 const recordChecklists = [...checklists, tanzania, ukraine, georgia]
 // Fake geometry: points by "lng,lat", states by checklist id.
-const pointsIn = new Map([['30.5,50.4', [234]], ['40.1,49.9', [234, 19713]], ['0,0', []], ['-84.4,33.7', [237]]])
-const statesAt = new Map([['237:-84.4,33.7', 'Georgia']])
-const partsAt = new Map([['77:9.1,42.1', 'Corsica'], ['77:2.3,48.9', 'Mainland France']])
+// A point near a coast is listed in nearPoints (geometry.js checklistsAtPoint `near`).
+const pointsIn = new Map([['30.5,50.4', [234]], ['40.1,49.9', [234, 19713]], ['0,0', []], ['-84.4,33.7', [237]], ['33.4,44.4', [234]], ['-84.5,33.8', [237]]])
+const nearPoints = new Set(['33.4,44.4', '-84.5,33.8'])
+const statesAt = new Map([['237:-84.4,33.7', { name: 'Georgia', near: false }], ['237:-84.5,33.8', { name: 'Georgia', near: true }]])
+const partsAt = new Map([['77:9.1,42.1', { name: 'Corsica', by: 'outline' }], ['77:2.3,48.9', { name: 'Mainland France', by: 'outline' }], ['77:-1.5,46', { name: 'Mainland France', by: 'box' }]])
 const geometry = {
-  checklistsAt: async ([lng, lat]) => pointsIn.get(`${lng},${lat}`) ?? [],
+  checklistsAt: async ([lng, lat]) => ({ ids: pointsIn.get(`${lng},${lat}`) ?? [], near: nearPoints.has(`${lng},${lat}`) }),
   stateAt: async (id, [lng, lat]) => statesAt.get(`${id}:${lng},${lat}`) ?? null,
   partAt: async (id, [lng, lat]) => partsAt.get(`${id}:${lng},${lat}`) ?? null,
   // Names and Natural Earth aliases as Geometry.stateNames gives them.
@@ -247,8 +249,11 @@ const geometry = {
     ]
   })[id] ?? []
 }
-const recordShapes = new Set([...shapes, 'GeographicArea/31731', 'GeographicArea/234', 'GeographicArea/81'])
-const rctx = createContext({ checklists: recordChecklists, rules: recordRules, geometry, shapes: recordShapes })
+// GA 900003 and GA 900009 are fixture areas with a cached outline; GZ 900004 is
+// a gazetteer whose cached outline is a point (context `unusable`).
+const recordShapes = new Set([...shapes, 'GeographicArea/31731', 'GeographicArea/234', 'GeographicArea/81',
+  'GeographicArea/900003', 'GeographicArea/900009', 'Gazetteer/900004'])
+const rctx = createContext({ checklists: recordChecklists, rules: recordRules, geometry, shapes: recordShapes, unusable: new Set(['Gazetteer/900004']) })
 const specimen = (fields) => ({ type: 'CollectionObject', id: 1, ...fields })
 const ad = (area) => placeRecord({ type: 'AssertedDistribution', id: 1 }, rctx, area)
 // GA 900001 "Evenk" and the US state "Georgia" are fixture areas made for these tests.
@@ -293,6 +298,20 @@ test('coordinates only', async () => {
   assert.equal(placement.checklist.name, 'Ukraine')
   assert.equal(placement.reason, null)
   assert.deepEqual(placement.steps[0], { text: 'coordinates 50.4, 30.5 lie inside Ukraine', source: 'overlap' })
+})
+
+test('coordinates within the coastal tolerance say so and cite the rules line (R48)', async () => {
+  const placement = await placeRecord(specimen({ lat: 44.4, lng: 33.4 }), rctx)
+  assert.equal(placement.checklist.name, 'Ukraine')
+  assert.deepEqual(placement.steps[0], {
+    text: 'coordinates 44.4, 33.4 lie within about 5 km of the coast of Ukraine',
+    source: 'overlap',
+    ref: refOf('coastal_tolerance_degrees:')
+  })
+  const state = await placeRecord(specimen({ lat: 33.8, lng: -84.5 }), rctx)
+  assert.equal(state.state, 'Georgia')
+  assert.equal(state.steps.at(-1).text, 'coordinates 33.8, -84.5 lie within about 5 km of the coast of the state Georgia')
+  assert.equal(state.steps.at(-1).ref, refOf('coastal_tolerance_degrees:'))
 })
 
 test('border point', async () => {
@@ -448,6 +467,33 @@ test('a state area no rule measured yet', async () => {
   assert.equal(placement.steps.at(-1).text, 'no state: not measured yet')
 })
 
+test('no state for an area without outline, or whose outline holds no polygon', async () => {
+  const bare = await ad({ ...evenk, key: 'GA 900005', id: 900005, name: 'Somewhere' })
+  assert.equal(bare.steps.at(-1).text, 'no state: no outline to measure')
+  const point = await ad({ ...gz(fx.gz10453), key: 'GZ 900004', id: 900004, name: "Hawai'i: Somewhere" })
+  assert.equal(point.checklist.name, 'United States')
+  assert.equal(point.steps.at(-1).text, 'no state: no usable outline (no polygon)')
+})
+
+test('a country area whose outline holds no polygon is not measurable, not "not measured yet"', () => {
+  const point = { ...gz(fx.gz3529), key: 'GZ 900004', id: 900004, name: 'Low Beskids', iso2: null }
+  const placement = placeArea(point, rctx)
+  assert.equal(placement.reason, 'no usable outline (no polygon)')
+  assert.equal(placement.steps[0].text, 'Low Beskids (GZ 900004) has no country in TaxonWorks and no rule; its cached outline holds no polygon to measure')
+})
+
+test('a state rule "outside every state outline" gives the reason for no state', async () => {
+  const outsideRules = compileRules(recordYaml.replace(/\n*$/, '\n') + `  - match: { area: GA 900006 }
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"
+`)
+  const local = createContext({ checklists: recordChecklists, rules: outsideRules, geometry, shapes: recordShapes })
+  const placement = await placeRecord({ type: 'AssertedDistribution', id: 1 }, local, { ...evenk, key: 'GA 900006', id: 900006, name: 'Island' })
+  assert.equal(placement.checklist.name, 'Russia')
+  assert.equal(placement.steps.at(-1).text, 'no state: outside every state outline')
+  assert.match(placement.steps.at(-1).ref, /^placement\.yml:\d+$/)
+})
+
 test('a country without states gets no state step', async () => {
   const placement = await ad(ga(fx.ga77))
   assert.equal(placement.state, null)
@@ -465,6 +511,12 @@ test('a France specimen with coordinates on the mainland gets Mainland France', 
   const byOutline = await placeRecord(specimen({ country: 'France', lat: 48.9, lng: 2.3 }), rctx)
   assert.equal(byOutline.part, 'Mainland France')
   assert.equal(byOutline.steps.at(-1).source, 'overlap')
+  // A point only the rough box of a part holds says so and cites the part's line.
+  const byBox = await placeRecord(specimen({ country: 'France', lat: 46, lng: -1.5 }), rctx)
+  assert.equal(byBox.part, 'Mainland France')
+  assert.deepEqual(byBox.steps.at(-1), {
+    text: 'coordinates 46, -1.5 lie inside the rough box of the part Mainland France', source: 'manual', ref: refOf('- name: Mainland France')
+  })
   // A point no part outline or box holds still lies below country level: the rest part.
   const byRest = await placeRecord(specimen({ country: 'France', lat: 45.5, lng: 4.8 }), rctx)
   assert.equal(byRest.part, 'Mainland France')
@@ -572,4 +624,12 @@ test('an area below a county does not take the county name as its state', async 
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, null)
   assert.equal(placement.steps.at(-1).text, 'no state: not measured yet')
+})
+
+test('a Cornwall-like county lands in the United Kingdom with no state and no state step (R50)', async () => {
+  const cornwall = { ...ga(fx.ga32254), key: 'GA 900010', id: 900010, name: 'Cornwall', type: 'County', level0: 236, level1: null, parentId: 236, parentName: 'United Kingdom', origin: 'ne_states' }
+  const placement = await ad(cornwall)
+  assert.equal(placement.checklist.name, 'United Kingdom')
+  assert.equal(placement.state, null)
+  assert.ok(!placement.steps.some((step) => step.text.startsWith('no state')))
 })

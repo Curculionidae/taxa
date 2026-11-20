@@ -34,8 +34,13 @@
 #     areas  area ids that belong to it, GA = geographic area, GZ = gazetteer
 #     names  words in a DwC country, province or place that name it
 #     box    rough bounding box [west, south, east, north], used where no outline is cached
+#     outline  natural_earth: take the checklist's outline from the Natural Earth
+#            outlines (public/checklists/fallback-shapes.geojson) even when an
+#            area of it has a cached outline (optional)
 #     why    the reason this checklist exists
 #     Example: { name: Mayotte, iso2: YT, of: France, names: [Mayotte], box: [...], why: ... }
+#   coastal_tolerance_degrees  A point outside every outline but this close to
+#               one (in degrees) counts for that outline, as a coastal point.
 #   synonyms    Different spellings of one country. The first name is the checklist name.
 #     Example: [Tanzania, United Republic of Tanzania]
 #   parts       Parts of a country that can be selected on their own, by country name.
@@ -110,14 +115,15 @@ checklists:
     why: own checklist by user decision 2026-11-20 (XK is the user-assigned code in common use)
   - name: Norfolk Island
     iso2: NF
-    areas: [GA 33700]   # TDWG Norfolk Is. (50NFK)
+    areas: [GA 33700, GZ 10458]   # TDWG Norfolk Is. (50NFK); gazetteer "Australia: Norfolk Island" (ISO AU)
+    outline: natural_earth   # the TDWG outline of 50NFK also covers Lord Howe Island, which stays Australia (manual rule for 50NFK-LH)
     why: own checklist by user decision 2026-11-20
 
 # Checklists that can be browsed by state or province. Their records get a
 # state, and the page shows a state drill-down. The state outlines and their
 # other names come from Natural Earth (public/checklists/subdivisions.geojson,
 # features whose country is the checklist name).
-state_countries: [United States, Canada, Australia, China, Russia, United Kingdom]
+state_countries: [United States, Canada, Australia, China, Russia]
 
 synonyms:
   # Several country-level areas in TaxonWorks, spelled differently
@@ -153,6 +159,13 @@ synonyms:
 # names. Case and accents do not matter. An explanation that needed them says
 # which words it ignored and cites this line.
 ignored_name_words: [province, oblast, krai, kray, republic, of, autonomous, region, okrug, state, municipality, city, district, territory, sheng, shi, the, and, county]
+
+# Coastlines of the cached outlines are simplified, so specimens collected on
+# the shore often lie a few hundred metres outside them. A point outside every
+# outline but within this many degrees (0.05 degrees, about 5 km) of one
+# counts for the nearest outline, unless a second one is nearly as close; the
+# step then says "within about 5 km of the coast of".
+coastal_tolerance_degrees: 0.05
 
 parts:
   France:
@@ -207,7 +220,6 @@ overlap:
   - match: { tdwg: 42JAW }   # GA 33768 Jawa (TDWG Level 3 42JAW), 62 records
     subdivision_of: { country: "Indonesia" }
     measured: "Indonesia 100% (2026-11-20)"
-  # GZ 3614 New Guinea, 39 records: no cached shape, not measured
   - match: { tdwg: 42BOR }   # GA 33639 Borneo (TDWG Level 3 42BOR), 36 records
     not_placeable: spans several countries
     measured: "Indonesia 72%, Malaysia 28%, Brunei 1% (2026-11-20)"
@@ -326,8 +338,6 @@ overlap:
   - match: { tdwg: 31PRM-OO }   # GA 34445 Primorye (TDWG Level 4 31PRM-OO), 2 records
     subdivision_of: { country: "Russia" }
     measured: "Russia 99%, China 1% (2026-11-20)"
-  # GZ 10497 Low Beskids, 2 records: no cached shape, not measured
-  # GZ 10498 Low Tatra, 2 records: no cached shape, not measured
   - match: { tdwg: 14RUS }   # GA 33879 South European Russia (TDWG Level 3 14RUS), 2 records
     subdivision_of: { country: "Russia" }
     measured: "Russia 100% (2026-11-20)"
@@ -394,7 +404,6 @@ overlap:
   - match: { tdwg: 14RUN }   # GA 33878 North European Russia (TDWG Level 3 14RUN), 1 records
     subdivision_of: { country: "Russia" }
     measured: "Russia 100% (2026-11-20)"
-  # GZ 11019 Tumilco, 1 records: no cached shape, not measured
   - match: { tdwg: 85CLS-MG }   # GA 34152 Magellanes (TDWG Level 4 85CLS-MG), 1 records
     subdivision_of: { country: "Chile" }
     measured: "Chile 100% (2026-11-20)"
@@ -635,9 +644,6 @@ overlap:
   - match: { area: "GA 22258" }   # GA 22258 Yakutsk gorsovet, 1 records
     subdivision_of: { country: "Russia", state: "Sakha (Yakutia)" }
     measured: "Sakha (Yakutia) 100% (2026-11-20)"
-  - match: { area: "GA 32348" }   # GA 32348 Cornwall, 1 records
-    subdivision_of: { country: "United Kingdom", state: "England" }
-    measured: "England 100% (2026-11-20)"
   - match: { tdwg: 30 }   # GA 33563 Siberia (TDWG Level 2 30), 1 records
     not_placeable: spans several states
     measured: "Sakha (Yakutia) 34%, Krasnoyarsk 26%, Yamal-Nenets 8%, Irkutsk 7% (2026-11-20)"
@@ -695,3 +701,15 @@ overlap:
   - match: { area: "GZ 10959" }   # GZ 10959 IBRA7: Warren, 1 records
     subdivision_of: { country: "Australia", state: "Western Australia" }
     measured: "Western Australia 100% (2026-11-20)"
+  - match: { area: "GZ 3614" }   # GZ 3614 New Guinea, 39 records
+    not_placeable: spans several countries
+    measured: "Papua New Guinea 51%, Indonesia 49% (2026-11-20)"
+  - match: { area: "GZ 10454" }   # GZ 10454 Hawai'i: Lana'i, 4 records
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"
+  - match: { area: "GZ 10450" }   # GZ 10450 Australia: Torres Strait: Dauan Island, 2 records
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"
+  - match: { area: "GZ 10465" }   # GZ 10465 Australia: Torres Strait: Moa Island, 1 record
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"

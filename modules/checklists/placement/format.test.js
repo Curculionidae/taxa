@@ -58,6 +58,7 @@ test('parseLookup', () => {
   assert.deepEqual(parseLookup('AD556796'), { kind: 'AD', id: 556796 })
   assert.deepEqual(parseLookup(' GZ 10453 '), { kind: 'GZ', id: 10453 })
   assert.deepEqual(parseLookup('fo 7'), { kind: 'FO', id: 7 })
+  assert.deepEqual(parseLookup('CO   1383195'), { kind: 'CO', id: 1383195 })
   assert.equal(parseLookup('556796'), null)
   assert.equal(parseLookup('XY 1'), null)
   assert.equal(parseLookup(''), null)

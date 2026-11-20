@@ -33,7 +33,7 @@ export function sourceTag(step) {
 }
 
 // Steps after the checklist decision: the part, the state, the outline.
-const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached/
+const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached|^outline of /
 
 /**
  * The step that decided the checklist of a placed record: the last step before
@@ -107,14 +107,14 @@ export function formatExplanation(subject, placement) {
 }
 
 /**
- * Read the lookup box: a kind (GA, GZ, AD, CO or FO, any case), an optional
- * space and the id, e.g. 'ad 556796', 'AD556796', ' GZ 10453 '. A bare number
+ * Read the lookup box: a kind (GA, GZ, AD, CO or FO, any case), any number of
+ * spaces and the id, e.g. 'ad 556796', 'AD556796', ' GZ  10453 '. A bare number
  * or an unknown kind gives null.
  * @param {string} text
  * @returns {{ kind: 'GA'|'GZ'|'AD'|'CO'|'FO', id: number } | null}
  */
 export function parseLookup(text) {
-  const found = /^([a-z]{2})\s?(\d+)$/i.exec(String(text ?? '').trim())
+  const found = /^([a-z]{2})\s*(\d+)$/i.exec(String(text ?? '').trim())
   if (!found) return null
   const kind = found[1].toUpperCase()
   return KINDS.includes(kind) ? { kind, id: Number(found[2]) } : null

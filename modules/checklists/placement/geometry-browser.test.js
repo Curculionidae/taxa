@@ -13,6 +13,7 @@ const RULES = {
   stateCountries: { names: ['Utopia'], ref: null },
   synonyms: [],
   ignoredNameWords: { words: [], ref: null },
+  coastalTolerance: { degrees: 0.05, ref: 'placement.yml:9' },
   parts: {
     France: [
       { name: 'Corsica', areas: ['GA 950'], names: ['Corse'], ref: 'placement.yml:20' },
@@ -39,7 +40,8 @@ const CONTEXT = {
     { id: 2, outline: 'fallback/Spain', bbox: [-10, 0, 0, 10] },
     { id: 3, outline: 'GeographicArea/3', bbox: [20, 0, 30, 10] }
   ],
-  shapes: { GeographicArea: [1, 3, 900, 950], Gazetteer: [7] }
+  shapes: { GeographicArea: [1, 3, 900, 950], Gazetteer: [7] },
+  unusable: { GeographicArea: [], Gazetteer: [7] }
 }
 
 const FILES = {
@@ -90,42 +92,43 @@ test('createBrowserGeometry: fetches subdivisions once and no outline before a q
 
 test('checklistsAt: fetches only outlines whose bbox holds the point, each once', async () => {
   const { geometry, calls } = await geometryOf()
-  assert.deepEqual(await geometry.checklistsAt([25, 5]), [3])
+  assert.deepEqual((await geometry.checklistsAt([25, 5])).ids, [3])
   assert.deepEqual(calls.slice(1), ['map-shapes/GeographicArea/3.json'])
-  assert.deepEqual(await geometry.checklistsAt([26, 6]), [3])
+  assert.deepEqual((await geometry.checklistsAt([26, 6])).ids, [3])
   assert.deepEqual(calls.slice(1), ['map-shapes/GeographicArea/3.json'])
 })
 
 test('checklistsAt: a fallback outline comes from fallback-shapes.geojson', async () => {
   const { geometry, calls } = await geometryOf()
-  assert.deepEqual(await geometry.checklistsAt([-5, 5]), [2])
+  assert.deepEqual((await geometry.checklistsAt([-5, 5])).ids, [2])
   assert.ok(calls.includes('checklists/fallback-shapes.geojson'))
 })
 
 test('checklistsAt: an own checklist wins over the country it is filed under (R22)', async () => {
   const { geometry } = await geometryOf()
-  assert.deepEqual(await geometry.checklistsAt([3, 3]), [900])
-  assert.deepEqual(await geometry.checklistsAt([6, 6]), [1])
+  assert.deepEqual((await geometry.checklistsAt([3, 3])).ids, [900])
+  assert.deepEqual((await geometry.checklistsAt([6, 6])).ids, [1])
 })
 
 test('checklistsAt: a point just off the coast counts for the nearest outline', async () => {
   const { geometry } = await geometryOf()
-  assert.deepEqual(await geometry.checklistsAt([30.02, 5]), [3])
-  assert.deepEqual(await geometry.checklistsAt([31, 5]), [])
+  assert.deepEqual(await geometry.checklistsAt([30.02, 5]), { ids: [3], near: true })
+  assert.deepEqual(await geometry.checklistsAt([25, 5]), { ids: [3], near: false })
+  assert.deepEqual(await geometry.checklistsAt([31, 5]), { ids: [], near: false })
 })
 
 test('stateAt: the state outline holding the point, else the only one near it', async () => {
   const { geometry } = await geometryOf()
-  assert.equal(await geometry.stateAt(3, [25, 7]), 'North')
-  assert.equal(await geometry.stateAt(3, [25, 2]), 'South')
-  assert.equal(await geometry.stateAt(3, [30.02, 8]), 'North')
+  assert.deepEqual(await geometry.stateAt(3, [25, 7]), { name: 'North', near: false })
+  assert.deepEqual(await geometry.stateAt(3, [25, 2]), { name: 'South', near: false })
+  assert.deepEqual(await geometry.stateAt(3, [30.02, 8]), { name: 'North', near: true })
   assert.equal(await geometry.stateAt(1, [5, 5]), null)
 })
 
 test('partAt: the part outline, else the part box, else null', async () => {
   const { geometry, calls } = await geometryOf()
-  assert.equal(await geometry.partAt(1, [8.5, 8.5]), 'Corsica')
-  assert.equal(await geometry.partAt(1, [55, 55]), 'Islands')
+  assert.deepEqual(await geometry.partAt(1, [8.5, 8.5]), { name: 'Corsica', by: 'outline' })
+  assert.deepEqual(await geometry.partAt(1, [55, 55]), { name: 'Islands', by: 'box' })
   assert.equal(await geometry.partAt(1, [5, 5]), null)
   // GA 951 is not cached, so it is never fetched.
   assert.ok(!calls.includes('map-shapes/GeographicArea/951.json'))
@@ -142,7 +145,9 @@ test('loadCacheContext: an engine context from the cache files only', async () =
   assert.equal(rules.parts.France.length, 3)
   assert.equal(ctx.byId.get(900).name, 'Réunion')
   assert.ok(ctx.shapes.has('Gazetteer/7'))
-  assert.deepEqual(await ctx.geometry.checklistsAt([3, 3]), [900])
+  assert.ok(ctx.unusable.has('Gazetteer/7'))
+  assert.equal(ctx.outlines.get(2), 'fallback/Spain')
+  assert.deepEqual((await ctx.geometry.checklistsAt([3, 3])).ids, [900])
 })
 
 test('checklistsAt: a failed outline fetch rejects, and the next question fetches it again', async () => {
@@ -153,5 +158,22 @@ test('checklistsAt: a failed outline fetch rejects, and the next question fetche
   }
   const geometry = await createBrowserGeometry({ context: CONTEXT, rules: RULES, fetchJson })
   await assert.rejects(geometry.checklistsAt([25, 5]), /500/)
-  assert.deepEqual(await geometry.checklistsAt([25, 5]), [3])
+  assert.deepEqual((await geometry.checklistsAt([25, 5])).ids, [3])
+})
+
+test('checklistsAt: a missing outline file (404) counts as no outline, the others still answer', async () => {
+  const fetchJson = async (path) => {
+    if (path.endsWith('GeographicArea/900.json')) throw Object.assign(new Error('could not load (404)'), { status: 404 })
+    return structuredClone(FILES[path])
+  }
+  const geometry = await createBrowserGeometry({ context: CONTEXT, rules: RULES, fetchJson })
+  assert.deepEqual(await geometry.checklistsAt([3, 3]), { ids: [1], near: false })
+  assert.equal(await geometry.outlinePolygons('GeographicArea/900'), null)
+})
+
+test('without coastal_tolerance_degrees in the rules there is no coastal tolerance', async () => {
+  const { fetchJson } = fakeFetch()
+  const rules = { ...RULES, coastalTolerance: { degrees: 0, ref: null } }
+  const geometry = await createBrowserGeometry({ context: CONTEXT, rules, fetchJson })
+  assert.deepEqual(await geometry.checklistsAt([30.02, 5]), { ids: [], near: false })
 })

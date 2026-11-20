@@ -83,16 +83,17 @@ test('Northern Mariana Islands exists with iso2 MP and its country area', () => 
   assert.deepEqual(byName('Kosovo').areaIds, [])
 })
 
-test('states flag on Australia, Russia, United Kingdom; France has parts Corsica and Mainland France', () => {
+test('states flag on Australia and Russia, not on the United Kingdom (R50); France has parts Corsica and Mainland France', () => {
   const states = checklists.filter((c) => c.states).map((c) => c.name).sort()
-  assert.deepEqual(states, ['Australia', 'Russia', 'United Kingdom'])
+  assert.deepEqual(states, ['Australia', 'Russia'])
+  assert.equal(byName('United Kingdom').states, false)
   assert.equal(byName('France').states, false)
   assert.deepEqual(byName('France').parts, ['Corsica', 'Mainland France'])
   assert.equal(byName('Australia').parts, undefined)
 })
 
-test('states flag covers the six countries by name', () => {
-  const six = ['United States', 'Canada', 'Australia', 'China', 'Russia', 'United Kingdom']
+test('states flag covers the five countries by name', () => {
+  const six = ['United States', 'Canada', 'Australia', 'China', 'Russia']
   const fake = six.map((name, i) => ga({ id: 900 + i, name, level0_id: 900 + i, iso_3166_a2: null }))
   const list = deriveChecklists(fake, { ...rules, checklists: [] }).checklists
   assert.deepEqual(list.map((c) => c.name), six)

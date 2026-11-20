@@ -189,7 +189,7 @@
             />
             {{ step.label }}
           </span>
-          <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China, Russia and the United Kingdom, click a state, province or constituent country to narrow it.</span>
+          <span class="text-base-content/55">Click a country to view its checklist. For the United States, Canada, Australia, China and Russia, click a state or province to narrow it.</span>
         </div>
         <p class="mt-3 text-xs text-base-soft">
           This feature was adapted from
@@ -699,7 +699,6 @@ const REGION_LABELS = {
   australia: 'State or territory',
   china: 'Province or region',
   russia: 'Administrative area',
-  'united kingdom': 'Constituent country',
   // Parts from the build (index.json `parts`), drawn from cached outlines.
   france: 'Part'
 }

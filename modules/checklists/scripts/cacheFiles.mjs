@@ -215,26 +215,34 @@ export function indexEntry({ key, name, iso2, of, shape, fallback, bbox, parts, 
  * the curator page (placement/geometry-browser.js, loadCacheContext) decides
  * exactly as the build did: the engine checklists as deriveChecklists made
  * them, the outline standing for each (GeographicArea/<id> or
- * fallback/<feature name>) with its bbox, and every cached outline key.
+ * fallback/<feature name>) with its bbox, every cached outline key, and the
+ * cached outlines of used areas that hold no polygon.
  * @param {{ built: string, checklists: import('../placement/checklists.js').Checklist[],
- *   targets: { id: number|string, outline: string, polygons: any[] }[], shapes: Set<string> }} input
+ *   targets: { id: number|string, outline: string, polygons: any[] }[], shapes: Set<string>,
+ *   unusable?: Set<string> }} input
  *   targets: the Node geometry's checklistTargets(), in checklist order
  * @returns {{ built: string, checklists: Object[], outlines: { id: number|string, outline: string, bbox: number[]|null }[],
- *   shapes: { GeographicArea: number[], Gazetteer: number[] } }}
+ *   shapes: { GeographicArea: number[], Gazetteer: number[] }, unusable: { GeographicArea: number[], Gazetteer: number[] } }}
  */
-export function cacheContext({ built, checklists, targets, shapes }) {
-  const byKind = { GeographicArea: [], Gazetteer: [] }
-  for (const key of shapes) {
-    const [kind, id] = key.split('/')
-    byKind[kind]?.push(Number(id))
-  }
-  for (const ids of Object.values(byKind)) ids.sort((a, b) => a - b)
+export function cacheContext({ built, checklists, targets, shapes, unusable = new Set() }) {
   return {
     built,
     checklists,
     outlines: targets.map(({ id, outline, polygons }) => ({ id, outline, bbox: bboxOf(polygons) })),
-    shapes: byKind
+    shapes: byKind(shapes),
+    unusable: byKind(unusable)
   }
+}
+
+// Outline keys as { GeographicArea: [ids], Gazetteer: [ids] }, ids sorted.
+function byKind(keys) {
+  const out = { GeographicArea: [], Gazetteer: [] }
+  for (const key of keys) {
+    const [kind, id] = key.split('/')
+    out[kind]?.push(Number(id))
+  }
+  for (const ids of Object.values(out)) ids.sort((a, b) => a - b)
+  return out
 }
 
 /**

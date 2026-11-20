@@ -4,32 +4,44 @@
 //
 // Purpose: one implementation of everything that decides a point question, so
 // the curator page answers exactly as the build did: point in polygon, the
-// distance to a coast, the coastal fallback (NEAR), R22 (an own checklist wins
-// over the country it is filed under) and the order in which checklists,
-// states and parts are tried. The two geometries differ only in how they get
-// the outlines (files read from disk, or files fetched by URL).
+// distance to a coast, the coastal tolerance, R22 (an own checklist wins over
+// the country it is filed under), the order in which checklists, states and
+// parts are tried, and which outline stands for a checklist. The two
+// geometries differ only in how they get the outlines (files read from disk,
+// or files fetched by URL).
 //
-// Input:  GeoJSON geometries (Polygon or MultiPolygon) and `targets`, plain
-//         objects { name, polygons, of?, id? } that stand for a checklist, a
-//         state or a part.
+// Input:  GeoJSON geometries (Polygon, MultiPolygon, or a GeometryCollection
+//         holding them) and `targets`, plain objects { name, polygons, of?, id? }
+//         that stand for a checklist, a state or a part. The coastal tolerance
+//         comes from the rules file (coastal_tolerance_degrees, toleranceOf).
 // Output: booleans, distances and the hits of a point; see each function.
 // Pure:   no network, no file system, no Node-only APIs. preparedTarget keeps
 //         a WeakMap cache keyed by the target object, nothing else is kept.
 //
 // Point tests: ray casting on every ring, holes excluded, after a bounding box
 // test of the outline and of each of its polygons. A point outside every
-// outline but within NEAR (0.05 degrees, about 5 km) of one counts for the
-// nearest outline, unless a second one is nearly as close (less than NEAR / 2
-// further): coasts are simplified, so coastal points often miss them by a few
-// hundred metres.
+// outline but within the coastal tolerance of one (rules file
+// coastal_tolerance_degrees, 0.05 degrees, about 5 km) counts for the nearest
+// outline, unless a second one is nearly as close (less than half the
+// tolerance further): coasts are simplified, so coastal points often miss them
+// by a few hundred metres. The answers say whether a point was inside
+// (contained) or only near, so the engine can say which.
 //
 // R22: a point inside an own checklist (rules file `checklists` entry with
 // `of`, Réunion) and inside the checklist it is filed under (France, whose
 // outline still contains Réunion) counts for the own checklist only.
 import { normalizeName } from './areas.js'
+import { findByName } from './checklists.js'
 
-/** Coastal tolerance in degrees (about 5 km), as in the old build. */
-export const NEAR = 0.05
+/**
+ * The coastal tolerance in degrees from the rules file
+ * (coastal_tolerance_degrees); 0 (no tolerance) when the file gives none.
+ * @param {import('./rules.js').CompiledRules|null} rules
+ * @returns {number}
+ */
+export function toleranceOf(rules) {
+  return rules?.coastalTolerance?.degrees ?? 0
+}
 
 /**
  * @typedef {Array<Array<[number, number]>>} Polygon  outer ring, then holes
@@ -42,13 +54,15 @@ export const NEAR = 0.05
  */
 
 /**
- * The polygons of a GeoJSON geometry.
- * @param {{ type: string, coordinates: any } | null} geometry
- * @returns {Polygon[]}  [] for anything but Polygon and MultiPolygon
+ * The polygons of a GeoJSON geometry. A GeometryCollection gives the polygons
+ * of its members (GZ 3614 New Guinea: a Polygon and a LineString).
+ * @param {{ type: string, coordinates?: any, geometries?: any[] } | null} geometry
+ * @returns {Polygon[]}  [] for points and lines
  */
 export function polygonsOf(geometry) {
   if (geometry?.type === 'Polygon') return [geometry.coordinates]
   if (geometry?.type === 'MultiPolygon') return geometry.coordinates
+  if (geometry?.type === 'GeometryCollection') return (geometry.geometries ?? []).flatMap(polygonsOf)
   return []
 }
 
@@ -189,13 +203,15 @@ export function nearest(entries, point, limit) {
 }
 
 /**
- * The nearest entry within NEAR when it is unambiguous, else undefined.
+ * The nearest entry within `tolerance` when it is unambiguous, else undefined.
  * @param {Entry[]} entries
  * @param {[number, number]} point
+ * @param {number} tolerance  degrees
  * @returns {Entry|undefined}
  */
-export function onlyNearest(entries, point) {
-  const hits = nearest(entries, point, NEAR)
+export function onlyNearest(entries, point, tolerance) {
+  if (!(tolerance > 0)) return undefined
+  const hits = nearest(entries, point, tolerance)
   return hits.length === 1 ? hits[0] : undefined
 }
 
@@ -224,27 +240,34 @@ export function ofByName(rules) {
 
 /**
  * The ids of the checklists that hold a point: every outline that contains
- * it, else the nearest within NEAR (one, or two nearly as close); R22 applied.
+ * it, else the nearest within `tolerance` (one, or two nearly as close); R22
+ * applied. `near` is true when no outline contains the point and the ids come
+ * from the tolerance.
  * @param {Entry[]} entries  checklist outlines in checklist order, target.id set
  * @param {[number, number]} point
- * @returns {Array<number|string>}
+ * @param {number} tolerance  degrees (toleranceOf)
+ * @returns {{ ids: Array<number|string>, near: boolean }}
  */
-export function checklistsAtPoint(entries, point) {
+export function checklistsAtPoint(entries, point, tolerance) {
   let hits = entries.filter(({ shape }) => contains(shape, point))
-  if (!hits.length) hits = nearest(entries, point, NEAR)
-  return ownOverOf(hits.map(({ target }) => target)).map((target) => target.id)
+  const near = !hits.length && tolerance > 0
+  if (near) hits = nearest(entries, point, tolerance)
+  return { ids: ownOverOf(hits.map(({ target }) => target)).map((target) => target.id), near: near && hits.length > 0 }
 }
 
 /**
- * The name of the state whose outline holds a point, else of the only state
- * within NEAR, else null.
+ * The state whose outline holds a point, else the only state within
+ * `tolerance` (near: true), else null.
  * @param {Entry[]} entries  the states of one checklist
  * @param {[number, number]} point
- * @returns {string|null}
+ * @param {number} tolerance  degrees (toleranceOf)
+ * @returns {{ name: string, near: boolean } | null}
  */
-export function stateAtPoint(entries, point) {
-  const hit = entries.find(({ shape }) => contains(shape, point)) ?? onlyNearest(entries, point)
-  return hit?.target.name ?? null
+export function stateAtPoint(entries, point, tolerance) {
+  const inside = entries.find(({ shape }) => contains(shape, point))
+  if (inside) return { name: inside.target.name, near: false }
+  const close = onlyNearest(entries, point, tolerance)
+  return close ? { name: close.target.name, near: true } : null
 }
 
 /**
@@ -273,13 +296,42 @@ export function partOutlineId(part, isCached) {
 }
 
 /**
- * The part whose outline holds a point, else whose `box` holds it, else null.
+ * The part whose outline holds a point (by 'outline'), else whose `box` from
+ * the rules file holds it (by 'box'), else null.
  * @param {Array<{ name: string, shape: Prepared|null, box: number[]|null }>} parts  in rules file order
  * @param {[number, number]} point
- * @returns {string|null}
+ * @returns {{ name: string, by: 'outline'|'box' } | null}
  */
 export function partAtPoint(parts, point) {
   const inOutline = parts.find((part) => part.shape && contains(part.shape, point))
-  if (inOutline) return inOutline.name
-  return parts.find((part) => part.box && inBox(part.box, point))?.name ?? null
+  if (inOutline) return { name: inOutline.name, by: 'outline' }
+  const inBoxOf = parts.find((part) => part.box && inBox(part.box, point))
+  return inBoxOf ? { name: inBoxOf.name, by: 'box' } : null
+}
+
+/**
+ * The outline that stands for a checklist: 'GeographicArea/<id>' of its first
+ * area with a cached outline, else 'fallback/<feature name>', the Natural
+ * Earth outline named like the checklist or a synonym of it
+ * (fallback-shapes.geojson), else null. A rules file entry with
+ * `outline: natural_earth` takes the Natural Earth outline even when an area
+ * outline is cached (Norfolk Island: the TDWG outline of GA 33700 also covers
+ * Lord Howe Island); `ref` then cites that line.
+ * @param {{ id: number|string, name: string, areaIds: number[] }} checklist
+ * @param {Object} input
+ * @param {import('./rules.js').CompiledRules|null} input.rules
+ * @param {(key: string) => boolean} input.isCached  is 'GeographicArea/<id>' cached (with polygons)?
+ * @param {Map<string, string>} input.fallbackNames  fallback feature name by normalizeName(name)
+ * @returns {{ key: string|null, fallback: string|null, ref: string|null }}
+ *   fallback: the feature name when the key is a fallback one
+ */
+export function checklistOutline(checklist, { rules, isCached, fallbackNames }) {
+  const entry = (rules?.checklists ?? []).find((candidate) => normalizeName(candidate.name) === normalizeName(checklist.name))
+  const fallback = findByName(fallbackNames, checklist.name, rules) ?? null
+  if (entry?.outline === 'natural_earth') {
+    return { key: fallback ? `fallback/${fallback}` : null, fallback, ref: entry.outlineRef ?? entry.ref }
+  }
+  const id = checklist.areaIds.find((areaId) => isCached(`GeographicArea/${areaId}`))
+  if (id != null) return { key: `GeographicArea/${id}`, fallback: null, ref: null }
+  return { key: fallback ? `fallback/${fallback}` : null, fallback, ref: null }
 }

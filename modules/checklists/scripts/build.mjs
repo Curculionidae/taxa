@@ -53,8 +53,6 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compactChecklist } from '../data/compact.js'
 import { placeRecord } from '../placement/engine.js'
-import { normalizeName } from '../placement/areas.js'
-import { findByName } from '../placement/checklists.js'
 import { formatPlacement, parseLookup } from '../placement/format.js'
 import { downloadData, saveData, loadData } from './download.mjs'
 import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
@@ -64,7 +62,7 @@ import {
 } from './cacheFiles.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
-const { outDir: OUT_DIR, fallbackFile: FALLBACK_FILE, defaultDataDir: DEFAULT_DATA_DIR } = buildPaths(ROOT)
+const { outDir: OUT_DIR, defaultDataDir: DEFAULT_DATA_DIR } = buildPaths(ROOT)
 const COUNTRY_DIR = join(OUT_DIR, 'countries/')
 const BUILD_DATE = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD, local time
 
@@ -132,7 +130,7 @@ log(`${data.statusTags.length} adventive/endemic tags, ${data.reassessments.leng
 // (buildContext.mjs, shared with compare.mjs).
 const {
   rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
-  checklistById, shapes, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+  checklistById, shapes, unusable, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
   screenRow
 } = await createBuildContext(data, { root: ROOT, log, fromDir })
 
@@ -259,18 +257,15 @@ for (const area of areas.values()) {
 }
 const knownAreas = new Map([...areasById, ...parentStubs])
 
-// The outline of a checklist: its first cached area, else the fallback
-// feature named like the checklist or one of its synonyms (findByName:
-// "Saint Barthelemy" for Saint Barthélemy), the same lookup as the Node geometry.
+// The outline of a checklist, the Node geometry's own choice
+// (placement/geometry.js checklistOutline): its first cached area, else the
+// fallback feature named like the checklist or one of its synonyms
+// ("Saint Barthelemy" for Saint Barthélemy); a rules entry with
+// `outline: natural_earth` takes the fallback first (Norfolk Island).
 const targets = new Map(geometry.checklistTargets().map((target) => [target.id, target]))
-const fallbackByName = new Map(JSON.parse(readFileSync(FALLBACK_FILE, 'utf8')).features
-  .map((feature) => [normalizeName(feature.properties.name), feature.properties.name]))
-const cachedGa = (ids) => ids.find((id) => shapes.has(`GeographicArea/${id}`))
 function outlineOf(checklist) {
-  const id = cachedGa(checklist.areaIds)
-  if (id != null) return { shape: `GeographicArea/${id}`, fallback: null, outline: `GeographicArea/${id}` }
-  const fallback = findByName(fallbackByName, checklist.name, rules) ?? null
-  return { shape: null, fallback, outline: fallback ? `fallback/${fallback}` : null }
+  const { key, fallback } = geometry.outlineOf(checklist)
+  return { shape: fallback == null ? key : null, fallback, outline: key }
 }
 
 // taxa.json, counted in the same pass as index.json (one rule for what
@@ -349,7 +344,7 @@ writeFileSync(join(OUT_DIR, 'index.json'), JSON.stringify({
 }, null, 1))
 writeFileSync(join(OUT_DIR, 'rules.json'), JSON.stringify(rules))
 writeFileSync(join(OUT_DIR, 'context.json'), JSON.stringify(cacheContext({
-  built: BUILD_DATE, checklists, targets: geometry.checklistTargets(), shapes
+  built: BUILD_DATE, checklists, targets: geometry.checklistTargets(), shapes, unusable
 })))
 writeFileSync(join(OUT_DIR, 'unplaced.json'), JSON.stringify(groupUnplaced(unplacedEntries)))
 

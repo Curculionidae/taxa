@@ -19,8 +19,9 @@
 //   checklists/fallback-shapes.geojson  fetched once, the first time a fallback
 //                                   outline is needed
 //   map-shapes/<kind>/<id>.json     one outline, fetched the first time a point
-//                                   lies within its bbox (widened by NEAR), then
-//                                   kept in memory
+//                                   lies within its bbox (widened by the coastal
+//                                   tolerance), then kept in memory; a missing
+//                                   file (404) counts as no outline
 // context.json
 //   built       the build date
 //   checklists  every checklist the engine knows (checklists.js Checklist: id,
@@ -30,18 +31,23 @@
 //               checklist order, and its bbox [west, south, east, north]
 //   shapes      { GeographicArea: [ids], Gazetteer: [ids] }: every cached outline
 //               the build saw (the engine's `shapes`)
+//   unusable    { GeographicArea: [ids], Gazetteer: [ids] }: the cached outlines of
+//               used areas that hold no polygon (the engine's `unusable`)
 // Output: createBrowserGeometry gives a Geometry; loadCacheContext gives
 //   { ctx, context, rules }, ctx being the engine Context (createContext).
-// Errors: a failed fetch rejects (the page shows it); nothing is guessed.
+// Errors: a failed fetch rejects (the page shows it), except a missing outline
+//   file (404): that outline counts as missing, so the page still shows what
+//   exists. Then the answer can differ from the build's (the map shapes were
+//   refreshed after the checklist build; README, "Limits"). Nothing is guessed.
 import { createContext } from './engine.js'
 import { normalizeName } from './areas.js'
 import {
-  NEAR, polygonsOf, preparedTarget, entriesOf, inBox, ofByName,
+  polygonsOf, preparedTarget, entriesOf, inBox, ofByName, toleranceOf,
   checklistsAtPoint, stateAtPoint, stateTargetsOf, partOutlineId, partAtPoint
 } from './geometry.js'
 
 /** bbox values in context.json are rounded to 1e-4; the filter widens a little more. */
-const BBOX_MARGIN = NEAR + 0.001
+const BBOX_ROUNDING = 0.001
 
 /**
  * @typedef {(path: string) => Promise<any>} FetchJson  fetches a JSON file by its
@@ -75,9 +81,18 @@ export function siteFetchJson(baseUrl, fetchImpl = globalThis.fetch) {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
   return async (path) => {
     const response = await fetchImpl(`${base}${path}`)
-    if (!response.ok) throw new Error(`could not load ${path} (${response.status})`)
+    if (!response.ok) throw Object.assign(new Error(`could not load ${path} (${response.status})`), { status: response.status })
     return response.json()
   }
+}
+
+/**
+ * Is this fetch failure a missing file (404)?
+ * @param {any} failure
+ * @returns {boolean}
+ */
+export function isMissing(failure) {
+  return failure?.status === 404 || /\b404\b/.test(String(failure?.message ?? ''))
 }
 
 // The promise kept under `key`, made once; dropped again when it rejects.
@@ -106,6 +121,8 @@ export async function createBrowserGeometry({ context, rules, fetchJson }) {
   const cached = shapeKeys(context.shapes)
   const byId = new Map(context.checklists.map((checklist) => [checklist.id, checklist]))
   const ofOf = ofByName(rules)
+  const tolerance = toleranceOf(rules)
+  const bboxMargin = tolerance + BBOX_ROUNDING
 
   // Outlines by key, each fetched once (the promise is kept, so two questions
   // at once share one request; a failed one is forgotten, so a later lookup
@@ -122,7 +139,10 @@ export async function createBrowserGeometry({ context, rules, fetchJson }) {
         const feature = features.findLast((f) => normalizeName(f.properties.name) === normalizeName(name))
         return feature ? polygonsOf(feature.geometry) : null
       })
-      : fetchJson(`map-shapes/${key}.json`).then(polygonsOf)))
+      : fetchJson(`map-shapes/${key}.json`).then(polygonsOf, (failure) => {
+        if (isMissing(failure)) return null
+        throw failure
+      })))
   }
 
   // Checklist targets, made once each, so preparedTarget's cache holds.
@@ -157,13 +177,14 @@ export async function createBrowserGeometry({ context, rules, fetchJson }) {
   return {
     async checklistsAt(point) {
       // Only outlines whose bbox (widened by the coastal tolerance) holds the
-      // point can contain it or lie within NEAR of it; the others are not fetched.
-      const near = context.outlines.filter(({ bbox }) => bbox && inBox(bbox, point, BBOX_MARGIN))
+      // point can contain it or lie within the tolerance of it; the others
+      // are not fetched.
+      const near = context.outlines.filter(({ bbox }) => bbox && inBox(bbox, point, bboxMargin))
       const found = (await Promise.all(near.map(checklistTarget))).filter(Boolean)
-      return checklistsAtPoint(entriesOf(found), point)
+      return checklistsAtPoint(entriesOf(found), point, tolerance)
     },
     async stateAt(checklistId, point) {
-      return stateAtPoint(entriesOf(stateTargets(checklistId)), point)
+      return stateAtPoint(entriesOf(stateTargets(checklistId)), point, tolerance)
     },
     async partAt(checklistId, point) {
       return partAtPoint(await partsOf(checklistId), point)
@@ -184,6 +205,13 @@ export async function createBrowserGeometry({ context, rules, fetchJson }) {
 export async function loadCacheContext({ fetchJson }) {
   const [context, rules] = await Promise.all([fetchJson('checklists/context.json'), fetchJson('checklists/rules.json')])
   const geometry = await createBrowserGeometry({ context, rules, fetchJson })
-  const ctx = createContext({ checklists: context.checklists, rules, geometry, shapes: shapeKeys(context.shapes) })
+  const ctx = createContext({
+    checklists: context.checklists,
+    rules,
+    geometry,
+    shapes: shapeKeys(context.shapes),
+    unusable: shapeKeys(context.unusable),
+    outlines: new Map(context.outlines.map(({ id, outline }) => [id, outline]))
+  })
   return { ctx, context, rules }
 }

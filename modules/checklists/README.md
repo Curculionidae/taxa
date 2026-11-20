@@ -165,6 +165,69 @@ list or a manual rule), keep exactly one action per rule, and run
 compiler with `placement.yml:<line>: <message>`, for example an unknown key such
 as `subdivison_of`.
 
+## How a record is placed
+
+`placement/engine.js` decides which checklist a record belongs to. It is pure
+(no network, no file system), so the cache build and the curator page run the
+same code. `createContext({ checklists, rules, geometry, shapes })` builds the
+lookups once (`shapes` is the set of cached outline keys such as
+`GeographicArea/32253`); `placeArea(area, ctx)` places the area an asserted
+distribution points to. The answer is a `Placement`: the checklist (or `null`
+and a `reason`), the part, the state (filled for records later), the outline
+to show (`shape`) and the `steps` of the decision.
+
+Every step is one short sentence with its source:
+
+- `TaxonWorks`: what TaxonWorks says (the country of a political area, the
+  parent of an area, the ISO code of a gazetteer). Fix it in TaxonWorks.
+- `manual`: a hand-written line of the rules file (a checklist of its own, a
+  synonym, a part, a manual rule), cited as `placement.yml:<line>`. Fix it there.
+- `overlap`: a measured line of the overlap section, with its line and the
+  measured share (`pct`). Overrule it with a manual rule.
+
+Decision order for an area; the first that applies decides:
+
+1. A manual rule for the area. If an overlap rule matches the same area, the
+   step says that the manual rule overrides that measurement.
+2. A checklist of its own: the area or its parent is listed in the entry's
+   `areas`, the area has the entry's ISO code, or a word of the entry's `names`
+   is in the area's or its parent's name (accent insensitive, whole words).
+3. The country TaxonWorks gives the area (`level0_id`). An area without one
+   whose parent belongs to a checklist goes to that checklist.
+4. The ISO code of a gazetteer.
+5. An overlap rule for the area.
+6. Otherwise not placeable. Reasons: `spans several countries: <shares>` (from
+   a `not_placeable` rule), `no checklist for <country or ISO code>`,
+   `not measured yet` (an outline is cached but no rule measured it yet), or
+   `no outline` (nothing to measure).
+
+Then the part, for a checklist with parts (France): the part that lists the
+area or its parent in `areas`, or whose `names` appear in the area's or its
+parent's name; else the `rest` part (Mainland France) when the area lies below
+country level; else none. A manual rule may name the part itself. Last, the
+outline: the first cached area of the part, else of the checklist. When none
+is cached the record is still placed and a last step says `no outline cached
+for <checklist>`.
+
+Two worked examples (as the curator page shows them):
+
+```
+GA 8837 Cayenne  =>  French Guiana
+  Cayenne is a subdivision of French Guiana (GA 78)            [TaxonWorks]
+  French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:56]
+  outline: GeographicArea/32253
+
+GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
+  reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:159, 72%]
+```
+
+Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
+French Guiana entry of the rules file, so step 2 decides before the country
+step. Borneo is a TDWG area with no country; the measuring script found it in
+three countries and wrote a `not_placeable` overlap line, whose shares become
+the reason.
+
 ## Updating
 
 `npm run caches` rebuilds map shapes, then checklists, then the home

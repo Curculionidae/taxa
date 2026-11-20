@@ -243,7 +243,7 @@ test('plainReason: the deciding step in a few words, with its rules line (R54)',
   const reason = (steps, extra) => plainReason(placed('X', steps, extra))
   assert.deepEqual(reason([{ text: 'Cayman Is. (GA 31732) is a country', source: 'TaxonWorks' }, { text: 'Cayman Is. is a spelling of Cayman Islands', source: 'manual', ref: 'placement.yml:131' }]),
     { text: 'spelling synonym', ref: 'placement.yml:131' })
-  assert.deepEqual(reason([{ text: 'Corse is in France (GA 77)', source: 'TaxonWorks' }]), { text: 'inside its TaxonWorks country (GA 77)', ref: null })
+  assert.deepEqual(reason([{ text: 'Corse is in France (GA 77)', source: 'TaxonWorks' }]), { text: 'GA hierarchy in TaxonWorks (GA 77)', ref: null })
   assert.deepEqual(reason([{ text: 'Spain (GA 210) is a country', source: 'TaxonWorks' }]), { text: 'country area in TaxonWorks', ref: null })
   assert.deepEqual(reason([{ text: 'Auckland has ISO code NZ, New Zealand', source: 'TaxonWorks' }]), { text: 'gazetteer ISO code NZ', ref: null })
   assert.deepEqual(reason([{ text: 'GA 32253 French Guiana belongs to the checklist French Guiana', source: 'manual', ref: 'placement.yml:74' }]),

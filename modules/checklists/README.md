@@ -932,8 +932,7 @@ checklist it lands in, and why. Indentation shows the TaxonWorks hierarchy."
 Each area line (R54) reads `name (GA 237)` (a TaxonWorks link) · `n records`
 · `→ <checklist> checklist` with `, part P`, `, state S` (or `not placed:
 <reason>`) · `because: <plain words>`, a short wording of the deciding step
-(`overview.js` `plainReason`: "country area in TaxonWorks", "inside its
-TaxonWorks country (GA 77)", "spelling synonym", "own checklist entry",
+(`overview.js` `plainReason`: "country area in TaxonWorks", "GA hierarchy in TaxonWorks (GA 77)", "spelling synonym", "own checklist entry",
 "gazetteer ISO code NZ", "measured 100% in Russia", "manual rule") with its
 rules line as a link when there is one. The full steps and source tags stay in
 the lookup tab; the OTU table keeps its source tags (R43). An area not

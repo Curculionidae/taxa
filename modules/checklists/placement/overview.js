@@ -523,7 +523,7 @@ export function lineLink(route) {
  * "because:" (R54): what kind of fact or rule decided, not the full step. The
  * rules file line, when there is one, comes as `ref` (shown as a link).
  *   TaxonWorks  'country area in TaxonWorks' (the area is a country),
- *               'inside its TaxonWorks country (GA 77)', 'subdivision of
+ *               'GA hierarchy in TaxonWorks (GA 77)', 'subdivision of
  *               Cayenne's parent ... in TaxonWorks', 'gazetteer ISO code NZ',
  *               'DwC country', 'no country in TaxonWorks and no rule'
  *   manual      'spelling synonym', 'own checklist entry', 'part of the
@@ -544,7 +544,7 @@ export function plainReason(placement) {
     if (/\) is a country$/.test(text)) return said('country area in TaxonWorks')
     if (/ is part of /.test(text)) return said('country area under another country in TaxonWorks')
     const inCountry = / is in .*\((GA \d+)\)$/.exec(text)
-    if (inCountry) return said(`inside its TaxonWorks country (${inCountry[1]})`)
+    if (inCountry) return said(`GA hierarchy in TaxonWorks (${inCountry[1]})`)
     const parent = / is a subdivision of .*\((GA \d+)\)/.exec(text)
     if (parent) return said(`subdivision of ${parent[1]} in TaxonWorks`)
     const iso = / has ISO code ([A-Z]{2})/.exec(text)

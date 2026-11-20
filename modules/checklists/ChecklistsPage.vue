@@ -596,7 +596,7 @@
 // as --pp-checklist-* tokens in the aggregate-map green (modules/checklists/data/checklist-tokens.css).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { buildSubdivisionIndex, resolveSubdivision } from './data/subdivisions.js'
+import { buildSubdivisionIndex, resolveSubdivision } from './placement/states.js'
 import { expandChecklist } from './data/compact.js'
 import { prepareCountryMapData, prepareSubdivisionMapData, wrappedCountryBounds } from './data/mapWrapping.js'
 import ChecklistMap from './components/ChecklistMap.vue'

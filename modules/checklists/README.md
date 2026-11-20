@@ -937,12 +937,12 @@ Each area line (R54) reads `name (GA 237)` (a TaxonWorks link) · `n records`
 · one segment per decision, each with its own reason (`overview.js`
 `plainReasons`, read from the step that decided it: the engine marks every
 step with its `stage`, `checklist`, `part`, `state` or `outline`). A state or
-part is never called a checklist. For example:
+part is a list inside the country checklist (`→ Corsica list`), never a checklist. For example:
 
 ```
-Primor'ye (GA 20330) · 60 records · → Russia checklist · because: GA hierarchy in TaxonWorks (GA 19713) · → state Primorsky Krai · because: measured 100% in Primorsky Krai (placement.yml:539)
-Corse (GA 32254) · 12 records · → France checklist · because: GA hierarchy in TaxonWorks (GA 77) · → part Corsica · because: manual entry (placement.yml:172)
-Clay (GA 30081) · 3 records · → United States checklist · because: GA hierarchy in TaxonWorks (GA 237) · → state Alabama · because: GA hierarchy in TaxonWorks (GA 26688)
+Primor'ye (GA 20330) · 60 records · → Russia checklist · because: GA hierarchy in TaxonWorks (GA 19713) · → Primorsky Krai list · because: measured 100% in Primorsky Krai (placement.yml:539)
+Corse (GA 32254) · 12 records · → France checklist · because: GA hierarchy in TaxonWorks (GA 77) · → Corsica list · because: manual entry (placement.yml:172)
+Clay (GA 30081) · 3 records · → United States checklist · because: GA hierarchy in TaxonWorks (GA 237) · → Alabama list · because: GA hierarchy in TaxonWorks (GA 26688)
 ```
 
 The checklist reasons are "country area in TaxonWorks", "GA hierarchy in

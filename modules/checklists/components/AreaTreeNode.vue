@@ -4,7 +4,7 @@
   (gazetteers of one ISO code) shows its name and size only. An area line
   (R54): name (key, a TaxonWorks link) · n records · one segment per decision,
   each with its own reason (overview.js plainReasons): "→ <checklist> checklist
-  · because: ...", then "→ part <part> · because: ..." and "→ state <state> ·
+  · because: ...", then "→ <part> list · because: ..." and "→ <state> list ·
   because: ..."; a decision whose step is unknown has no "because". An area not
   placed shows only "not placed: <reason>" with its rules line. Wrapped text stays indented. A
   placement.yml:N in the source tag links to that line on the Rules tab
@@ -159,14 +159,14 @@ const outcome = computed(() => ({
 }))
 // One segment per decision, each with its own reason (overview.js plainReasons):
 // '→ Russia checklist · because: GA hierarchy in TaxonWorks (GA 19713)', then
-// '→ state Primorsky Krai · because: measured 100% in Primorsky Krai (placement.yml:539)'.
+// '→ Primorsky Krai list · because: measured 100% in Primorsky Krai (placement.yml:539)'.
 // A decision without a known step shows no "because".
 const segments = computed(() => {
   if (!placed.value) return []
   const reasons = plainReasons(placement.value)
   const list = [{ what: 'checklist', text: `→ ${placement.value.checklist.name} checklist`, because: reasons.checklist }]
-  if (placement.value.part) list.push({ what: 'part', text: `→ part ${placement.value.part}`, because: reasons.part })
-  if (placement.value.state) list.push({ what: 'state', text: `→ state ${placement.value.state}`, because: reasons.state })
+  if (placement.value.part) list.push({ what: 'part', text: `→ ${placement.value.part} list`, because: reasons.part })
+  if (placement.value.state) list.push({ what: 'state', text: `→ ${placement.value.state} list`, because: reasons.state })
   return list
 })
 const twUrl = computed(() => {

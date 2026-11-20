@@ -10,6 +10,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `components/ChecklistMap.vue`: the Leaflet map.
 - `data/`: map helpers, the compact file format (`compact.js` and its test), colour tokens.
 - `scripts/build.mjs`: builds the cache (`npm run checklists`); `scripts/data/country-iso.json` holds extra ISO codes it uses.
+- `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
 - `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `states.js` also serves the page's state drill-down.
@@ -172,8 +173,8 @@ in short:
   `not_placeable` (the reason). Manual rules carry `why`; overlap rules carry
   `measured: "Russia 100% (2026-11-20)"`, whose first percentage becomes `pct`.
 - The `overlap` section is written by the measuring script
-  (`npm run checklists:measure`, added later). Do not edit it by hand except to
-  delete a line; to overrule a line, add a manual rule.
+  (`npm run checklists:measure`, see "Measuring overlap"). Do not edit it by
+  hand except to delete a line; to overrule a line, add a manual rule.
 
 To add a rule: put it in the section where it belongs (a checklist, a synonym
 list or a manual rule), keep exactly one action per rule, and run
@@ -247,12 +248,12 @@ Two worked examples (as the curator page shows them):
 ```
 GA 8837 Cayenne  =>  French Guiana
   Cayenne is a subdivision of French Guiana (GA 78)            [TaxonWorks]
-  French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:56]
+  French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:66]
   outline: GeographicArea/32253
 
 GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
   reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:160, 72%]
+  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:170]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
@@ -272,7 +273,7 @@ and optionally the `area` behind it) and the `Placement`. Example:
 AD 556796  Phaedropus candidus
   area     GA 8837 Cayenne (GA)
   step     Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
-  step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:3]
+  step     French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:66]
   result   French Guiana checklist
   shape    GeographicArea/32253 (French Guiana)
 ```
@@ -376,25 +377,103 @@ Three more worked examples:
 ```
 CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
   DwC country is United Republic of Tanzania                     [TaxonWorks]
-  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:110]
+  United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:120]
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
   Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
-  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap, placement.yml:<line>, 100%]
+  Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:552]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
-  Central European Russia (TDWG 14RUC) lies in Russia            [overlap, placement.yml:150, 100%]
-  no state: spans several states: Moscow Oblast 18%, ...         [overlap, placement.yml:<line>, 18%]
+  Central European Russia (TDWG 14RUC) lies in Russia            [overlap 100% Russia, placement.yml:160]
+  no state: spans several states: Tver' 10%, Nizhegorod 9%, ...  [overlap, placement.yml:495]
+```
+
+The two overlap lines behind these examples, as the measuring script wrote them:
+
+```yaml
+  - match: { area: "GZ 10453" }   # GZ 10453 Hawai'i: Kaua'i, 12 records
+    subdivision_of: { country: "United States", state: "Hawaii" }
+    measured: "Hawaii 100% (2026-11-20)"
+
+  - match: { tdwg: 14RUC }   # GA 33876 Central European Russia (TDWG Level 3 14RUC), 124 records
+    not_placeable: spans several states
+    measured: "Tver' 10%, Nizhegorod 9%, Kostroma 8%, Smolensk 7% (2026-11-20)"
 ```
 
 The Tanzania specimen has a DwC country that is not a checklist name, but
 the synonym line names it, so the second step cites that line. The Hawaiian
 gazetteer finds its country by its ISO code, and its name is no state name, so
-the state comes from a measured overlap line for gazetteers starting with
-"Hawai'i". Central European Russia gets its country from one overlap line;
-a second line, `not_placeable: spans several states`, tells why it has no
-state. (The shares and the state lines are illustrations until the measuring
-script writes them.)
+the state comes from the overlap line the measuring script wrote for it.
+Central European Russia gets its country from one overlap line (line 160,
+Russia 100%); a second line (495), `not_placeable: spans several states`,
+tells why it has no state: no state holds even a fifth of it. The line
+numbers are those of the rules file on 2026-11-20; they shift when lines are
+added above.
+
+## Measuring overlap
+
+`npm run checklists:measure` (`scripts/measure-overlap.mjs`) writes the
+`overlap` section of the rules file. It measures, on the cached outlines, how
+the outline of an area is shared among other outlines, and appends one rule
+per area. The build never measures; it only reads the rules.
+
+When to run it: after a build reports areas as `not measured yet` (new TDWG
+areas or gazetteers without ISO code in TaxonWorks, or new areas in a country
+with states whose name is no state name), and after the cached outlines
+changed a lot. It reads the TaxonWorks data the build saved
+(`--from <dir>`, default `modules/checklists/.cache/data`:
+`distributions.json`, and `dwc_occurrences.csv` for the names of countries
+used only through their subdivisions). A run over all 2,458 areas in use
+takes about 10 seconds.
+
+What it measures (only areas some distribution uses and no rule decides yet;
+the placement engine says which):
+
+- The country of an area the engine leaves `not measured yet`: TDWG areas and
+  gazetteers without ISO code that no rule, own checklist or TaxonWorks
+  country places. It is measured against every checklist outline (the first
+  cached area of the checklist, else its Natural Earth outline in
+  `public/checklists/fallback-shapes.geojson`).
+- The state of an area placed in a checklist with states, when neither its
+  name nor its parent's name is a state name and it is not the whole country
+  (the engine's step `no state: not measured yet`). Gazetteers with an ISO
+  code count too (Hawaiian islands, IBRA bioregions in Australia). It is
+  measured against the state outlines of that checklist
+  (`public/checklists/subdivisions.geojson`).
+
+How: `scripts/geometry-node.mjs` (`measureShares`) lays a grid of 24 by 24
+points over the area's bounding box and keeps the points inside the area; with
+fewer than 30 inside, a grid of 80 by 80; with none inside (tiny islands), the
+area's vertices, where a point up to 0.05 degrees (about 5 km) off a
+simplified coast counts for the nearest outline. Each point is tested against
+the outlines whose bounding box holds it. Points in no outline (sea, or land
+without outline) do not count, so the shares are shares of land. A point in an
+own checklist and in the country it is filed under (Réunion and France, whose
+outline still contains Réunion) counts for the own checklist only.
+
+The 90% rule: when one country holds 90% or more of the land points, the rule
+says `subdivision_of: { country }`, else `not_placeable: spans several
+countries`. For states: `subdivision_of: { country, state }`, else
+`not_placeable: spans several states`, which only explains the missing state
+and never decides the country. Every rule carries `measured:` with the top
+four shares, rounded, and the local date, and a comment with the area, its
+TDWG code and how many distributions use it. TDWG areas are matched by their
+TDWG code, all others by their area key. Rules are appended at the end of the
+`overlap` section; no other line changes, so line references stay valid.
+Areas without a cached outline, or outside every outline, get no rule and are
+listed at the end of the run. `--dry-run` prints the rules instead of writing
+them.
+
+`--recheck` re-measures every existing overlap rule and lists those whose top
+share moved by more than 5 points (for example after the cached outlines
+changed); it never edits the file. To refresh such a rule, delete it and run
+the script again.
+
+Curators: a measured line can be deleted (the next run measures the area
+again) but should not be edited, because the next recheck would report it.
+To overrule a measurement, add a manual rule for the same area in the `manual`
+section, with `why`; manual rules win, and the explanation then says that the
+manual rule overrides the measurement and cites both lines.
 
 ## Updating
 

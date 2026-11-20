@@ -203,18 +203,16 @@ test('state stays null for areas', () => {
 })
 
 // Records (specimens, field occurrences) and states.
-// Fixture overlap rules, appended to the real rules file the way the measuring
-// script appends them (Task 7 measures the real ones).
+// Fixture overlap rules for made-up areas, appended to the real rules file the
+// way the measuring script appends them. Real areas (Kaua'i, Central European
+// Russia) use the real measured lines of the rules file.
 const stateRulesText = `
-  - match: { gazetteer_prefix: "Hawai'i" }
+  - match: { gazetteer_prefix: "Hawai'i: Ni" }
     subdivision_of: { country: United States, state: Hawaii }
     measured: "Hawaii 100% (2026-11-20)"
   - match: { area: GA 900001 }
     subdivision_of: { country: Russia, state: Krasnoyarsk }
     measured: "Krasnoyarsk 100% (2026-11-20)"
-  - match: { tdwg: 14RUC }
-    not_placeable: spans several states
-    measured: "Moscow Oblast 18%, Tver' 12%, Smolensk 9% (2026-11-20)"
 `
 const recordYaml = yamlText.replace(/\n*$/, '\n') + stateRulesText
 const recordRules = compileRules(recordYaml)
@@ -350,7 +348,7 @@ test('the US state Georgia stays in the United States (state Georgia) and does n
   assert.deepEqual(placement.steps.at(-1), { text: 'Georgia (GA 900002) is the state Georgia', source: 'TaxonWorks' })
 })
 
-test('Hawaiian gazetteer gets state Hawaii by overlap rule', async () => {
+test('Hawaiian gazetteer gets state Hawaii by its measured overlap rule', async () => {
   const placement = await ad(gz(fx.gz10453))
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, 'Hawaii')
@@ -358,10 +356,17 @@ test('Hawaiian gazetteer gets state Hawaii by overlap rule', async () => {
   assert.deepEqual(step, {
     text: "Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii",
     source: 'overlap',
-    ref: recordRefOf("gazetteer_prefix: \"Hawai'i\""),
+    ref: recordRefOf('match: { area: "GZ 10453" }'),
     pct: 100,
     pctOf: 'Hawaii'
   })
+})
+
+test('a state rule can match gazetteers by name prefix', async () => {
+  const niihau = gz({ ...fx.gz10453, id: 900004, name: "Hawai'i: Ni'ihau" })
+  const placement = await ad(niihau)
+  assert.equal(placement.state, 'Hawaii')
+  assert.equal(placement.steps.at(-1).ref, recordRefOf("gazetteer_prefix: \"Hawai'i: Ni\""))
 })
 
 test('Evenk (political) gets state Krasnoyarsk by overlap rule', async () => {
@@ -378,11 +383,14 @@ test('Central European Russia has no state, reason spans', async () => {
   assert.equal(placement.state, null)
   // The country still comes from the country overlap line, not the state line.
   assert.equal(placement.steps[0].ref, refOf('match: { tdwg: 14RUC }'))
+  // The state line is the measured one, the last line matching 14RUC.
+  const spans = recordRules.overlap.find((rule) => rule.match.tdwg === '14RUC' && rule.action.notPlaceable)
   assert.deepEqual(placement.steps[1], {
-    text: "no state: spans several states: Moscow Oblast 18%, Tver' 12%, Smolensk 9%",
+    text: `no state: spans several states: ${spans.measured.replace(/ \(\d{4}-\d{2}-\d{2}\)$/, '')}`,
     source: 'overlap',
     ref: recordRefOf('match: { tdwg: 14RUC }')
   })
+  assert.notEqual(placement.steps[0].ref, placement.steps[1].ref)
 })
 
 test('an area for the whole country gets no state', async () => {

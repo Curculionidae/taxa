@@ -56,6 +56,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expandChecklist } from '../data/compact.js'
+import { buildSubdivisionIndex, stateIndex, matchSubdivision } from '../placement/states.js'
 import { formatPlacement } from '../placement/format.js'
 import { loadBuildContext, KIND } from './buildContext.mjs'
 import { decidingStep } from './cacheFiles.mjs'
@@ -205,7 +206,7 @@ const removed = oldIndex.countries.filter((country) => !nameMap.get(country.name
 const added = newIndex.countries.filter((country) => !mappedNew.has(country.name))
 const fileRenames = oldIndex.countries
   .filter((country) => newByName.has(nameMap.get(country.name)))
-  .map((country) => ({ name: nameMap.get(country.name), from: `${country.id}.json`, to: newByName.get(nameMap.get(country.name)).file }))
+  .map((country) => ({ name: nameMap.get(country.name), from: country.file ?? `${country.id}.json`, to: newByName.get(nameMap.get(country.name)).file }))
 
 // Writing.
 const md = []
@@ -319,9 +320,46 @@ section('Part changed (France)', groupBy(partChanges, (item) => `${item.old.part
 // A checklist no longer browsed by state (index.json `states` false, R50):
 // all its records lose their state, listed as one group.
 const statesNow = new Map(newIndex.countries.map((country) => [country.name, country.states]))
-const stateLabel = (item) => (statesNow.get(item.now.checklist) === false && !item.now.state
-  ? `${item.now.checklist}: no states any more (no longer in state_countries), every state dropped`
-  : `${item.now.checklist}: ${item.old.state || 'no state'} to ${item.now.state || 'no state'}`)
+// R51: Natural Earth names no longer decide a state. An old engine cache says
+// so in areas.json (a step with source "Natural Earth"); for a specimen, its
+// old state was the one its stateProvince names only as a Natural Earth alias.
+const oldAreasFile = join(oldDir, 'areas.json')
+const aliasAreas = new Set(existsSync(oldAreasFile)
+  ? readJson(oldAreasFile).filter((row) => row.placement?.steps?.some((step) => step.source === 'Natural Earth')).map((row) => row.key)
+  : [])
+const subdivisionFeatures = existsSync(oldSubdivisions) ? readJson(oldSubdivisions).features : []
+const ignoredWords = context.rules.ignoredNameWords?.words ?? []
+const aliasIndexes = new Map()
+function byAliasOnly(record, checklist, state) {
+  if (!aliasIndexes.has(checklist)) {
+    const features = subdivisionFeatures.filter((feature) => feature.properties.country === checklist)
+    aliasIndexes.set(checklist, {
+      withAliases: buildSubdivisionIndex(features, ignoredWords),
+      names: stateIndex(features.map((feature) => ({ name: feature.properties.name })), ignoredWords)
+    })
+  }
+  const { withAliases, names } = aliasIndexes.get(checklist)
+  const province = record.stateProvince
+  return Boolean(province) && matchSubdivision(withAliases, province)?.state === state && !matchSubdivision(names, province)
+}
+function r51(item) {
+  if (!oldIsEngine || !item.old.state) return null
+  const [kind, id] = kindId(item.key)
+  if (kind === 'AD') {
+    const ad = distributions.get(String(id))
+    const key = ad?.asserted_distribution_shape ? `${ad.asserted_distribution_shape_type === 'Gazetteer' ? 'GZ' : 'GA'} ${ad.asserted_distribution_shape.id}` : null
+    return key && aliasAreas.has(key) ? 'asserted distributions' : null
+  }
+  return byAliasOnly(item.old.record, item.now.checklist, item.old.state) ? 'specimens and field occurrences' : null
+}
+const stateLabel = (item) => {
+  if (statesNow.get(item.now.checklist) === false && !item.now.state) {
+    return `${item.now.checklist}: no states any more (no longer in state_countries, R50), every state dropped`
+  }
+  const cause = r51(item)
+  if (cause) return `R51, Natural Earth names no longer decide the state: ${cause}`
+  return `${item.now.checklist}: ${item.old.state || 'no state'} to ${item.now.state || 'no state'}`
+}
 section('State changed', groupBy(stateChanges, stateLabel), {
   intro: 'Records that stay in their checklist but are shown under another state (or under a state for the first time). The old state is what the old page worked out from stateProvince, the place name of the distribution and the county.'
 })
@@ -351,14 +389,17 @@ for (const country of added) md.push(`- ${country.name} (${plural(country.record
 md.push('', `### Checklists removed: ${removed.length}`, '')
 for (const country of removed) md.push(`- ${country.name} (${plural(country.records, 'record')}, old file ${country.id}.json)`)
 md.push('', '### Files', '')
-md.push(`Every country file is renamed: the old files are named by a TaxonWorks area id (countries/77.json), the new ones by the checklist name (countries/france.json). ${plural(fileRenames.length, 'file')} map one to one; the full list is in compare-full.md.`, '')
+md.push(oldIsEngine
+  ? `Both caches name their files by checklist (countries/france.json); ${plural(fileRenames.filter(({ from, to }) => from !== to).length, 'file')} renamed.`
+  : `Every country file is renamed: the old files are named by a TaxonWorks area id (countries/77.json), the new ones by the checklist name (countries/france.json). ${plural(fileRenames.length, 'file')} map one to one; the full list is in compare-full.md.`, '')
 full.push('## File renames', '', '| checklist | old file | new file |', '|---|---|---|')
 for (const { name, from, to } of fileRenames) full.push(`| ${name} | ${from} | ${to} |`)
 full.push('')
 
-// Hand-written questions for the curator, kept beside the report.
+// Hand-written questions for the curator, kept beside the report (they belong
+// to the comparison with the old hard-coded build).
 const questions = join(MODULE, '.cache/compare-questions.md')
-if (existsSync(questions)) md.push(readFileSync(questions, 'utf8').trim(), '')
+if (!oldIsEngine && existsSync(questions)) md.push(readFileSync(questions, 'utf8').trim(), '')
 
 writeFileSync(OUT, md.join('\n'))
 writeFileSync(OUT_FULL, full.join('\n'))

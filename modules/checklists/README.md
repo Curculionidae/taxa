@@ -11,6 +11,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `data/`: map helpers, the compact file format (`compact.js` and its test), colour tokens.
 - `scripts/build.mjs`: builds the cache (`npm run checklists`); `scripts/data/country-iso.json` holds extra ISO codes it uses.
 - `public/checklists/`: the cache output (outside the module, served as static files).
+- `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
 - `DESIGN.md`, `PLAN.md`: design and implementation plan.
 
 ## Data
@@ -86,6 +87,45 @@ only through a record using it, so those come from
 `public/checklists/fallback-shapes.geojson` (Natural Earth). The script lists
 countries that have neither. The state/province drill-down still uses
 `public/checklists/subdivisions.geojson` (Natural Earth).
+
+## The rules file
+
+`modules/checklists/rules/placement.yml` is hand-edited. It holds what
+TaxonWorks cannot say by itself, and the placement engine reads it through
+`placement/rules.js` (`compileRules`), which turns it into plain data and notes
+the line of every rule. Every explanation of a decision cites the rule that
+made it as `placement.yml:<line>`, so the line number in an explanation is the
+line to open and change. The header comment of the file describes every key;
+in short:
+
+- Sources of a decision: `[TaxonWorks]` (what TaxonWorks states), `[manual]`
+  (the `manual` section), `[overlap]` (the `overlap` section). Manual lines win
+  over overlap lines.
+- `checklists`: checklists of their own that TaxonWorks files under another
+  country (French Guiana, Guadeloupe, Martinique, Réunion, Mayotte, Northern
+  Mariana Islands). Keys: `name`, `iso2`, `of`, `areas` (`GA 78`, `GZ 10453`),
+  `names` (words in a DwC country, province or place), `box` (west, south,
+  east, north), `why`.
+- `synonyms`: spellings of one country; the first name is the checklist name,
+  e.g. `[Tanzania, United Republic of Tanzania]`.
+- `parts`: parts of a country that can be selected on their own, by country
+  name (France: Corsica, Mainland France). Keys: `name`, `areas`, `names`,
+  `box`, and `rest: true` on the part that takes every other record below
+  country level.
+- `manual` and `overlap`: one rule per area. `match` is one of `area`, `tdwg`,
+  `gazetteer_prefix`, `iso2`; the action is exactly one of `subdivision_of`
+  (`{ country, part?, state? }`), `synonymous_with` (an area key) or
+  `not_placeable` (the reason). Manual rules carry `why`; overlap rules carry
+  `measured: "Russia 100% (2026-11-20)"`, whose first percentage becomes `pct`.
+- The `overlap` section is written by the measuring script
+  (`npm run checklists:measure`, added later). Do not edit it by hand except to
+  delete a line; to overrule a line, add a manual rule.
+
+To add a rule: put it in the section where it belongs (a checklist, a synonym
+list or a manual rule), keep exactly one action per rule, and run
+`node --test modules/checklists/placement/rules.test.js`. A mistake stops the
+compiler with `placement.yml:<line>: <message>`, for example an unknown key such
+as `subdivison_of`.
 
 ## Updating
 

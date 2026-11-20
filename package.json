@@ -18,5 +18,8 @@
   },
   "dependencies": {
     "@sfgrp/taxonpages": "^0.8.6"
+  },
+  "devDependencies": {
+    "yaml": "2.9.0"
   }
 }

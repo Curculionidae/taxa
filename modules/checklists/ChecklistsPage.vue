@@ -663,7 +663,7 @@ const countryMapRef = ref(null)
 const mapReady = ref(false)
 const mapLayers = new Map()
 const countriesByKey = ref(new Map())
-const checklistIdByKey = ref(new Map())
+const checklistFileByKey = ref(new Map()) // country key -> file name in countries/ (index.json `file`)
 const checklistUpdated = ref('')
 const checklistCountries = ref([])
 // Resolves once index.json is in, so a country opened from the URL on load
@@ -907,8 +907,17 @@ async function fetchJson(url) {
   return response.json()
 }
 
-// Drops the parts of a country's outline that lie in one of its `exclude`
-// boxes (overseas parts with a checklist of their own, e.g. French Guiana).
+// The outlines of the checklists filed under a country (index.json `of`:
+// French Guiana under France), as boxes to cut out of the country's outline,
+// which in TaxonWorks still holds them.
+function excludedBoxes(country) {
+  return checklistCountries.value
+    .filter((other) => other.of === country.name && other.bbox)
+    .map((other) => other.bbox)
+}
+
+// Drops the parts of a country's outline that lie in one of the boxes
+// (overseas parts with a checklist of their own, e.g. French Guiana).
 function withoutExcludedParts(geometry, boxes) {
   if (!boxes?.length || geometry?.type !== 'MultiPolygon') return geometry
   const inBox = (polygon) => {
@@ -944,7 +953,7 @@ async function loadCountryShapes() {
             features.push({
               type: 'Feature',
               properties: { name: country.name, 'ISO3166-1-Alpha-2': country.iso2 },
-              geometry: withoutExcludedParts(geometry, country.exclude)
+              geometry: withoutExcludedParts(geometry, excludedBoxes(country))
             })
           }
         } catch {
@@ -968,8 +977,10 @@ async function loadCountryShapes() {
 }
 
 // The checklist data is built ahead of time by modules/checklists/scripts/build.mjs
-// (public/checklists/): index.json lists every country with its taxon count,
-// countries/<id>.json holds one country's records.
+// (public/checklists/): index.json lists every checklist with its key, file
+// name and taxon count, countries/<key>.json holds one checklist's records
+// (after a `checklist` header the page does not need), taxa.json is keyed by
+// the checklist key.
 // Retry after index.json failed: the index first, then what waited on it
 // (the world map and a country opened from the URL).
 async function retryLoading() {
@@ -992,7 +1003,7 @@ async function loadCountryCounts() {
     checklistUpdated.value = index.updated || ''
     checklistCountries.value = index.countries
     countriesByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), [country.name]]))
-    checklistIdByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), country.id]))
+    checklistFileByKey.value = new Map(index.countries.map((country) => [countryKey(country.name), country.file]))
     totalCounts.value = new Map(index.countries.map((country) => [countryKey(country.name), country.taxa]))
   } catch {
     countsError.value = 'Could not load the checklists. Please try again.'
@@ -1636,7 +1647,7 @@ const countryCounts = computed(() => {
   const index = taxaIndexByKey.value.get(`${filter.rank}:${filter.name}`)
   return new Map(checklistCountries.value.map((country) => [
     countryKey(country.name),
-    index === undefined ? 0 : taxaIndex.value.counts[country.id]?.[index] || 0
+    index === undefined ? 0 : taxaIndex.value.counts[country.key]?.[index] || 0
   ]))
 })
 watch(higherTaxonFilter, (filter) => { if (filter) loadTaxaIndex() })
@@ -2239,9 +2250,9 @@ async function loadCountry(name) {
   try {
     await indexReady
     if (requestId !== countryRequestId) return
-    const id = checklistIdByKey.value.get(countryKey(name))
-    if (!id) throw new Error('No checklist for this country.')
-    const response = await fetch(`${base_url}checklists/countries/${id}.json`)
+    const file = checklistFileByKey.value.get(countryKey(name))
+    if (!file) throw new Error('No checklist for this country.')
+    const response = await fetch(`${base_url}checklists/countries/${file}`)
     if (!response.ok) throw new Error('Could not load the country checklist.')
     const records = expandChecklist(await response.json())
     if (requestId !== countryRequestId) return

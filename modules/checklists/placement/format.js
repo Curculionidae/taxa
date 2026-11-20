@@ -3,8 +3,8 @@
 //
 // Input:  formatPlacement gets the subject (what was placed) and the Placement
 //         the engine returned (engine.js). parseLookup gets the typed text.
-// Output: formatPlacement returns a multi-line string, parseLookup returns
-//         { kind, id } or null. The same text is printed by the build's
+// Output: formatPlacement returns a multi-line string, formatStep one line
+//         (a step and its source tag), parseLookup returns { kind, id } or null. The same text is printed by the build's
 //         --verbose and --explain output and shown on the curator page.
 // Pure and browser-safe: no imports, no network, no file system.
 
@@ -26,6 +26,17 @@ function sourceTag(step) {
   if (step.source === 'manual') return `[manual, ${step.ref}]`
   const share = step.pct !== undefined ? ` ${step.pct}%${step.pctOf ? ` ${step.pctOf}` : ''}` : ''
   return `[overlap${share}${step.ref ? `, ${step.ref}` : ''}]`
+}
+
+/**
+ * One step on one line: its text, a space and its source tag, e.g.
+ * 'Cayenne is a subdivision of French Guiana (GA 78) [TaxonWorks]'. The build
+ * uses it for the `how` of the country file header.
+ * @param {import('./engine.js').Step} step
+ * @returns {string}
+ */
+export function formatStep(step) {
+  return `${step.text} ${sourceTag(step)}`
 }
 
 /**

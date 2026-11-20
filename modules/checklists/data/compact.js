@@ -1,8 +1,10 @@
-// Compact form of a country checklist file (public/checklists/countries/<id>.json).
+// Compact form of a country checklist file (public/checklists/countries/<key>.json).
 //
 // The build (modules/checklists/scripts/build.mjs) writes compactChecklist(records),
-// the page reads expandChecklist(file) and gets the same records back, so
-// nothing after loading changes. What makes it small, per country:
+// after a `checklist` header of its own (what the checklist is made of, see
+// scripts/cacheFiles.mjs), which expandChecklist ignores. The page reads
+// expandChecklist(file) and gets the same records back, so nothing after
+// loading changes. What makes it small, per country:
 //   - taxa: each distinct taxon (name, authorship, rank, higher taxa, OTU)
 //     once; a record names it by index (`t`).
 //   - kinds: each distinct (dwc_occurrence_object_type, basisOfRecord) pair

@@ -9,8 +9,5 @@ config/**/*.development.yml
 .ipynb_checkpoints/
 docs/
 
-# Checklist debugging overview: built locally by npm run checklists, not committed (10 MB, changes every run)
-public/checklists/overview.html
-
 # Saved TaxonWorks data and old cache copies for the checklist scripts (--save / --from), local only
 modules/checklists/.cache/

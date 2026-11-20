@@ -50,3 +50,21 @@ test('every built country file survives the round trip', () => {
     assert.deepEqual(sorted(again), sorted(records), name)
   }
 })
+
+test('the checklist header of a country file is ignored when expanding', () => {
+  const records = [record({}), record({ dwc_occurrence_object_id: '2' })]
+  const header = { key: 'ukraine', name: 'Ukraine', areas_used: [{ area: 'GA 234', records: 2 }], specimens: { records: 0 } }
+  const file = JSON.parse(JSON.stringify({ checklist: header, ...compactChecklist(records) }))
+  assert.deepEqual(sorted(expandChecklist(file)), sorted(records))
+})
+
+test('every built country file: header record counts add up to its records', () => {
+  const dir = new URL('../../../public/checklists/countries/', import.meta.url)
+  for (const name of readdirSync(dir)) {
+    const stored = JSON.parse(readFileSync(new URL(name, dir), 'utf8'))
+    if (!stored.checklist) continue // files built before the header
+    const fromAreas = stored.checklist.areas_used.reduce((sum, row) => sum + row.records, 0)
+    assert.equal(fromAreas + stored.checklist.specimens.records, expandChecklist(stored).length, name)
+    assert.equal(`${stored.checklist.key}.json`, name)
+  }
+})

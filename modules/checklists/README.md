@@ -9,51 +9,43 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `router/index.js`, `package.json`: register the module with the framework.
 - `components/ChecklistMap.vue`: the Leaflet map.
 - `data/`: map helpers, the compact file format (`compact.js` and its test), colour tokens.
-- `scripts/build.mjs`: builds the cache (`npm run checklists`); `scripts/data/country-iso.json` holds extra ISO codes it uses.
+- `scripts/build.mjs`: builds the cache (`npm run checklists`, see "Building the cache"): reads the TaxonWorks data, places every record through the placement engine, writes `public/checklists/`.
+- `scripts/download.mjs`: everything the build fetches from TaxonWorks, and saving or reading it as files for offline runs (`--save`, `--from`).
+- `scripts/cacheFiles.mjs`: pure helpers that shape the written files (checklist keys, the country file header, index entries, `unplaced.json`); tested in `cacheFiles.test.js`.
+- `scripts/data/country-iso.json`: ISO codes of countries whose TaxonWorks area carries none.
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
+- `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
 - `rules/placement.yml`, `placement/rules.js`: the placement rules file and its compiler (see "The rules file").
-- `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `states.js` also serves the page's state drill-down.
+- `placement/engine.js`, `areas.js`, `checklists.js`, `states.js`, `format.js`: the placement engine (see "How checklists are formed" and "How a record is placed"); `states.js` also serves the page's state drill-down, `format.js` writes a decision as text.
 - `DESIGN.md`, `PLAN.md`: design and implementation plan.
 
 ## Data
 
 Nothing is fetched from TaxonWorks while browsing. `npm run checklists`
-writes `public/checklists/index.json` (countries, taxon counts, update date,
-each country's cached outline) and `countries/<id>.json` (that country's
-records, with citations and place names). Country files are compact
-(`data/compact.js`): each taxon, record kind and reference
-text once per file, records point to them; the page expands them on load into
-the same records. Only fields the page shows are kept (no collector, date or
-occurrenceID: they were CSV-only and made up most of the size). See the comment at the top of the
-script for how records are placed in countries. In short:
+writes `public/checklists/` (see "Building the cache" for every file):
+`index.json` (checklists, taxon counts, update date, each checklist's cached
+outline) and `countries/<key>.json` (one checklist's records, with citations
+and place names). Country files are compact (`data/compact.js`): each taxon,
+record kind and reference text once per file, records point to them; the page
+expands them on load into the same records. Only fields the page shows are
+kept (no collector, date or occurrenceID: they were CSV-only and made up most
+of the size). In short:
 
-- Asserted distributions by their area's `level0_id`, gazetteers by the
-  territory in their name ("TAAF: …") or ISO code, else the DwC `country`
-  text; specimens and field occurrences by DwC `country`, else by their
-  coordinates: the one cached country outline containing the point, or the
-  nearest within about 5 km (coasts are simplified). The DwC export alone leaves gazetteers and many TDWG areas
-  without a country.
+- Every record is placed by the placement engine (see "How a record is
+  placed"): asserted distributions by their area, specimens and field
+  occurrences by their DwC country, else by their coordinates. Each record
+  carries `part` (France: Corsica, Mainland France) and `state` (six
+  countries) when the engine finds one.
 - Distributions asserted for a biological association (e.g. "egg of Lixus
   bidens collected from stem of Opopanax", in Greece) are not in TaxonWorks'
-  DwC export; the build adds them for each OTU side of the association, with
-  the association's reading shown next to the place.
+  DwC export; the build adds them for each beetle side of the association,
+  with the association's reading shown next to the place. They are asserted
+  distributions on an area, so they are placed like any other.
 - Only Curculionoidea, species and subspecies, present records. One taxon per
   name (several OTUs of a name count once).
-- Duplicate TaxonWorks country areas are merged (`ALIASES`). A gazetteer
-  named after a territory ("TAAF: Île Saint-Paul") goes to that territory
-  before its ISO code is used.
-- French Guiana, Guadeloupe, Martinique, Réunion and Mayotte are filed under
-  France in TaxonWorks but have ISO 3166-1 codes of their own, so they get
-  their own checklists (`SEPARATE`): by their areas (and children), ISO code,
-  name or coordinates. They are cut out of France's outline.
-- Selectable parts (`PARTS`): France's checklist has Mainland France (TDWG
-  "France" 12FRA, whose outline is the mainland only, and France's other
-  subdivisions) and Corsica. Records carry `part`; the page shows parts like
-  states. Records on the political France area or without province count for
-  France only ("no part" in the overview).
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
-  about 5% of the rows. The script uses `/dwc_occurrences.csv` (one request).
+  about 5% of the rows. The download uses `/dwc_occurrences.csv` (one request).
 
 ## Status (reassessed, adventive, endemic)
 
@@ -69,17 +61,6 @@ Following the project's conventions for asserted distributions
   taxon with a chip (the site's purple adventive chip) and "[adventive]" /
   "[endemic]" in the downloads; the CSV has a `status` column.
 
-## Overview of what each checklist contains
-
-The build also writes `public/checklists/overview.html`, open it locally in a
-browser (it is gitignored, so it is not deployed). For every checklist its
-TaxonWorks country areas, map outline, split-off parts, and every place its
-records come from with the rule that placed them; then everything left out,
-by reason. It is a debugging page like curator mode: areas, gazetteers,
-the distribution filter of an area, every listed record's editor and its
-OTU link into TaxonWorks (URL builders from `panels/_shared/curatorMode/`).
-Up to 30 records per row of a checklist, all left-out records.
-
 ## Map
 
 Country outlines come from the species map's shape cache
@@ -87,7 +68,10 @@ Country outlines come from the species map's shape cache
 through its provinces) is not in that cache, and TaxonWorks gives out a shape
 only through a record using it, so those come from
 `public/checklists/fallback-shapes.geojson` (Natural Earth). The script lists
-countries that have neither. The state/province drill-down still uses
+countries that have neither. A checklist filed under another country
+(index.json `of`: French Guiana under France) is cut out of that country's
+outline on the world map: polygons of the country whose centre lies in the
+own checklist's `bbox` are dropped. The state/province drill-down still uses
 `public/checklists/subdivisions.geojson` (Natural Earth).
 
 ## How checklists are formed
@@ -126,12 +110,12 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   of its own, even when TaxonWorks files it under another country (`of:`). An
   area id listed there is removed from the country checklist it would have
   belonged to, so no checklist owns an area id twice.
-- Ids: a merged country has the id of its area with an ISO code (else the first
-  area), the same as before, because country files are named `<id>.json`. An
-  own checklist has the numeric id of its first listed GA area (French Guiana:
-  32253, Guadeloupe: 90), or its ISO code when it lists none (Northern Mariana
-  Islands: `MP`). So the `areas` of Guadeloupe, Martinique, Réunion and Mayotte
-  list the areas of today's country files; do not remove them.
+- Ids and keys: a merged country has the id of its area with an ISO code (else
+  the lowest area id); an own checklist the numeric id of its first listed GA
+  area (French Guiana: 32253), or its ISO code when it lists none (Northern
+  Mariana Islands: `MP`). These ids are internal to the engine. Everything
+  written to `public/checklists/` uses the checklist key instead, the slug of
+  its name (`french-guiana`, see "Building the cache").
 - ISO codes: a country takes its ISO code from its TaxonWorks area. Natural
   Earth country areas and countries used only through subdivisions carry
   none, so the build passes `isoByName` (fourth argument, keys are
@@ -474,6 +458,132 @@ again) but should not be edited, because the next recheck would report it.
 To overrule a measurement, add a manual rule for the same area in the `manual`
 section, with `why`; manual rules win, and the explanation then says that the
 manual rule overrides the measurement and cites both lines.
+
+## Building the cache
+
+Commands (from the project folder):
+
+```
+npm run checklists                                   # download (about 2 minutes) and build
+npm run checklists -- --save                         # the same, and keep the download in modules/checklists/.cache/data
+npm run checklists -- --save /some/dir               # keep it elsewhere
+npm run checklists -- --from                         # build offline from modules/checklists/.cache/data (about 15 seconds)
+npm run checklists -- --from --verbose               # also print every record's decision
+npm run checklists -- --from --explain "AD 556796"   # print one decision and stop
+```
+
+Flags:
+
+- `--save [dir]`: after downloading, write the TaxonWorks data to `dir`
+  (default `modules/checklists/.cache/data`).
+- `--from [dir]`: read the TaxonWorks data from `dir` instead of downloading;
+  nothing touches the network. Use it to try a rule change in seconds.
+- `--verbose`: print every record's decision in the text form of
+  `placement/format.js` (see "Reading an explanation").
+- `--explain <lookup>`: print the decision for one record or area and stop
+  without writing anything. Any form the curator lookup box reads works:
+  `AD 556796`, `co 12`, `FO7`, `GA 8837`, `GZ 10453`.
+
+The saved folder (`scripts/download.mjs`, `FILES`), one file per download:
+
+- `dwc_occurrences.csv`: every DwC occurrence, as TaxonWorks exports it.
+- `distributions.json`: every asserted distribution with
+  `asserted_distribution_shape` and its citations, as the API returns them.
+- `status_tags.json`: tags with the keywords Adventive and Endemic.
+- `reassessments.json`, `reassessment_citations.json`: the Reassessment data
+  attributes of distributions and their citations with source.
+- `associations.json`: the biological associations distributions are asserted for.
+- `association_otus.json`: OTU and taxon name of association OTUs without a
+  DwC row; `otu_parents.json`: the parents of OTUs the DwC export leaves
+  without classification. A stale or hidden OTU is kept as `{ error }`.
+
+`measure-overlap.mjs` reads the same folder.
+
+What the build writes to `public/checklists/`:
+
+- `index.json`: `updated` (local build date), `countries` (one entry per
+  checklist with records: `key`, `file`, `name`, `iso2`, `of` for own
+  checklists filed under another country, `shape` (the cached outline, or
+  null when the page draws the Natural Earth fallback), `bbox` of that outline
+  `[west, south, east, north]`, `parts` (France: name and outline of each part),
+  `states` (true for the six countries browsed by state), `taxa` and
+  `records`), and `unplaced` (records and taxa left out).
+- `countries/<key>.json`: one checklist, a `checklist` header and then its
+  records in the compact form of `data/compact.js`. Records carry `part` and
+  `state` when the engine finds one.
+- `taxa.json`: per higher taxon its number of taxa in each checklist, keyed by
+  the checklist key; the page loads it for the taxon filter.
+- `rules.json`: the compiled rules file (`compileRules`), for the browser.
+- `areas.json`: every area some distribution uses, `{ key, name, origin, type,
+  tdwg, iso2, parentId, parentName, records, placement }`, where `records`
+  counts the build's records on the area (Curculionoidea, species, present;
+  placed or not) and `placement` is the engine's answer with the checklist
+  given by key and name. Parents known only as parents follow with
+  `records: 0` and `placement: null`.
+- `unplaced.json`: the records no rule places, `{ [reason]: [[kind, id], ...] }`
+  with kind `AD`, `CO` or `FO`, the most frequent reason first.
+  `classification lookup failed` lists records whose OTU could not be
+  classified (not counted as left out).
+- `fallback-shapes.geojson` and `subdivisions.geojson` are read, never written.
+- Country files of checklists that no longer exist are removed.
+
+Checklist keys: every checklist is known by its key, the slug of its name
+(`normalizeName`, spaces as hyphens, ASCII only): `french-guiana`,
+`reunion`, `united-states`. The country file is `countries/<key>.json`. No
+numeric id appears in `public/checklists/`. When two checklists would get the
+same key the build stops with an error naming both.
+
+The country file header says what the checklist is made of and how its
+records got there:
+
+- `defined_by`: the TaxonWorks areas the checklist is made of, each with why:
+  a country area `[TaxonWorks]`, a country area that is a spelling of the
+  checklist name (the synonym line, `[manual, placement.yml:N]`), a country
+  used only through its subdivisions (named by their DwC country), or an area
+  listed in an own checklist entry of the rules file.
+- `areas_used`: every area some record of the file points to, with its kind
+  (TaxonWorks area type, or Gazetteer), its number of records and the first
+  step of its decision with the source tag.
+- `specimens`: the number of specimens and field occurrences in the file, and
+  how many were placed which way.
+- `outline` (`GeographicArea/<id>`, `fallback/<name>` or null), `built`, and
+  `rules`, the rules file the decisions cite.
+
+The record counts of `areas_used` plus `specimens.records` equal the number of
+records in the file (tested in `data/compact.test.js`). `expandChecklist`
+ignores the header. Example (French Guiana, 2026-11-20):
+
+```json
+"checklist": {
+  "key": "french-guiana",
+  "name": "French Guiana",
+  "iso2": "GF",
+  "outline": "GeographicArea/32253",
+  "defined_by": [
+    { "area": "GA 32253", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:66]" },
+    { "area": "GA 78", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:66]" },
+    { "area": "GA 34200", "name": "French Guiana", "how": "listed in the checklist entry [manual, placement.yml:66]" }
+  ],
+  "areas_used": [
+    { "area": "GA 32253", "name": "French Guiana", "kind": "Unknown", "records": 31,
+      "how": "GA 32253 French Guiana belongs to the checklist French Guiana [manual, placement.yml:66]" },
+    { "area": "GA 8837", "name": "Cayenne", "kind": "Unknown", "records": 2,
+      "how": "Cayenne is a subdivision of French Guiana (GA 78) [TaxonWorks]" }
+  ],
+  "specimens": { "records": 0, "how": "none" },
+  "built": "2026-11-20",
+  "rules": "modules/checklists/rules/placement.yml"
+}
+```
+
+(Two of its four `areas_used` rows shown.) For a country with specimens,
+`specimens` reads for example `{ "records": 325, "how": "by DwC country 325
+[TaxonWorks]" }`.
+
+The build ends with a summary: placed records by kind and by the source that
+decided the checklist, unplaced records by reason, the number of checklists,
+warnings from `deriveChecklists`, checklists without ISO code, and checklists
+without any outline.
 
 ## Updating
 

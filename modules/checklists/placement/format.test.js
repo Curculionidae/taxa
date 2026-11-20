@@ -5,7 +5,7 @@ import { compileRules } from './rules.js'
 import { toArea } from './areas.js'
 import { deriveChecklists } from './checklists.js'
 import { createContext, placeArea } from './engine.js'
-import { formatPlacement, parseLookup } from './format.js'
+import { formatPlacement, formatStep, parseLookup } from './format.js'
 import * as fx from './fixtures.js'
 
 const yamlText = readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8')
@@ -70,4 +70,10 @@ test('Borneo step tag carries no share', () => {
   const step = 'Borneo spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%'
   assert.ok(text.includes(`  step     ${step}  [overlap, ${ref}]\n`), text)
   assert.ok(!/overlap \d/.test(text))
+})
+
+test('formatStep: one step as text and source tag', () => {
+  assert.equal(formatStep({ text: 'Cayenne is in France (GA 77)', source: 'TaxonWorks' }), 'Cayenne is in France (GA 77) [TaxonWorks]')
+  assert.equal(formatStep({ text: 'x', source: 'manual', ref: 'placement.yml:66' }), 'x [manual, placement.yml:66]')
+  assert.equal(formatStep({ text: 'y', source: 'overlap', ref: 'placement.yml:9', pct: 100, pctOf: 'Russia' }), 'y [overlap 100% Russia, placement.yml:9]')
 })

@@ -61,6 +61,7 @@ import { toArea, normalizeName } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
 import { createContext, placeArea, placeRecord, SEVERAL_STATES } from '../placement/engine.js'
 import { createNodeGeometry, measureShares, listShapes } from './geometry-node.mjs'
+import { parseTsv, level0NamesFrom } from './download.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const MODULE = join(ROOT, 'modules/checklists/')
@@ -96,7 +97,10 @@ for (const ad of distributions) {
 }
 const ordered = [...areas.values()].sort((a, b) => records.get(b.key) - records.get(a.key) || a.key.localeCompare(b.key))
 
-const level0Names = readLevel0Names(join(fromDir, 'dwc_occurrences.csv'), distributions)
+const csvFile = join(fromDir, 'dwc_occurrences.csv')
+if (!existsSync(csvFile)) console.warn(`no ${csvFile}: countries used only through their subdivisions get no checklist`)
+// Names of countries used only through their subdivisions, as the build finds them.
+const level0Names = existsSync(csvFile) ? level0NamesFrom(parseTsv(readFileSync(csvFile, 'utf8')), distributions) : new Map()
 const isoByName = new Map(Object.entries(JSON.parse(readFileSync(join(MODULE, 'scripts/data/country-iso.json'), 'utf8')))
   .map(([name, iso]) => [normalizeName(name), iso]))
 const shapeDir = join(ROOT, 'public/map-shapes')
@@ -290,56 +294,4 @@ function appendToOverlap(text, lines) {
   if (end < 0) end = all.length
   while (end - 1 > start && all[end - 1].trim() === '') end -= 1
   return [...all.slice(0, end), ...lines, ...all.slice(end)].join('\n')
-}
-
-/**
- * Names of countries TaxonWorks uses only through their subdivisions: the DwC
- * country text of distributions on their subdivisions (as the build does).
- * @param {string} csvFile  dwc_occurrences.csv (tab separated, as TaxonWorks exports it)
- * @param {Object[]} distributions
- * @returns {Map<number, string>}  level0 id to country name
- */
-function readLevel0Names(csvFile, distributions) {
-  const names = new Map()
-  if (!existsSync(csvFile)) {
-    console.warn(`no ${csvFile}: countries used only through their subdivisions get no checklist`)
-    return names
-  }
-  const rows = parseTsv(readFileSync(csvFile, 'utf8'))
-  const head = rows[0]
-  const type = head.indexOf('dwc_occurrence_object_type')
-  const id = head.indexOf('dwc_occurrence_object_id')
-  const country = head.indexOf('country')
-  const countryById = new Map()
-  for (const row of rows.slice(1)) {
-    if (row[type] === 'AssertedDistribution' && row[country]) countryById.set(String(row[id]), row[country])
-  }
-  for (const ad of distributions) {
-    const level0 = ad.asserted_distribution_shape?.level0_id
-    if (ad.asserted_distribution_shape_type !== 'GeographicArea' || level0 == null || names.has(level0)) continue
-    const name = countryById.get(String(ad.id))
-    if (name) names.set(level0, name)
-  }
-  return names
-}
-
-// Tab separated values with quoted fields, as in build.mjs.
-function parseTsv(text) {
-  const rows = []
-  let row = []
-  let field = ''
-  let quoted = false
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (quoted) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ } else quoted = false
-      } else field += c
-    } else if (c === '"' && field === '') quoted = true
-    else if (c === '\t') { row.push(field); field = '' }
-    else if (c === '\n') { row.push(field.replace(/\r$/, '')); rows.push(row); row = []; field = '' }
-    else field += c
-  }
-  if (field || row.length) { row.push(field); rows.push(row) }
-  return rows
 }

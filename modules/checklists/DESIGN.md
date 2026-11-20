@@ -123,7 +123,7 @@ the browser. A rule that matches nothing is reported.
   mode): lookup box (GA, GZ, AD, CO, FO), steps, Leaflet map with both outlines; area
   tree (TaxonWorks trees, each area (GA)/(GZ), linked to TaxonWorks, with its
   decision); unplaced records by reason, loaded from TaxonWorks on opening; the
-  decision order and the rules rendered from `rules.json`. Replaces `overview.html`.
+  decision order and the rules rendered from `rules.json`. Replaces the debugging overview page the old build wrote.
 
 ## Live lookup limits
 

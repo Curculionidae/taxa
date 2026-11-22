@@ -144,7 +144,15 @@ lay in no outline; `[TaxonWorks]` unchanged. Done with the review fixes.
   France, regions in the state drill-down, a measured preview for new
   gazetteers on the curator page).
 
-## 6. Rebuild and compare
+## 6. Rebuild and compare (done 2026-11-22)
+
+Result against the cache of 2026-11-20: 0 moved, 0 no longer placed, 117
+newly placed (52 type specimens, 16 by a georeference shape, 6 by a collecting
+event area, 43 new in TaxonWorks), 6 states changed (5 shape, 1 event area), 10
+distributions removed in TaxonWorks and replaced by NZCC and Yonaguni-jima
+gazetteer distributions (same checklists). Approved by the user.
+
+Original plan:
 
 `npm run checklists -- --save` (fresh data), `compare.mjs` against the current
 cache, report every moved record by cause (area, type, ISO citation). Nothing

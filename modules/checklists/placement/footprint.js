@@ -36,6 +36,18 @@ export function parseWkt(wkt) {
 }
 
 /**
+ * The polygons of a footprint (outer ring of at least 3 points), for measuring
+ * how the shape is shared among outlines (engine.js, geometry.js measureShares).
+ * @param {string|null|undefined} wkt
+ * @returns {import('./geometry.js').Polygon[]|null}  null without any
+ */
+export function footprintPolygons(wkt) {
+  const geometry = parseWkt(wkt)
+  const polygons = (geometry ? polygonsOf(geometry) : []).filter((polygon) => polygon[0]?.length >= 3)
+  return polygons.length ? polygons : null
+}
+
+/**
  * A point inside the footprint's largest polygon (see the header).
  * @param {string|null|undefined} wkt
  * @returns {{ lat: number, lng: number }|null}

@@ -65,8 +65,10 @@ export function specimenLabel(dwc) {
 
 /**
  * The Placement of a type specimen whose type status cannot be resolved
- * (typeRow gave `{ unplaced }`): not placeable with that reason, one step
- * quoting the type status.
+ * (typeRow gave `{ left }`): not placeable with that reason, one step
+ * quoting the type status. Such a record is left out of every checklist
+ * (its taxon is unknown); this placement only explains it (--explain, the
+ * curator lookup).
  * @param {Object} dwc  the DwC row (typeStatus)
  * @param {string} reason  from typeRow
  * @returns {import('./engine.js').Placement}

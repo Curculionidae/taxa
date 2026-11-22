@@ -25,7 +25,7 @@
 //         never calls the Geometry and stays synchronous.
 //
 // Every check that runs adds a step, also when it finds nothing (Step.none:
-// 'no manual rule for New Guinea (GZ 3614)'), so an explanation shows each
+// 'no manual rule gives New Guinea (GZ 3614) a country or state'), so an explanation shows each
 // check up to the one that decided. Checks after it do not run.
 //
 // Decision order for an area (the first that applies decides):
@@ -59,7 +59,14 @@
 //  2. the DwC country (TaxonWorks computes it from the georeference or the
 //     collecting event's area), through the synonyms of the rules file; a DwC
 //     country without checklist is not placeable ('no checklist for Kosovo')
-//  3. no DwC country but coordinates: the checklist outline that contains
+//  3a. no DwC country but a georeference shape: the checklist outline holding
+//     share_threshold_percent (90%) or more of it (Geometry.checklistShares,
+//     sampled as the measuring script samples areas); two overlapping outlines
+//     holding it each: not placeable 'georeference shape in several countries
+//     (A, B)'; none: not placeable 'georeference shape spans several
+//     countries'. A shape lying in no outline (at sea) goes on with 3b, its
+//     inside point standing for the coordinates.
+//  3b. no DwC country but coordinates: the checklist outline that contains
 //     them (Geometry.checklistsAt), when exactly one does; when none does, the
 //     one within the coastal tolerance (rules file coastal_tolerance_degrees),
 //     and the step says "within about 5 km of the coast of" and cites that line
@@ -90,7 +97,9 @@
 //    the same checklist in the cache (context `stateAreas`), and that area's
 //    own state decision gives the state, with a step naming both ("DwC
 //    stateProvince Primor'ye is TaxonWorks area GA 20330, which lies in the
-//    state Primorsky Krai" [overlap, that rule's line]); else the state outline
+//    state Primorsky Krai" [overlap, that rule's line]); else, for a
+//    georeference shape, the state outline holding share_threshold_percent of
+//    it (Geometry.stateShares; less: no state, spans several states); else the state outline
 //    that contains the coordinates, else the only one within the coastal
 //    tolerance (Geometry.stateAt) [overlap]; else no state, with the reason.
 // State names are matched only against the states of the chosen checklist
@@ -103,7 +112,8 @@
 // by such a name gets its state from an overlap or manual rule.
 import { normalizeName, containsName, isCountryArea, isStateArea } from './areas.js'
 import { stateIndex, resolveSubdivision, matchSubdivision } from './states.js'
-import { footprintPoint } from './footprint.js'
+import { footprintPoint, footprintPolygons } from './footprint.js'
+import { sharesText } from './geometry.js'
 
 /**
  * Start of a `not_placeable` text that speaks about states, not countries: a
@@ -143,9 +153,16 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
  * @property {'shape'|'eventArea'} [via]  on the first step of a specimen placed through a
  *   point in its georeference shape or through its collecting event area (cacheFiles.mjs
  *   specimensSummary counts by it)
+ * @property {boolean} [shapeShare]  on the step of a specimen placed (or not) by the share of
+ *   its georeference shape (cacheFiles.mjs specimensSummary counts by it)
+ * @property {boolean} [handedOver]  on the steps of a collecting event area that could not
+ *   place the specimen (not measured yet, no outline) before the DwC fields decide; they
+ *   did not decide (cacheFiles.mjs specimensSummary skips them)
  * @property {boolean} [pointTest]  on a `none` step: a point tested against outlines lay in
  *   none (tag [overlap]); other `none` steps of the overlap section are rule lookups
- * @property {boolean} [none]  a check that ran and found nothing ('no manual rule for
+ * @property {boolean} [measured]  on a `none` overlap rule lookup: the area has overlap lines,
+ *   none of the kind looked for (tag [overlap, no such rule])
+ * @property {boolean} [none]  a check that ran and found nothing ('no manual rule gives
  *   New Guinea (GZ 3614)'); printed in every explanation, skipped where the step
  *   that decided is wanted (format.js decidingStep, overview.js sourceTags)
  *
@@ -175,6 +192,11 @@ export const OUTSIDE_CHECKLISTS = 'outside every checklist outline'
  * @property {(checklistId: number|string, point: [number, number]) => Promise<{ name: string, by: 'outline'|'box' }|null>} partAt
  *   the part of that checklist (France: Corsica) whose outline holds the point (by
  *   'outline'), else whose `box` from the rules file holds it (by 'box'); null when none (R19)
+ * @property {(polygons: import('./geometry.js').Polygon[]) => Promise<import('./geometry.js').Shares>} [checklistShares]
+ *   how a shape (a specimen's georeference shape) is shared among the checklist
+ *   outlines (geometry.js measureShares, as the measuring script measures areas)
+ * @property {(checklistId: number|string, polygons: import('./geometry.js').Polygon[]) => Promise<import('./geometry.js').Shares>} [stateShares]
+ *   the same among the state outlines of that checklist
  * @property {(checklistId: number|string) => { name: string }[]} stateNames
  *   the states of a checklist with `states` (subdivisions.geojson `properties.name`);
  *   [] for any other checklist
@@ -324,24 +346,26 @@ export async function placeRecord(record, ctx, area) {
     if (!area) throw new Error(`placeRecord: asserted distribution ${record.id} needs its area`)
     const decision = decideArea(area, ctx)
     const before = decision.steps.length
-    const state = decision.checklist ? areaState(area, decision.checklist, ctx, decision.steps) : null
+    const state = decision.checklist ? areaState(area, decision.checklist, ctx, decision.steps, decision) : null
     stamp(decision.steps, before, 'state')
     return finish(decision, state, ctx)
   }
   // Coordinates, else a point inside the georeference shape (footprintWKT).
-  let point = pointOf(record)
-  const shapePoint = point ? null : footprintPoint(record.footprint)
-  if (shapePoint) point = shapePoint
+  // The shape itself is measured against the outlines where a point would be tested.
+  const location = recordLocation(record)
+  const point = location?.point ?? null
+  const shape = location?.shape ?? null
+  const shapePoint = shape ? point : null
   // Without either, the collecting event's area decides as for an asserted
   // distribution on it (the DwC names are derived from that area).
   const lead = shapePoint
-    ? [{ text: `the georeference is a shape; the point ${shapePoint.lat}, ${shapePoint.lng} inside it is used`, source: 'TaxonWorks', via: 'shape' }]
+    ? [{ text: `the georeference is a shape; its inside point is ${shapePoint.lat}, ${shapePoint.lng}`, source: 'TaxonWorks', via: 'shape' }]
     : point ? [] : [noPointStep(record), ...eventAreaSteps(record)]
   if (!point && record.eventArea?.name != null && record.type !== 'FieldOccurrence') {
     const byArea = decideArea(record.eventArea, ctx)
     if (byArea.checklist) {
       const before = byArea.steps.length
-      const state = areaState(record.eventArea, byArea.checklist, ctx, byArea.steps)
+      const state = areaState(record.eventArea, byArea.checklist, ctx, byArea.steps, byArea)
       stamp(byArea.steps, before, 'state')
       byArea.steps.unshift(...stamped(lead, 'checklist'))
       return finish(byArea, state, ctx)
@@ -352,10 +376,12 @@ export async function placeRecord(record, ctx, area) {
       byArea.steps.unshift(...stamped(lead, 'checklist'))
       return finish(byArea, null, ctx)
     }
-    for (const step of lead) delete step.via // the area did not decide
+    // The area did not decide: its steps are marked, so no summary counts them as the way.
+    for (const step of lead) delete step.via
+    for (const step of [...lead, ...byArea.steps]) if (!step.none) step.handedOver = true
     lead.push(...byArea.steps, none('the area cannot be placed by its outline yet, so the DwC fields are read', 'TaxonWorks'))
   }
-  const decision = await decideRecord(record, point, ctx)
+  const decision = await decideRecord(record, point, ctx, shape)
   decision.steps.unshift(...lead)
   stamp(decision.steps, 0, 'checklist')
   if (!decision.checklist) return finish(decision, null, ctx)
@@ -363,7 +389,7 @@ export async function placeRecord(record, ctx, area) {
   decision.part = decision.part ?? await recordPart(record, point, decision.checklist, ctx, decision.steps)
   stamp(decision.steps, before, 'part')
   before = decision.steps.length
-  const state = await recordState(record, point, decision.checklist, ctx, decision.steps)
+  const state = await recordState(record, point, decision.checklist, ctx, decision.steps, shape)
   stamp(decision.steps, before, 'state')
   return finish(decision, state, ctx)
 }
@@ -442,7 +468,10 @@ function finish(decision, state, ctx) {
 // so the explanation shows each check of the order up to the one that decided.
 function decide(area, ctx) {
   const checked = []
-  const decided = (decision) => ({ ...decision, steps: [...checked, ...decision.steps] })
+  // noManualRule / noOverlapRule: the country stage found no rule of that kind
+  // for the area, so no rule of it gives a state either (areaState skips that check).
+  const found = { noManualRule: false, noOverlapRule: false }
+  const decided = (decision) => ({ ...decision, steps: [...checked, ...decision.steps], ...found })
   const manual = findRule(ctx.rules.manual, area)
   const overlap = findRule(ctx.rules.overlap, area)
   if (manual) {
@@ -450,7 +479,8 @@ function decide(area, ctx) {
     const override = overlap ? `; overrides the overlap measurement${measured} (${overlap.ref})` : ''
     return applyRule(manual, 'manual', area, ctx, override)
   }
-  checked.push(none(`no manual rule for ${label(area)}`, 'manual'))
+  checked.push(none(`no manual rule gives ${label(area)} a country or state`, 'manual'))
+  found.noManualRule = true
 
   const own = ownChecklist(area, ctx)
   if (own) return decided(own)
@@ -481,7 +511,8 @@ function decide(area, ctx) {
     : `${label(area)} is no gazetteer; only a gazetteer is placed by its ISO code`, 'TaxonWorks'))
 
   if (overlap) return decided(applyRule(overlap, 'overlap', area, ctx, ''))
-  checked.push(none(`no overlap rule for ${label(area)}`, 'overlap'))
+  checked.push(none(`no overlap rule gives ${label(area)} a country or state`, 'overlap', { measured: hasOverlapLine(area, ctx) }))
+  found.noOverlapRule = true
 
   const key = shapeKey(area.kind, area.id)
   if (!ctx.shapes.has(key)) {
@@ -496,11 +527,34 @@ function decide(area, ctx) {
   }]))
 }
 
+// What the shares of a georeference shape say, by the threshold: one outline
+// holds it (`one`, `pct` rounded), several overlapping outlines each hold the
+// threshold (`several`, their names), or it spans several (neither); `text`
+// is the shares as text (geometry.js sharesText, never showing the threshold
+// for a share below it).
+function shareVerdict(shares, percent) {
+  const text = sharesText(shares, { below: percent })
+  const over = shares.filter(([, pct]) => pct >= percent).map(([name]) => name)
+  if (over.length > 1) return { several: [...over].sort((a, b) => a.localeCompare(b, 'en')).join(', '), text }
+  if (over.length === 1) return { one: over[0], pct: Math.round(shares[0][1]), text }
+  return { text }
+}
+
 // A check that ran and found nothing (Step.none). `pointTest` marks a point
-// tested against outlines that lay in none (format.js tags it [overlap], not
-// [overlap, never measured]).
-function none(text, source, { pointTest = false } = {}) {
-  return pointTest ? { text, source, none: true, pointTest: true } : { text, source, none: true }
+// tested against outlines that lay in none (format.js tags it [overlap]);
+// `measured` marks an overlap rule lookup for an area that has overlap lines,
+// just none of the kind looked for ([overlap, no such rule], else [overlap,
+// never measured]).
+function none(text, source, { pointTest = false, measured = false } = {}) {
+  const step = { text, source, none: true }
+  if (pointTest) step.pointTest = true
+  if (measured) step.measured = true
+  return step
+}
+
+// Does any overlap line of the rules file match the area (it was measured)?
+function hasOverlapLine(area, ctx) {
+  return ctx.rules.overlap.some((rule) => ruleMatches(rule, area))
 }
 
 /**
@@ -511,13 +565,28 @@ function none(text, source, { pointTest = false } = {}) {
  * @returns {boolean}
  */
 export function hasPoint(record) {
-  return pointOf(record) !== null || footprintPoint(record.footprint) !== null
+  return recordLocation(record) !== null
+}
+
+/**
+ * Where the engine looks for a specimen: its coordinates, else the point inside
+ * its georeference shape (footprint.js) with the shape's polygons; null for
+ * neither. placeRecord uses it, and the curator map shows the same.
+ * @param {RecordInput} record
+ * @returns {{ point: { lat: number, lng: number }, shape: import('./geometry.js').Polygon[]|null }|null}
+ */
+export function recordLocation(record) {
+  const point = pointOf(record)
+  if (point) return { point, shape: null }
+  const shapePoint = footprintPoint(record.footprint)
+  if (!shapePoint) return null
+  return { point: shapePoint, shape: footprintPolygons(record.footprint) }
 }
 
 // Why step 3 found no country: a gazetteer has none in TaxonWorks; an area
 // without level0 has no parent, or a parent without checklist.
 function noCountryText(area, ctx) {
-  if (area.kind === 'GZ') return `${label(area)} is a gazetteer, which has no country in TaxonWorks`
+  if (area.kind === 'GZ') return `${label(area)} is a gazetteer; TaxonWorks gives gazetteers no country or parent`
   if (area.parentId == null) return `${label(area)} has no country and no parent in TaxonWorks`
   const parent = area.parentName ? `${area.parentName} (GA ${area.parentId})` : `GA ${area.parentId}`
   return `${label(area)} has no country in TaxonWorks, and its parent ${parent} has no checklist`
@@ -696,7 +765,7 @@ function synonymLine(ctx, name, checklistName) {
 }
 
 // The decision for a specimen or field occurrence (order at the top of the file).
-async function decideRecord(record, point, ctx) {
+async function decideRecord(record, point, ctx, shape = null) {
   // 1. A checklist of its own, by a name in the DwC country, or in the
   // stateProvince or county when the DwC country is empty or is the country the
   // entry is filed under (`of`), so a county abroad is never captured.
@@ -741,7 +810,37 @@ async function decideRecord(record, point, ctx) {
   }
   checked.push(none('no DwC country', 'TaxonWorks'))
 
-  // 3. The coordinates, inside exactly one checklist outline.
+  // 3a. A georeference shape: its share of the checklist outlines, by the
+  // share_threshold_percent of the rules file, as the measuring script places areas.
+  if (shape && ctx.geometry?.checklistShares && ctx.rules.shareThreshold) {
+    const { shares } = await ctx.geometry.checklistShares(shape)
+    if (shares.length) {
+      const { percent, ref } = ctx.rules.shareThreshold
+      const verdict = shareVerdict(shares, percent)
+      const step = (text) => ({ text, source: 'overlap', ref, shapeShare: true })
+      if (verdict.one) {
+        const checklist = ctx.byName.get(normalizeName(verdict.one))
+        // The outlines measured are checklist outlines, by checklist name.
+        if (!checklist) throw new Error(`engine: the outline ${verdict.one} has no checklist`)
+        return decided(placed(checklist, [{
+          ...step(`${verdict.pct}% of the georeference shape lies in ${verdict.one} (${verdict.text}); ${percent}% or more decides`),
+          pct: verdict.pct, pctOf: verdict.one
+        }]))
+      }
+      if (verdict.several) {
+        // Two outlines overlap there (as coordinates inside both: several countries).
+        return decided(notPlaced(`georeference shape in several countries (${verdict.several})`, [
+          step(`${percent}% or more of the georeference shape lies in each of ${verdict.several} (${verdict.text}); their outlines overlap`)
+        ]))
+      }
+      return decided(notPlaced('georeference shape spans several countries', [
+        step(`the georeference shape spans several countries (${verdict.text}); none holds ${percent}%`)
+      ]))
+    }
+    checked.push(none('the georeference shape lies in no checklist outline, so its inside point is tested', 'overlap', { pointTest: true }))
+  }
+
+  // 3b. The coordinates (or the shape's inside point), inside exactly one checklist outline.
   if (point) {
     const where = `coordinates ${point.lat}, ${point.lng}`
     if (!ctx.geometry) {
@@ -826,13 +925,18 @@ async function recordPart(record, point, checklist, ctx, steps) {
 }
 
 // The state of an asserted distribution's area, adding its step; null when none.
-function areaState(area, checklist, ctx, steps) {
+// `answered` (from decide): the country stage found no manual (noManualRule)
+// or no overlap rule (noOverlapRule) for the area; a rule that gives a state
+// also gives the country, so that state check could find nothing and is skipped.
+function areaState(area, checklist, ctx, steps, answered = {}) {
   if (!checklist.states) return null
   const index = statesOf(checklist, ctx)
   // A manual state rule wins over names, as manual rules do for countries.
-  const ruled = stateByRule(area, checklist, ctx, index, [[ctx.rules.manual, 'manual']], steps)
-  if (ruled) return ruled
-  steps.push(none(`no manual rule gives ${label(area)} a state`, 'manual'))
+  if (!answered.noManualRule) {
+    const ruled = stateByRule(area, checklist, ctx, index, [[ctx.rules.manual, 'manual']], steps)
+    if (ruled) return ruled
+    steps.push(none(`no manual rule gives ${label(area)} a state`, 'manual'))
+  }
   const noLevels = area.kind === 'GZ' || String(area.origin ?? '').includes('tdwg')
   const parentIsCountry = area.parentId != null && checklist.areaIds.includes(area.parentId)
   if (noLevels || isStateArea(area, parentIsCountry)) {
@@ -867,9 +971,11 @@ function areaState(area, checklist, ctx, steps) {
   else if (parentIsState) parentText = `the parent ${area.parentName}${parentKey} is no state name of ${checklist.name}`
   else parentText = `the parent ${area.parentName}${parentKey} is not the state-level area of ${area.name} in TaxonWorks`
   steps.push(none(parentText, 'TaxonWorks'))
-  const measured = stateByRule(area, checklist, ctx, index, [[ctx.rules.overlap, 'overlap']], steps)
-  if (measured) return measured
-  steps.push(none(`no overlap rule gives ${label(area)} a state`, 'overlap'))
+  if (!answered.noOverlapRule) {
+    const measured = stateByRule(area, checklist, ctx, index, [[ctx.rules.overlap, 'overlap']], steps)
+    if (measured) return measured
+    steps.push(none(`no overlap rule gives ${label(area)} a state`, 'overlap', { measured: hasOverlapLine(area, ctx) }))
+  }
   const sections = [[ctx.rules.manual, 'manual'], [ctx.rules.overlap, 'overlap']]
   if (area.kind === 'GA' && checklist.areaIds.includes(area.id)) {
     steps.push({ text: 'no state: record is for the whole country', source: 'TaxonWorks' })
@@ -883,7 +989,8 @@ function areaState(area, checklist, ctx, steps) {
       steps.push(ruleStep(spans, source, `no state: ${spans.action.notPlaceable}${shares ? `: ${shares}` : ''}`))
       return null
     }
-    steps.push(none(`no ${source} rule says ${label(area)} spans several states or lies outside them`, source))
+    steps.push(none(`no ${source} rule says ${label(area)} spans several states or lies outside them`, source,
+      { measured: source === 'overlap' && hasOverlapLine(area, ctx) }))
   }
   const key = shapeKey(area.kind, area.id)
   if (!ctx.shapes.has(key)) steps.push({ text: 'no state: no outline to measure', source: 'TaxonWorks' })
@@ -908,7 +1015,7 @@ function stateByRule(area, checklist, ctx, index, sections, steps) {
 }
 
 // The state of a specimen or field occurrence, adding its step; null when none.
-async function recordState(record, point, checklist, ctx, steps) {
+async function recordState(record, point, checklist, ctx, steps, shape = null) {
   if (!checklist.states) return null
   const province = text(record.stateProvince)
   const named = province ? matchSubdivision(statesOf(checklist, ctx), province) : null
@@ -936,6 +1043,23 @@ async function recordState(record, point, checklist, ctx, steps) {
     steps.push(none(area
       ? `DwC stateProvince ${province} is TaxonWorks area ${area.key}, which has no state`
       : `DwC stateProvince ${province} is no TaxonWorks area of ${checklist.name} in the cache`, 'TaxonWorks'))
+  }
+  // A georeference shape: its share of the state outlines (share_threshold_percent).
+  if (shape && ctx.geometry?.stateShares && ctx.rules.shareThreshold) {
+    const { shares } = await ctx.geometry.stateShares(checklist.id, shape)
+    if (shares.length) {
+      const { percent, ref } = ctx.rules.shareThreshold
+      const verdict = shareVerdict(shares, percent)
+      if (verdict.one) {
+        steps.push({ text: `${verdict.pct}% of the georeference shape lies in the state ${verdict.one} (${verdict.text}); ${percent}% or more decides`, source: 'overlap', ref, pct: verdict.pct, pctOf: verdict.one })
+        return verdict.one
+      }
+      steps.push(verdict.several
+        ? { text: `no state: ${percent}% or more of the georeference shape lies in each of the states ${verdict.several} (${verdict.text}); their outlines overlap`, source: 'overlap', ref }
+        : { text: `no state: the georeference shape spans several states (${verdict.text}); none holds ${percent}%`, source: 'overlap', ref })
+      return null
+    }
+    steps.push(none(`the georeference shape lies in no state outline of ${checklist.name}, so its inside point is tested`, 'overlap', { pointTest: true }))
   }
   if (point && ctx.geometry) {
     const where = `coordinates ${point.lat}, ${point.lng}`

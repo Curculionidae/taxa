@@ -115,14 +115,17 @@
               />
             </div>
 
+            <!-- The map box is kept while a lookup runs (no jump when the result
+                 arrives) and shows that it is loading. -->
             <div
-              v-if="result && !result.error"
+              v-if="busy || (result && !result.error)"
               class="rounded-lg border border-base-border bg-base-foreground p-4"
             >
               <PlacementMap
                 :own="mapLayers.own"
                 :assigned="mapLayers.assigned"
                 :own-kind="mapLayers.ownKind"
+                :loading="busy"
               />
             </div>
           </template>
@@ -170,6 +173,7 @@ import { loadCacheContext, siteFetchJson } from './placement/geometry-browser.js
 import { lookupLive, cacheStatus, placeLive, otuLeftOut } from './placement/live.js'
 import { makeAPIRequest } from '@/utils/request'
 import { cachedPlacement, differsFromCache } from './placement/overview.js'
+import { recordLocation } from './placement/engine.js'
 import { expandChecklist } from './data/compact.js'
 import { useCuratorMode, twEditUrl, twRecordUrl, twOtuUrl } from '../../panels/_shared/curatorMode/curatorMode.js'
 import PlacementLookup from './components/PlacementLookup.vue'
@@ -299,6 +303,8 @@ async function runLookup(text) {
     return
   }
   busy.value = true
+  // The layers of the last lookup would stand for this one while it loads.
+  mapLayers.value = { own: null, assigned: null, ownKind: null }
   try {
     const areaLookup = parsed.kind === 'GA' || parsed.kind === 'GZ'
     const [{ ctx, context }, areas] = await Promise.all([cacheContext(), areaLookup ? areasFile() : null])
@@ -347,15 +353,15 @@ async function recordStatus({ kind, id }, live, placement) {
   const name = placement.checklist?.name ?? null
   const entry = name ? index.countries.find((country) => country.name === name) : null
   const records = entry ? await countryRecords(entry.file) : null
-  let status = cacheStatus({ kind, id, dwc: live.dwc ?? null, absent: live.absent }, { checklistName: name, records, unplaced })
+  let status = cacheStatus({ kind, id, dwc: live.dwc ?? null, absent: live.absent, typeReason: live.typeReason ?? null }, { checklistName: name, records, unplaced })
   // A record the cache does not list may belong to an OTU the build leaves
   // out (a genus, a host plant, whose specimens have no superfamily in their
   // DwC row): ask TaxonWorks for the OTU's rank and parents.
   if (!status.listed && status.text === 'not listed in the cache' && live.otuId) {
     const reason = await otuReason(live.otuId)
-    if (reason) status = { listed: false, text: `not listed: ${reason}` }
+    if (reason) status = { listed: false, text: `not listed: ${reason}`, leftOut: true }
   }
-  const leftOut = live.absent || /^not listed: (rank|no OTU|recorded as absent|not in |distribution is absent)/.test(status.text)
+  const leftOut = live.absent || status.leftOut
   const differs = !leftOut && differsFromCache(placement, cachedPlacement({ kind, id }, { checklistName: name, records, unplaced }))
   return { ...status, differs }
 }
@@ -411,11 +417,23 @@ async function layersOf(live, placement, ctx, context) {
   } else if (live.record.type === 'AssertedDistribution') {
     notes.push('The distribution has no area to show on the map.')
   } else {
-    const lat = Number(live.record.lat)
-    const lng = Number(live.record.lng)
-    const hasPoint = String(live.record.lat ?? '').trim() !== '' && String(live.record.lng ?? '').trim() !== '' && Number.isFinite(lat) && Number.isFinite(lng)
-    if (hasPoint) own = { label: `coordinates ${lat}, ${lng}`, point: [lat, lng] }
-    else notes.push('The record has no coordinates to show on the map.')
+    // What the engine tested (engine.js recordLocation): coordinates, else the
+    // georeference shape with its inside point; else the collecting event area
+    // when that area placed the record.
+    const location = recordLocation(live.record)
+    const eventArea = live.record.eventArea
+    if (location?.shape) {
+      own = { label: `the georeference shape, inside point ${location.point.lat}, ${location.point.lng}`, polygons: location.shape, point: [location.point.lat, location.point.lng] }
+    } else if (location) {
+      own = { label: `coordinates ${location.point.lat}, ${location.point.lng}`, point: [location.point.lat, location.point.lng] }
+    } else if (eventArea?.name != null && placement.steps.some((step) => step.via === 'eventArea')) {
+      const key = `${SHAPE_KIND[eventArea.kind]}/${eventArea.id}`
+      const polygons = ctx.shapes.has(key) ? await geometry.outlinePolygons(key) : null
+      if (polygons?.length) own = { label: `${eventArea.name} (${eventArea.key}), the collecting event's area`, polygons }
+      else notes.push(`No outline cached for the collecting event's area ${eventArea.name} (${eventArea.key}).`)
+    } else {
+      notes.push('The record has no coordinates, no georeference shape and no collecting event area that placed it.')
+    }
   }
 
   let assigned = null

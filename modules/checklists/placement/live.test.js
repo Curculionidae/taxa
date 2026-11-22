@@ -119,6 +119,13 @@ test('lookupLive: GZ through any distribution on it', async () => {
   })
 })
 
+test('lookupLive: a distribution on another area than asked for is not taken', async () => {
+  const other = { ...AD_556796, asserted_distribution_shape_type: 'GeographicArea', asserted_distribution_shape: { ...AREA_22258, id: 99 } }
+  assert.deepEqual(await lookupLive({ kind: 'GA', id: 22258 }, stub({ '/asserted_distributions': [other] })), { error: 'used by no record' })
+  const gazetteer = { ...other, asserted_distribution_shape_type: 'Gazetteer', asserted_distribution_shape: AREA_22258 }
+  assert.deepEqual(await lookupLive({ kind: 'GA', id: 22258 }, stub({ '/asserted_distributions': [gazetteer] })), { error: 'used by no record' })
+})
+
 test('lookupLive: a GA no distribution uses is "used by no record", with children for a parent stub', async () => {
   const request = stub({ '/asserted_distributions': [] })
   assert.deepEqual(await lookupLive({ kind: 'GA', id: 5 }, request), { error: 'used by no record' })
@@ -152,16 +159,16 @@ const UNPLACED = { 'locality text only': [['CO', 12], ['FO', 4]] }
 
 test('cacheStatus: listed in the checklist file of the result', () => {
   assert.deepEqual(cacheStatus({ kind: 'CO', id: 1385165 }, { checklistName: 'Ukraine', records: COUNTRY_RECORDS, unplaced: UNPLACED }), {
-    listed: true, text: 'listed in Ukraine (state Kyiv)'
+    listed: true, text: 'listed in Ukraine (state Kyiv)', leftOut: false
   })
   assert.deepEqual(cacheStatus({ kind: 'AD', id: 556796 }, { checklistName: 'French Guiana', records: COUNTRY_RECORDS, unplaced: UNPLACED }), {
-    listed: true, text: 'listed in French Guiana'
+    listed: true, text: 'listed in French Guiana', leftOut: false
   })
 })
 
 test('cacheStatus: unplaced in the cache, with the reason', () => {
   assert.deepEqual(cacheStatus({ kind: 'FO', id: 4 }, { checklistName: null, records: null, unplaced: UNPLACED }), {
-    listed: false, text: 'not listed: locality text only'
+    listed: false, text: 'not listed: locality text only', leftOut: false
   })
 })
 
@@ -177,6 +184,17 @@ test('cacheStatus: outside the scope of the checklists, from the DwC fields', ()
   assert.equal(cacheStatus({ kind: 'CO', id: 1, dwc: { taxonRank: 'species' } }, { checklistName: null, records: [], unplaced: {} }).text, 'not listed: no OTU')
   assert.equal(cacheStatus({ kind: 'AD', id: 1, absent: true }, { checklistName: null, records: null, unplaced: {} }).text,
     'not listed: distribution is absent')
+})
+
+test('cacheStatus: leftOut marks what the build screening leaves out, never an unplaced reason', () => {
+  const at = (record) => cacheStatus(record, { checklistName: null, records: [], unplaced: { 'no OTU of the area': [['CO', 9]] } })
+  assert.equal(at({ kind: 'CO', id: 1, dwc: { taxonRank: 'genus' } }).leftOut, true)
+  assert.equal(at({ kind: 'AD', id: 1, absent: true }).leftOut, true)
+  // An unplaced reason that starts like a screening reason stays unplaced.
+  assert.equal(at({ kind: 'CO', id: 9, dwc: { taxonRank: 'species', otu_id: 7, superfamily: 'Curculionoidea' } }).leftOut, false)
+  // An undetermined type whose taxon is unknown is left out with its reason.
+  assert.deepEqual(at({ kind: 'CO', id: 2, dwc: {}, typeReason: 'type status names no single taxon' }),
+    { listed: false, text: 'not listed: type status names no single taxon', leftOut: true })
 })
 
 test('lookupLive: an AD without area gives the build text "distribution has no area"', async () => {

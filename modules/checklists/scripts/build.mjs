@@ -132,7 +132,7 @@ log(`${data.statusTags.length} adventive/endemic tags, ${data.reassessments.leng
 // (buildContext.mjs, shared with compare.mjs).
 const {
   rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
-  typeReasonPlacement, checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+  checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
   screenRow
 } = await createBuildContext(data, { root: ROOT, log, fromDir })
 
@@ -180,15 +180,8 @@ const unplaced = { records: 0, taxa: new Set() }
 const recordsByArea = new Map() // area key -> number of records on it (placed or not)
 const placedBy = new Map() // 'AD [TaxonWorks]' -> count
 for (const row of rows) {
-  const { left, unplaced: typeReason, classification, lookupFailed, ad } = screenRow(row)
+  const { left, classification, lookupFailed, ad } = screenRow(row)
   if (left) continue
-  if (typeReason) {
-    // Placed (not placeable) by specimen.js typeReasonPlacement, as the curator page does.
-    const placement = typeReasonPlacement(row, typeReason)
-    if (verbose) console.log(formatPlacement(subjectOf(row, null), placement))
-    unplacedEntries.push({ reason: placement.reason, kind: 'CO', id: Number(row.dwc_occurrence_object_id), country: row.country })
-    continue
-  }
 
   const type = row.dwc_occurrence_object_type
   const kind = KIND[type] ?? type

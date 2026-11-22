@@ -241,3 +241,11 @@ test('Node geometry: Norfolk Island takes its Natural Earth outline (outline: na
   assert.deepEqual(await geometry.checklistsAt([159.05, -31.55]), { ids: [6], near: false })
   assert.deepEqual(await geometry.checklistsAt([167.95, -29.05]), { ids: [7], near: false })
 })
+
+test('sharesText: top four rounded, never the threshold for a share below it', async () => {
+  const { sharesText } = await import('../placement/geometry.js')
+  assert.equal(sharesText([['A', 62.4], ['B', 37.6]]), 'A 62%, B 38%')
+  assert.equal(sharesText([['A', 89.96], ['B', 10.04]], { below: 90 }), 'A 89.9%, B 10%')
+  assert.equal(sharesText([['A', 90.2]], { below: 90 }), 'A 90%')
+  assert.equal(sharesText([]), 'no sample in any outline')
+})

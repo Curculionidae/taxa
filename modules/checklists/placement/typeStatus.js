@@ -13,7 +13,8 @@
 //         on the curator page), so both use this one function.
 // Output: typeStatusName: the status, the name as printed, the authorship;
 //         resolveTypeName: { taxonName, valid, otuId } or { error };
-//         typeRow: the DwC row completed with the valid name, or { unplaced }.
+//         typeRow: the DwC row completed with the valid name, or { left }: a
+//         type whose taxon cannot be known is left out of every checklist.
 // Requests (resolveTypeName):
 //   GET /taxon_names?name=<name>&name_exact=true   the name exactly as printed,
 //       subgenus and "var." included (only then does the exact search find it;
@@ -22,9 +23,10 @@
 //   GET /otus?taxon_name_id[]=<valid id>            its OTU
 // Purity: no state; resolveTypeName talks to TaxonWorks only through `get`.
 
+import { splitScientificName } from '../../../panels/_shared/scientificName.js'
+
 // Rank words between epithets ("var. vicinus").
 const RANK_WORD = /^(var|subsp|ssp|ab|f|forma|morpha|nat)\.$/
-const EPITHET = /^[a-zà-ÿ][a-zà-ÿ'-]*$/
 const SUBGENUS = /^\([A-Z][a-zà-ÿ]+\)$/
 const SIC = /^\[sic\]$/i
 
@@ -46,22 +48,15 @@ export function typeStatusName(typeStatus) {
   return parts.every((part) => part.name === parts[0].name && part.author === parts[0].author) ? parts[0] : null
 }
 
-// One "<status> of <name> <author>".
+// One "<status> of <name> <author>". The name and the authorship are split by
+// the site's shared splitter (panels/_shared/scientificName.js), which knows
+// author particles ("de Marseul", "von Heyden"), rank words and [sic].
 function oneStatus(text) {
   const at = text.lastIndexOf(' of ')
   if (at < 0) return null
-  const tokens = text.slice(at + 4).trim().split(/\s+/)
-  if (!/^[A-Z]/.test(tokens[0] ?? '')) return null
-  let end = 1
-  const skip = () => { while (SIC.test(tokens[end] ?? '')) end++ }
-  skip()
-  if (SUBGENUS.test(tokens[end] ?? '')) end++
-  skip()
-  while (end < tokens.length && (EPITHET.test(tokens[end]) || (RANK_WORD.test(tokens[end]) && EPITHET.test(tokens[end + 1] ?? '')))) {
-    end++
-    skip()
-  }
-  return { status: text.slice(0, at).trim(), name: tokens.slice(0, end).join(' '), author: tokens.slice(end).join(' ') }
+  const { italic, plain } = splitScientificName(text.slice(at + 4))
+  if (!italic) return null
+  return { status: text.slice(0, at).trim(), name: italic, author: plain }
 }
 
 // The epithets of a name: its words after the genus, without a subgenus in
@@ -97,19 +92,28 @@ export function pickTaxonName(hits, parsed) {
 
 /**
  * The valid name and OTU of a type status name (see the header for the requests).
+ * A client error of TaxonWorks (403, 404: a hidden or deleted name) is the
+ * result `{ error }`, never an exception, so one such name does not stop the
+ * build's download.
  * @param {{ name: string }} parsed  from typeStatusName
- * @param {(path: string, params?: Object) => Promise<any>} get  TaxonWorks JSON
+ * @param {(path: string, params?: Object) => Promise<any>} get  TaxonWorks JSON, or
+ *   `{ error: '404 /taxon_names/5' }` for a client error (download.mjs jsonOrError;
+ *   live.js turns the axios rejection into the same)
  * @returns {Promise<{ taxonName: Object, valid: Object, otuId: number } | { error: string }>}
  */
 export async function resolveTypeName(parsed, get) {
+  const failed = (answer) => answer && !Array.isArray(answer) && answer.error
   const hits = await get('/taxon_names', { name: parsed.name, name_exact: true })
+  if (failed(hits)) return { error: `TaxonWorks lookup failed (${hits.error})` }
   const named = (Array.isArray(hits) ? hits : []).filter((hit) => hit.rank != null)
   if (!named.length) return { error: 'type status name not found in TaxonWorks' }
   const taxonName = pickTaxonName(named, parsed)
   if (!taxonName) return { error: 'type status name is ambiguous in TaxonWorks' }
   const validId = taxonName.cached_valid_taxon_name_id ?? taxonName.id
   const valid = validId === taxonName.id ? taxonName : await get(`/taxon_names/${validId}`)
+  if (failed(valid)) return { error: `TaxonWorks lookup failed (${valid.error})` }
   const otus = await get('/otus', { taxon_name_id: [validId] })
+  if (failed(otus)) return { error: `TaxonWorks lookup failed (${otus.error})` }
   const list = Array.isArray(otus) ? otus : []
   if (!list.length) return { error: 'no OTU' }
   // Several OTUs on the name: the unnamed ones (an OTU with a name of its own is
@@ -132,6 +136,17 @@ export function typeNameKey(parsed) {
 }
 
 /**
+ * Is the DwC row an undetermined type specimen: a collection object with a
+ * type status and no OTU (no determination)? Only such a row is completed by
+ * typeRow; the curator page asks the same before resolving its type status.
+ * @param {Object} row  a DwC row (dwc_occurrence_object_type, otu_id, typeStatus)
+ * @returns {boolean}
+ */
+export function isUndeterminedType(row) {
+  return row.dwc_occurrence_object_type === 'CollectionObject' && !row.otu_id && Boolean(String(row.typeStatus ?? '').trim())
+}
+
+/**
  * A DwC row of an undetermined type specimen, completed from its resolved
  * type status name: otu_id, scientificName (with authorship, as TaxonWorks'
  * DwC writes it), scientificNameAuthorship, taxonRank and typeLabel; the
@@ -139,15 +154,16 @@ export function typeNameKey(parsed) {
  * Any other row comes back unchanged.
  * @param {Object} row  a DwC row (CSV strings)
  * @param {Object} typeNames  { [typeNameKey]: resolveTypeName result } (download part type_names.json)
- * @returns {Object|{ unplaced: string }}
+ * @returns {Object|{ left: string }}  left: why the taxon is unknown; the record is
+ *   then left out of every checklist (no taxon, no checklist entry)
  */
 export function typeRow(row, typeNames) {
-  if (row.dwc_occurrence_object_type !== 'CollectionObject' || row.otu_id || !String(row.typeStatus ?? '').trim()) return row
+  if (!isUndeterminedType(row)) return row
   const parsed = typeStatusName(row.typeStatus)
-  if (!parsed) return { unplaced: 'type status names no single taxon' }
+  if (!parsed) return { left: 'type status names no single taxon' }
   const resolved = typeNames?.[typeNameKey(parsed)]
-  if (!resolved) return { unplaced: 'type status name not looked up' }
-  if (resolved.error) return { unplaced: resolved.error }
+  if (!resolved) return { left: 'type status name not looked up' }
+  if (resolved.error) return { left: resolved.error }
   const { valid, otuId } = resolved
   return {
     ...row,

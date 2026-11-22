@@ -15,7 +15,10 @@
 //     distribution on it, else its key; from specimen_areas.json);
 //   - every listed specimen placed through a georeference shape or through its
 //     collecting event area (the two specimen paths of 2026-11-22);
-//   - the specimens unplaced for their coordinates (unplaced.json), same reason.
+//   - the specimens unplaced for their coordinates or their georeference shape
+//     (unplaced.json), same reason;
+//   - the shares of every georeference shape without coordinates (country and
+//     state outlines), from the browser geometry and the Node geometry.
 // Needs the saved data of `npm run checklists -- --save` in
 // modules/checklists/.cache/data and a cache built from it; skipped without them.
 import { test } from 'node:test'
@@ -30,6 +33,8 @@ import { recordFromDwc } from '../placement/live.js'
 import { expandChecklist } from '../data/compact.js'
 import { assignKeys, publicPlacement } from './cacheFiles.mjs'
 import { parseTsv } from './download.mjs'
+import { createNodeGeometry } from './geometry-node.mjs'
+import { footprintPolygons } from '../placement/footprint.js'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const PUBLIC = join(ROOT, 'public/')
@@ -121,7 +126,7 @@ test('browser context reproduces 200 specimen placements of the country files an
   }
 
   const unplaced = Object.entries(readJson(join(PUBLIC, 'checklists/unplaced.json')))
-    .filter(([reason]) => reason.startsWith('coordinates'))
+    .filter(([reason]) => reason.startsWith('coordinates') || reason.startsWith('georeference shape'))
     .flatMap(([reason, ids]) => ids.map(([kind, id]) => ({ key: `${kind} ${id}`, reason })))
   for (const { key, reason } of unplaced) {
     const placement = await place(key)
@@ -130,6 +135,33 @@ test('browser context reproduces 200 specimen placements of the country files an
   console.log(`specimens: ${sample.length} compared (${coordinateSample.length} by coordinates of ${byCoordinates.length}), ${pathSample.length} by shape or collecting event area, ${unplaced.length} unplaced by coordinates, ${differ.length} differ`)
   assert.deepEqual(differ, [])
   assert.equal(sample.length, 200)
+})
+
+test('browser and Node geometry measure every georeference shape alike', { skip }, async () => {
+  const { ctx, rules } = await loadCacheContext({ fetchJson })
+  const node = createNodeGeometry({
+    shapeDir: join(PUBLIC, 'map-shapes'),
+    fallbackFile: join(PUBLIC, 'checklists/fallback-shapes.geojson'),
+    subdivisionsFile: join(PUBLIC, 'checklists/subdivisions.geojson'),
+    checklists: ctx.checklists,
+    rules
+  })
+  const shapes = parseTsv(readFileSync(join(DATA, 'dwc_occurrences.csv'), 'utf8'))
+    .filter((row) => !String(row.decimalLatitude ?? '').trim() && String(row.footprintWKT ?? '').trim())
+    .map((row) => footprintPolygons(row.footprintWKT)).filter(Boolean)
+  const withStates = ctx.checklists.filter((checklist) => checklist.states)
+  const differ = []
+  for (const polygons of shapes) {
+    const [browser, nodeShares] = [await ctx.geometry.checklistShares(polygons), await node.checklistShares(polygons)]
+    if (JSON.stringify(browser) !== JSON.stringify(nodeShares)) differ.push(JSON.stringify([browser.shares, nodeShares.shares]))
+    for (const checklist of withStates) {
+      const [a, b] = [await ctx.geometry.stateShares(checklist.id, polygons), await node.stateShares(checklist.id, polygons)]
+      if (JSON.stringify(a) !== JSON.stringify(b)) differ.push(`${checklist.name}: ${JSON.stringify([a.shares, b.shares])}`)
+    }
+  }
+  console.log(`georeference shapes: ${shapes.length} measured, ${differ.length} differ`)
+  assert.deepEqual(differ, [])
+  assert.ok(shapes.length > 0)
 })
 
 test('the built cache: Norfolk Island drawn from Natural Earth, GZ 10458 in it, Alabama under the United States (R44, R49)', { skip }, () => {

@@ -8,7 +8,11 @@
               (a specimen's coordinates); null when there is none
     assigned  the outline the placement chose: { label, polygons } (placement.shape,
               or the checklist's fallback outline); null when there is none
+              or both (a georeference shape with its inside point)
     ownKind   colour of a point: 'CollectionObject' or 'FieldOccurrence'
+    loading   a lookup is running: the map keeps its place and shows a spinner
+              over it, and the legend says so; the spinner also stays until
+              the background tiles have loaded ("Loading the map…")
 
   Colours are the taxon pages' map tokens (--tp-map-asserted for an area,
   --tp-map-collection-object / --tp-map-field-occurrence for a point,
@@ -21,13 +25,36 @@
 -->
 <template>
   <div class="flex flex-col gap-2">
-    <div
-      ref="mapElement"
-      class="h-80 w-full rounded-md border border-base-muted sm:h-96"
-    />
-    <ul class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-base-content">
+    <div class="relative h-80 w-full sm:h-96">
+      <div
+        ref="mapElement"
+        class="size-full rounded-md border border-base-muted"
+        :aria-busy="loading"
+      />
+      <!-- Over the map (above Leaflet's panes and controls), not the package
+           VSpinner, which positions itself by measuring and lands beside it. -->
+      <div
+        v-if="loading || tilesLoading"
+        class="absolute inset-0 z-[1001] flex flex-col items-center justify-center gap-3 rounded-md bg-base-foreground/75 text-base-content"
+        role="status"
+      >
+        <span
+          class="size-10 animate-spin rounded-full border-4 border-base-muted border-t-secondary"
+          aria-hidden="true"
+        />
+        <span class="text-sm font-medium">{{ loading ? 'Placing the record…' : 'Loading the map…' }}</span>
+      </div>
+    </div>
+    <!-- min-h keeps one legend line reserved, so the box does not grow when it fills. -->
+    <ul class="flex min-h-5 flex-wrap gap-x-4 gap-y-1 text-sm text-base-content">
       <li
-        v-if="own"
+        v-if="loading"
+        class="text-base-soft"
+      >
+        Loading the map layers…
+      </li>
+      <li
+        v-if="own && !loading"
         class="flex items-center gap-2"
       >
         <span
@@ -38,7 +65,7 @@
         {{ own.label }}
       </li>
       <li
-        v-if="assigned"
+        v-if="assigned && !loading"
         class="flex items-center gap-2"
       >
         <span
@@ -59,10 +86,13 @@ import 'leaflet/dist/leaflet.css'
 const props = defineProps({
   own: { type: Object, default: null },
   assigned: { type: Object, default: null },
-  ownKind: { type: String, default: null }
+  ownKind: { type: String, default: null },
+  loading: { type: Boolean, default: false }
 })
 
 const mapElement = ref(null)
+// Leaflet's tile layer is fetching tiles (its loading and load events).
+const tilesLoading = ref(true)
 let leaflet
 let mapObject
 let layerGroup
@@ -120,7 +150,14 @@ onMounted(async () => {
   mapObject = L.map(mapElement.value, { center: [15, 0], zoom: 1, worldCopyJump: true, zoomSnap: 0, maxZoom: 18 })
   mapObject.attributionControl.setPrefix(false)
   const tiles = makeTileFromConfiguration(L, { maxZoom: 18, minZoom: 0, className: 'map-tiles' })
-  Object.values(tiles)[0]?.addTo(mapObject)
+  const tileLayer = Object.values(tiles)[0]
+  if (tileLayer) {
+    tileLayer.on('loading', () => { tilesLoading.value = true })
+    tileLayer.on('load', () => { tilesLoading.value = false })
+    tileLayer.addTo(mapObject)
+  } else {
+    tilesLoading.value = false
+  }
   draw()
   // Leaflet holds literal colours, so redraw when the dark-mode class flips.
   themeObserver = new MutationObserver(() => draw({ fit: false }))

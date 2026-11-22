@@ -257,6 +257,7 @@ async function load(id) {
 
     const specimenLives = specimens.map(fromDwcRow)
     await attachEventAreas(specimenLives)
+    if (stale()) return
     const lives = [...distributions.map(fromDistribution), ...specimenLives]
     const placed = []
     for (const [index, live] of lives.entries()) {

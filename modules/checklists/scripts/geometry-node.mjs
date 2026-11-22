@@ -40,29 +40,17 @@
 // placement/geometry.js, shared with the browser geometry of the curator page
 // (placement/geometry-browser.js), so both answer every point question alike.
 //
-// Sampling in measureShares: a regular grid of 24 x 24 points over the area's
-// bounding box, keeping the points inside the area; when fewer than 30 are
-// inside, a finer grid of 80 x 80 instead (the coarse points again if the fine
-// grid finds none); when still none is inside (tiny or degenerate outlines), the vertices of the area's outer rings (at most about
-// 400, every k-th). Each sample is tested against every target whose bounding
-// box holds it. Samples in no target are `outside` (sea, or land with no
-// outline) and do not count for the shares, so the shares are shares of land.
-// Targets that overlap without an `of` link (two outlines covering the same
-// coast) each count a sample inside both, so shares can add up to more than 100%.
+// measureShares (and its sampling) lives in placement/geometry.js, shared with
+// the engine (a specimen's georeference shape) and the curator page.
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeName } from '../placement/areas.js'
 import {
-  polygonsOf, prepared, preparedTarget, entriesOf, contains, nearest, ownOverOf, ofByName, toleranceOf,
+  polygonsOf, preparedTarget, entriesOf, ofByName, toleranceOf, measureShares,
   checklistsAtPoint, stateAtPoint, stateTargetsOf, partOutlineId, partAtPoint, checklistOutline
 } from '../placement/geometry.js'
 
-export { polygonsOf }
-
-const GRID = 24
-const FINE_GRID = 80
-const MIN_POINTS = 30
-const MAX_VERTICES = 400
+export { polygonsOf, measureShares }
 
 /**
  * @typedef {Array<Array<[number, number]>>} Polygon  outer ring, then holes
@@ -86,38 +74,6 @@ export function listShapes(shapeDir) {
     for (const file of readdirSync(dir)) if (file.endsWith('.json')) keys.add(`${kind}/${file.slice(0, -5)}`)
   }
   return keys
-}
-
-/**
- * How an area's outline is shared among target outlines (see the header for
- * the sampling).
- * @param {Polygon[]} polygons  the area's outline
- * @param {Target[]} targets   countries, or the states of one country
- * @param {{ near?: number }} [options]  coastal tolerance in degrees for vertex samples
- *   (the measuring script passes the rules file's coastal_tolerance_degrees; default 0)
- * @returns {Shares}
- * @example
- *   measureShares(borneo, countries)
- *   // { points: 412, outside: 3, shares: [['Indonesia', 72.1], ['Malaysia', 27.6], ['Brunei', 0.7]] }
- */
-export function measureShares(polygons, targets, { near = 0 } = {}) {
-  const area = prepared(polygons)
-  const { points, fromVertices } = samplesOf(area)
-  const prepTargets = targets.map((target) => ({ target, shape: preparedTarget(target) }))
-  const counts = new Map()
-  let outside = 0
-  for (const point of points) {
-    let hits = prepTargets.filter(({ shape }) => contains(shape, point)).map(({ target }) => target)
-    if (!hits.length && fromVertices && near > 0) hits = nearest(prepTargets, point, near).map(({ target }) => target)
-    hits = ownOverOf(hits)
-    if (!hits.length) { outside += 1; continue }
-    for (const target of hits) counts.set(target.name, (counts.get(target.name) ?? 0) + 1)
-  }
-  const land = points.length - outside
-  const shares = [...counts]
-    .map(([name, count]) => [name, (count / land) * 100])
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'en'))
-  return { points: points.length, outside, shares }
 }
 
 /**
@@ -215,6 +171,12 @@ export function createNodeGeometry({ shapeDir, fallbackFile, subdivisionsFile, c
     async partAt(checklistId, point) {
       return partAtPoint(partsOf(checklistId), point)
     },
+    async checklistShares(polygons) {
+      return measureShares(polygons, checklistTargets(), { near: tolerance })
+    },
+    async stateShares(checklistId, polygons) {
+      return measureShares(polygons, stateTargets(checklistId), { near: tolerance })
+    },
     stateNames(checklistId) {
       return stateTargets(checklistId).map(({ name }) => ({ name }))
     },
@@ -246,29 +208,4 @@ export function unusableOutlines(areas, shapes, geometry) {
     if (shapes.has(key) && !geometry.areaPolygons(area.kind, area.id)) keys.add(key)
   }
   return keys
-}
-
-// Sample points of a prepared area (see the header).
-function samplesOf(area) {
-  if (!area.parts.length) return { points: [], fromVertices: false }
-  const coarse = grid(area, GRID)
-  if (coarse.length >= MIN_POINTS) return { points: coarse, fromVertices: false }
-  const fine = grid(area, FINE_GRID)
-  if (fine.length) return { points: fine, fromVertices: false }
-  if (coarse.length) return { points: coarse, fromVertices: false }
-  const vertices = area.parts.flatMap(({ rings }) => rings[0].slice(0, -1))
-  const step = Math.max(1, Math.ceil(vertices.length / MAX_VERTICES))
-  return { points: vertices.filter((_, index) => index % step === 0), fromVertices: true }
-}
-
-function grid(area, size) {
-  const [west, south, east, north] = area.box
-  const points = []
-  for (let i = 0; i < size; i++) {
-    for (let j = 0; j < size; j++) {
-      const point = [west + ((i + 0.5) * (east - west)) / size, south + ((j + 0.5) * (north - south)) / size]
-      if (contains(area, point)) points.push(point)
-    }
-  }
-  return points
 }

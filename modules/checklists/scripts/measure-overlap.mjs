@@ -31,7 +31,7 @@
 //   country  an area the engine leaves "not measured yet": TDWG areas and
 //            gazetteers without ISO code that no rule, own checklist or
 //            TaxonWorks country places. Measured against every checklist
-//            outline (geometry-node.mjs). The top share is >= 90% of the land
+//            outline (geometry.js measureShares). The top share is >= 90% (rules file share_threshold_percent) of the land
 //            samples: `subdivision_of: { country }`; else
 //            `not_placeable: spans several countries`.
 //   state    an area placed in a checklist with states (United States, Canada,
@@ -66,14 +66,13 @@ import { compileRules } from '../placement/rules.js'
 import { toArea, normalizeName } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
 import { createContext, placeArea, placeRecord, SEVERAL_STATES, OUTSIDE_STATES, OUTSIDE_CHECKLISTS } from '../placement/engine.js'
-import { toleranceOf } from '../placement/geometry.js'
+import { toleranceOf, sharesText } from '../placement/geometry.js'
 import { createNodeGeometry, measureShares, listShapes, unusableOutlines } from './geometry-node.mjs'
 import { parseTsv, level0NamesFrom } from './download.mjs'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const MODULE = join(ROOT, 'modules/checklists/')
 const RULES_FILE = join(MODULE, 'rules/placement.yml')
-const THRESHOLD = 90
 const RECHECK_POINTS = 5
 
 const args = process.argv.slice(2)
@@ -129,6 +128,9 @@ function setUp(text) {
 }
 
 const originalText = readFileSync(RULES_FILE, 'utf8')
+// The share that decides, from the rules file (share_threshold_percent).
+const threshold = compileRules(originalText).shareThreshold?.percent
+if (!threshold) throw new Error('placement.yml has no share_threshold_percent')
 if (recheck) {
   await runRecheck(setUp(originalText))
 } else {
@@ -166,10 +168,10 @@ async function runMeasure() {
       continue
     }
     const [top, pct] = shares[0]
-    const action = pct >= THRESHOLD
+    const action = pct >= threshold
       ? `subdivision_of: { country: ${quote(top)} }`
       : 'not_placeable: spans several countries'
-    counts[pct >= THRESHOLD ? 'country' : 'severalCountries'] += 1
+    counts[pct >= threshold ? 'country' : 'severalCountries'] += 1
     countryLines.push(...ruleLines(area, match, action, shares, date))
   }
 
@@ -198,10 +200,10 @@ async function runMeasure() {
       continue
     }
     const [top, pct] = shares[0]
-    const action = pct >= THRESHOLD
+    const action = pct >= threshold
       ? `subdivision_of: { country: ${quote(checklist.name)}, state: ${quote(top)} }`
       : `not_placeable: ${SEVERAL_STATES}`
-    counts[pct >= THRESHOLD ? 'state' : 'severalStates'] += 1
+    counts[pct >= threshold ? 'state' : 'severalStates'] += 1
     stateLines.push(...ruleLines(area, match, action, shares, date))
   }
 
@@ -261,15 +263,8 @@ function ruleLines(area, match, action, shares, date) {
   return [
     `  - match: ${match}   # ${describe(area)}, ${records.get(area.key)} ${records.get(area.key) === 1 ? 'record' : 'records'}`,
     `    ${action}`,
-    `    measured: ${quote(`${sharesText(shares)} (${date})`)}`
+    `    measured: ${quote(`${sharesText(shares, { below: threshold })} (${date})`)}`
   ]
-}
-
-// 'Indonesia 72%, Malaysia 28%, Brunei 1%': the top four shares, rounded;
-// 'no sample in any outline' when there is none.
-function sharesText(shares) {
-  if (!shares.length) return 'no sample in any outline'
-  return shares.slice(0, 4).map(([name, pct]) => `${name} ${Math.round(pct)}%`).join(', ')
 }
 
 // `{ tdwg: 14RUC }` for a TDWG area, else `{ area: "GZ 10453" }`.

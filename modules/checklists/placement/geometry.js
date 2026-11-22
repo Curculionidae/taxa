@@ -129,6 +129,28 @@ export function inBox(box, [lng, lat], margin = 0) {
   return lng >= box[0] - margin && lng <= box[2] + margin && lat >= box[1] - margin && lat <= box[3] + margin
 }
 
+/**
+ * Bounding box of polygons (their outer rings).
+ * @param {Polygon[]} polygons
+ * @returns {number[]}  [west, south, east, north]
+ */
+export function polygonsBox(polygons) {
+  const boxes = polygons.filter((polygon) => polygon[0]?.length).map((polygon) => boxOf(polygon[0]))
+  return [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])),
+    Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))]
+}
+
+/**
+ * Do two boxes, one widened by `margin` degrees, meet?
+ * @param {number[]} a  [west, south, east, north]
+ * @param {number[]} b
+ * @param {number} [margin]
+ * @returns {boolean}
+ */
+export function boxesMeet(a, b, margin = 0) {
+  return a[0] - margin <= b[2] && b[0] <= a[2] + margin && a[1] - margin <= b[3] && b[1] <= a[3] + margin
+}
+
 function inRing(ring, lng, lat) {
   let inside = false
   for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
@@ -334,4 +356,97 @@ export function checklistOutline(checklist, { rules, isCached, fallbackNames }) 
   const id = checklist.areaIds.find((areaId) => isCached(`GeographicArea/${areaId}`))
   if (id != null) return { key: `GeographicArea/${id}`, fallback: null, ref: null }
   return { key: fallback ? `fallback/${fallback}` : null, fallback, ref: null }
+}
+
+// Sampling in measureShares: a regular grid of 24 x 24 points over the area's
+// bounding box, keeping the points inside the area; when fewer than 30 are
+// inside, a finer grid of 80 x 80 instead (the coarse points again if the fine
+// grid finds none); when still none is inside (tiny or degenerate outlines), the vertices of the area's outer rings (at most about
+// 400, every k-th). Each sample is tested against every target whose bounding
+// box holds it. Samples in no target are `outside` (sea, or land with no
+// outline) and do not count for the shares, so the shares are shares of land.
+// Targets that overlap without an `of` link (two outlines covering the same
+// coast) each count a sample inside both, so shares can add up to more than 100%.
+const GRID = 24
+const FINE_GRID = 80
+const MIN_POINTS = 30
+const MAX_VERTICES = 400
+
+/**
+ * @typedef {{ points: number, outside: number, shares: Array<[string, number]> }} Shares
+ *   samples taken, samples in no target, and the share of land samples per target
+ *   name in percent (unrounded), largest first
+ */
+
+/**
+ * How an area's outline is shared among target outlines (see the header for
+ * the sampling).
+ * @param {Polygon[]} polygons  the area's outline
+ * @param {Target[]} targets   countries, or the states of one country
+ * @param {{ near?: number }} [options]  coastal tolerance in degrees for vertex samples
+ *   (the measuring script passes the rules file's coastal_tolerance_degrees; default 0)
+ * @returns {Shares}
+ * @example
+ *   measureShares(borneo, countries)
+ *   // { points: 412, outside: 3, shares: [['Indonesia', 72.1], ['Malaysia', 27.6], ['Brunei', 0.7]] }
+ */
+export function measureShares(polygons, targets, { near = 0 } = {}) {
+  const area = prepared(polygons)
+  const { points, fromVertices } = samplesOf(area)
+  const prepTargets = targets.map((target) => ({ target, shape: preparedTarget(target) }))
+  const counts = new Map()
+  let outside = 0
+  for (const point of points) {
+    let hits = prepTargets.filter(({ shape }) => contains(shape, point)).map(({ target }) => target)
+    if (!hits.length && fromVertices && near > 0) hits = nearest(prepTargets, point, near).map(({ target }) => target)
+    hits = ownOverOf(hits)
+    if (!hits.length) { outside += 1; continue }
+    for (const target of hits) counts.set(target.name, (counts.get(target.name) ?? 0) + 1)
+  }
+  const land = points.length - outside
+  const shares = [...counts]
+    .map(([name, count]) => [name, (count / land) * 100])
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'en'))
+  return { points: points.length, outside, shares }
+}
+
+/**
+ * Shares as text for steps and rules lines: the top four, rounded
+ * ('Austria 62%, Italy 38%'); 'no sample in any outline' for none. A share
+ * just below `below` (the threshold) that would round up to it is cut to one
+ * decimal instead ('Ukraine 89.9%'), so a text never says 90% where 90% did
+ * not decide.
+ * @param {Array<[string, number]>} shares
+ * @param {{ below?: number }} [options]  the share_threshold_percent
+ * @returns {string}
+ */
+export function sharesText(shares, { below = Infinity } = {}) {
+  if (!shares.length) return 'no sample in any outline'
+  const shown = (pct) => (pct < below && Math.round(pct) >= below ? Math.floor(pct * 10) / 10 : Math.round(pct))
+  return shares.slice(0, 4).map(([name, pct]) => `${name} ${shown(pct)}%`).join(', ')
+}
+
+// Sample points of a prepared area (see the header).
+function samplesOf(area) {
+  if (!area.parts.length) return { points: [], fromVertices: false }
+  const coarse = grid(area, GRID)
+  if (coarse.length >= MIN_POINTS) return { points: coarse, fromVertices: false }
+  const fine = grid(area, FINE_GRID)
+  if (fine.length) return { points: fine, fromVertices: false }
+  if (coarse.length) return { points: coarse, fromVertices: false }
+  const vertices = area.parts.flatMap(({ rings }) => rings[0].slice(0, -1))
+  const step = Math.max(1, Math.ceil(vertices.length / MAX_VERTICES))
+  return { points: vertices.filter((_, index) => index % step === 0), fromVertices: true }
+}
+
+function grid(area, size) {
+  const [west, south, east, north] = area.box
+  const points = []
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      const point = [west + ((i + 0.5) * (east - west)) / size, south + ((j + 0.5) * (north - south)) / size]
+      if (contains(area, point)) points.push(point)
+    }
+  }
+  return points
 }

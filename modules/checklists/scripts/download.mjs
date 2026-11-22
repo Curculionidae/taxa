@@ -54,7 +54,7 @@
 // reported by the build; a server or network failure after retries stops the
 // download, so a cache missing data is never written.
 
-import { typeStatusName, typeNameKey, resolveTypeName } from '../placement/typeStatus.js'
+import { typeStatusName, typeNameKey, resolveTypeName, isUndeterminedType } from '../placement/typeStatus.js'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseTsv } from '../data/tsv.js'
@@ -195,12 +195,14 @@ export async function downloadData({ root, log = console.log }) {
     if (Number.isFinite(total) && total > list.length) throw new Error(`${path}: ${total} rows, only ${list.length} in one page`)
     return list
   }
-  // A 4xx answer is kept as { error }, anything else stops the download.
+  // A 4xx answer is kept as { error }, anything else stops the download. A
+  // rate limit (429) that outlasts the retries stops it too: it says nothing
+  // about the record, and saved as { error } it would leave records out.
   async function jsonOrError(path, params) {
     try {
       return await (await request(path, params)).json()
     } catch (error) {
-      if (!/^4\d\d /.test(error.message)) throw error
+      if (!/^4\d\d /.test(error.message) || error.message.startsWith('429 ')) throw error
       return { error: error.message }
     }
   }
@@ -268,20 +270,21 @@ export async function downloadData({ root, log = console.log }) {
   const getJson = async (path, params = {}) => {
     const pairs = Object.entries(params).flatMap(([key, value]) =>
       Array.isArray(value) ? value.map((item) => [`${key}[]`, item]) : [[key, value]])
-    return (await request(path, pairs)).json()
+    return jsonOrError(path, pairs) // a client error is { error }, see resolveTypeName
   }
   const typeNames = {}
   const typeParsed = new Map()
   for (const row of rows) {
-    if (row.dwc_occurrence_object_type !== 'CollectionObject' || row.otu_id || !row.typeStatus) continue
+    if (!isUndeterminedType(row)) continue
     const parsed = typeStatusName(row.typeStatus)
     if (parsed) typeParsed.set(typeNameKey(parsed), parsed)
   }
   await forEachLimited([...typeParsed.keys()], PARALLEL, async (key) => {
     typeNames[key] = await resolveTypeName(typeParsed.get(key), getJson)
   })
+  // OTU ids are text here (as from the CSV), so each OTU is looked up once.
   for (const resolved of Object.values(typeNames)) {
-    if (resolved.otuId && !parentOtus.includes(resolved.otuId)) parentOtus.push(resolved.otuId)
+    if (resolved.otuId && !parentOtus.includes(String(resolved.otuId))) parentOtus.push(String(resolved.otuId))
   }
   log(`${typeParsed.size} type status names, ${Object.values(typeNames).filter((resolved) => !resolved.error).length} resolved`)
 

@@ -67,10 +67,16 @@ of the size). In short:
   classification, so it changes nothing). The label says so: `Phaeopholus
   vietnamensis Legalov, 2026 (paratype, no determination)`. A type status that
   names no taxon (`holotype`), several, or a name that does not resolve is
-  listed in `unplaced.json` with the reason (`type status names no single
-  taxon`, `type status name is ambiguous in TaxonWorks`, `type status name not
-  found in TaxonWorks`, `no OTU`). On 2026-11-22: 722 type rows, 704 resolved,
-  52 placed (two taxa new to their checklist), 648 without any locality.
+  left out of every checklist (without its taxon it belongs on none), like a
+  row of rank genus; the curator lookup shows the reason (`type status names
+  no single taxon`, `type status name is ambiguous in TaxonWorks`, `type
+  status name not found in TaxonWorks`, `no OTU`, `TaxonWorks lookup failed
+  (404 …)`). The name and the authorship are split by the site's shared
+  `splitScientificName` (`panels/_shared/scientificName.js`), which knows
+  author particles (`de Marseul`). A client error of TaxonWorks during the
+  lookup is such a reason, never a stop of the download. On 2026-11-22: 722
+  type rows, 704 resolved, 52 placed (two taxa new to their checklist), 648
+  without any locality.
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
   about 5% of the rows. The download uses `/dwc_occurrences.csv` (one request).
 
@@ -236,6 +242,10 @@ of the file describes every key; in short:
   outline but this close to one counts for that outline (coasts are
   simplified). Steps that used it say "within about 5 km of the coast of"
   and cite the line.
+- `share_threshold_percent` (90): the share of one outline that decides. The
+  measuring script writes `subdivision_of` for an area lying this much in one
+  country or state, else `not_placeable`; the build places a specimen's
+  georeference shape the same way, and its steps cite this line.
 - Validation: once the checklists are derived, `validateRules` (rules.js)
   stops the build with `placement.yml:N: unknown country "X"` (and the like)
   for a rule naming an unknown country, part or state, a state of a country
@@ -320,7 +330,7 @@ Every step is one short sentence with its source:
 
 Every check that runs prints a step, also when it finds nothing: `no manual
 rule for New Guinea (GZ 3614)` [manual], `New Guinea (GZ 3614) has no ISO
-code in TaxonWorks` [TaxonWorks], `no overlap rule for ...` [overlap]. So an
+code in TaxonWorks` [TaxonWorks], `no overlap rule gives ... a country or state` [overlap]. So an
 explanation shows each check of the order up to the one that decided; the
 checks after it do not run and are not printed. The step that decides
 (or gives the reason) still says everything on its own, as it is often shown
@@ -370,16 +380,16 @@ Two worked examples (as the curator page shows them):
 
 ```
 GA 8837 Cayenne  =>  French Guiana
-  no manual rule for Cayenne (GA 8837)                         [manual]
+  no manual rule gives Cayenne (GA 8837) a country or state    [manual, no rule]
   Cayenne is a subdivision of French Guiana (GA 78)            [TaxonWorks]
   French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:69]
   outline: GeographicArea/32253
 
 GZ 3614 New Guinea  =>  not placeable
   reason: spans several countries: Papua New Guinea 51%, Indonesia 49%
-  no manual rule for New Guinea (GZ 3614)                                                   [manual]
+  no manual rule gives New Guinea (GZ 3614) a country or state                              [manual, no rule]
   New Guinea (GZ 3614) matches no checklist of its own (by area, parent, ISO code or name)  [manual]
-  New Guinea (GZ 3614) is a gazetteer, which has no country in TaxonWorks                   [TaxonWorks]
+  New Guinea (GZ 3614) is a gazetteer; TaxonWorks gives gazetteers no country or parent     [TaxonWorks]
   New Guinea (GZ 3614) has no ISO code in TaxonWorks                                        [TaxonWorks]
   New Guinea spans several countries: Papua New Guinea 51%, Indonesia 49%                   [overlap, placement.yml:704]
 ```
@@ -400,7 +410,7 @@ and optionally the `area` behind it) and the `Placement`. Example:
 ```
 AD 556796  Phaedropus candidus (Fabricius, 1775)
   area      GA 8837 Cayenne (GA)
-  step      no manual rule for Cayenne (GA 8837)                          [manual]
+  step      no manual rule gives Cayenne (GA 8837) a country or state     [manual, no rule]
   step      Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
   step      French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:69]
   result    French Guiana checklist
@@ -428,8 +438,16 @@ Source tags:
 - `[overlap, placement.yml:N]`: an overlap rule without a share.
 - `[overlap]`: a live coordinate step (a point tested against the cached outlines), no rule line;
   also a point that lay in no outline (a check that found nothing).
-- `[manual, no rule]`: a check of the rules file that found no line (`no manual rule for …`).
-- `[overlap, never measured]`: no overlap line exists for the area (`no overlap rule for …`).
+- `[manual, no rule]`: a check of the rules file that found no line (`no manual rule gives … a country or state`).
+- `[overlap, never measured]`: no overlap line matches the area at all (`no overlap rule gives … a country or state`).
+- `[overlap, no such rule]`: the area has overlap lines, but none of the kind looked for
+  (`no overlap rule gives … a state`, next to a line saying it lies outside every state outline).
+
+A rule that gives a state also gives the country, so the country stage's
+"no manual (overlap) rule gives … a country or state" already answers the
+state stage's question: the state stage then skips that check. It runs when
+a rule gave only the country, or when the country came from TaxonWorks or
+an ISO code before the overlap rules were reached.
 - `[overlap, placement.yml:N]` on a coordinate step: the point lay outside
   every outline but within the coastal tolerance; N is the line of
   `coastal_tolerance_degrees`.
@@ -454,8 +472,23 @@ through it when the centre lies outside, rounded to 4 decimals; no point for a
 shape across the 180th meridian). The first step then says so:
 
 ```
-CO 2707818  the georeference is a shape; the point 36.8236, 78.254 inside it is used  [TaxonWorks]
+CO 2707818  the georeference is a shape; its inside point is 36.8236, 78.254  [TaxonWorks]
 ```
+
+Where the coordinates would be tested (no DwC country), the shape itself is
+measured instead, with the same sampling and the same 90% rule as the
+measuring script uses for areas (`geometry.js` `measureShares`,
+`share_threshold_percent`): `95% of the georeference shape lies in Austria
+(Austria 95%, Germany 5%); 90% or more decides` `[overlap, placement.yml:N]`,
+else not placeable `georeference shape spans several countries` ("Habitat in
+Saxonia, Austria" drawn over both). Two overlapping outlines that each hold
+90% (no `of` link between them) give `georeference shape in several countries
+(A, B)`, as coordinates inside both do. A share just below 90% is never
+printed as 90% (`89.9%`). A shape lying in no outline (at sea) goes
+on with its inside point, with the coastal tolerance. The state of a shape is
+found the same way among the state outlines (less than 90%: `no state: the
+georeference shape spans several states`). The part (France: Corsica) is still
+found by the inside point.
 
 Without a point, the collecting event's area decides, exactly as for an
 asserted distribution on that area (country, part and state, with the same
@@ -1149,21 +1182,28 @@ What it shows:
 - What the cache says: `listed in French Guiana` (with the part and state of
   the cached record), or why not: its reason from `unplaced.json`, or `not
   listed: rank genus` (or `not in Curculionoidea`, `recorded as absent`,
-  `distribution is absent`) when the record is outside the checklists'
-  scope, else `not listed in the cache` (for example a record added after
+  `distribution is absent`, the reason of an undetermined type whose taxon is
+  unknown) when the build leaves the record out (`cacheStatus` `leftOut`;
+  such a record never shows "Differs from the cache"), else `not listed in the cache` (for example a record added after
   the build). The record is looked up in the country file of the live
   result only. For an area: its row in `areas.json`, with the number of
   records on it.
 - Links into TaxonWorks: the record's edit page, its area's page
   (`/geographic_areas/:id` or `/gazetteers/:id`) and the OTU.
 - A map with two layers and a legend: the record's own place (its area's
-  cached outline from `public/map-shapes/`, or a specimen's coordinates) and
+  cached outline from `public/map-shapes/`; for a specimen what the engine
+  tested, `engine.js` `recordLocation`: its coordinates, or its georeference
+  shape with the inside point, or the outline of its collecting event's area
+  when that area placed it) and
   the outline the placement chose (`shape`, else the checklist's Natural
   Earth fallback outline). A layer that does not exist is left out and named
   (`No outline cached for Cayenne (GA 8837).`). Colours are the map tokens
   of the taxon pages (area `--tp-map-asserted`, specimen point
   `--tp-map-collection-object` or `--tp-map-field-occurrence`, assigned
   outline `--tp-map-aggregate`). A Natural Earth outline is labelled so.
+  While a lookup runs, the map box keeps its place with a spinner over it
+  ("Placing the record…") and the legend line says the layers are loading,
+  so the page does not jump when the result arrives.
 
 Why it equals the build: the page fetches the record from TaxonWorks
 (`placement/live.js`: AD `GET /asserted_distributions/:id` with
@@ -1175,8 +1215,10 @@ Why it equals the build: the page fetches the record from TaxonWorks
 the same JSON the build downloads, and places it with the same engine in an
 engine context made from the cache files only (`context.json` and
 `rules.json`, `placement/geometry-browser.js`). The browser geometry fetches
-an outline only when a point lies within its `bbox` (one or two files per
-lookup) and runs the same point tests as the build (`placement/geometry.js`).
+an outline only when a point (or a georeference shape) lies within its `bbox`
+(one or two files per lookup for a point; a large shape meets more, CO
+2770887 about ten) and runs the same point tests and share measuring as the
+build (`placement/geometry.js`). 
 `scripts/browserContext.test.js` builds the context this way from disk and
 checks it reproduces every area of `areas.json` (2458 of 2458 on 2026-11-20)
 and 200 specimens of the country files (100 of them placed by their

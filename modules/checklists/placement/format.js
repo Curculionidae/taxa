@@ -25,10 +25,11 @@ const row = (name, text) => `  ${name.padEnd(LABEL_WIDTH)}${text}`
  */
 export function sourceTag(step) {
   if (step.source === 'TaxonWorks') return '[TaxonWorks]'
-  // A check that found nothing: no line of the rules file matched, or no
-  // overlap line exists for the area (pointTest: a point lay in no outline).
+  // A check that found nothing: no line of the rules file matched; for an
+  // overlap rule lookup, the area has overlap lines but none of that kind
+  // (measured) or none at all; pointTest: a point lay in no outline.
   if (step.none && step.source === 'manual') return '[manual, no rule]'
-  if (step.none && step.source === 'overlap' && !step.pointTest) return '[overlap, never measured]'
+  if (step.none && step.source === 'overlap' && !step.pointTest) return step.measured ? '[overlap, no such rule]' : '[overlap, never measured]'
   if (step.source === 'manual') return step.ref ? `[manual, ${step.ref}]` : '[manual]'
   const share = step.pct !== undefined ? ` ${step.pct}%${step.pctOf ? ` ${step.pctOf}` : ''}` : ''
   return `[overlap${share}${step.ref ? `, ${step.ref}` : ''}]`

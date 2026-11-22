@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { footprintPoint, parseWkt } from './footprint.js'
+import { footprintPoint, footprintPolygons, parseWkt } from './footprint.js'
 import { contains, prepared, polygonsOf } from './geometry.js'
 
 // CO 2707818 "Sanju", drawn in TaxonWorks with the shape tool (shortened).
@@ -41,4 +41,11 @@ test('footprintPoint: nothing usable gives null', () => {
   assert.equal(footprintPoint('POINT (1 2)'), null)
   assert.equal(footprintPoint('POLYGON (('), null)
   assert.equal(footprintPoint('POLYGON ((179 0,-179 0,-179 1,179 1,179 0))'), null)
+})
+
+test('footprintPolygons: every polygon of the shape, null for none', () => {
+  assert.deepEqual(footprintPolygons('MULTIPOLYGON (((0 0,1 0,1 1,0 0)),((5 5,6 5,6 6,5 5)))').length, 2)
+  assert.deepEqual(footprintPolygons('POLYGON Z ((0 0 1,1 0 1,1 1 1,0 0 1))'), [[[[0, 0], [1, 0], [1, 1], [0, 0]]]])
+  assert.equal(footprintPolygons('POINT (1 2)'), null)
+  assert.equal(footprintPolygons(''), null)
 })

@@ -126,6 +126,26 @@ test('specimensSummary: checks that found nothing and the lead steps of shape an
   assert.equal(summary.how, 'by DwC country 1 [TaxonWorks], by coordinates inside the outline 1 [overlap], by the collecting event area 1 [TaxonWorks]')
 })
 
+test('specimensSummary: a georeference shape placed by its share', () => {
+  const summary = specimensSummary([
+    placement('Austria', [step('the georeference is a shape; its inside point is 47.5, 13.1', 'TaxonWorks', { via: 'shape' }),
+      step('no DwC country', 'TaxonWorks', { none: true }),
+      step('95% of the georeference shape lies in Austria (Austria 95%, Germany 5%); 90% or more decides', 'overlap', { shapeShare: true })])
+  ])
+  assert.equal(summary.how, 'by the share of the georeference shape 1 [overlap]')
+})
+
+test('specimensSummary: an event area that handed over to the DwC fields is not the way', () => {
+  const summary = specimensSummary([
+    placement('Spain', [step('no coordinates and no georeference shape', 'TaxonWorks', { none: true }),
+      step("the collecting event's area is Sierra (GZ 1)", 'TaxonWorks', { handedOver: true }),
+      step('Sierra (GZ 1) has no country in TaxonWorks and no rule; the next measuring run measures it', 'TaxonWorks', { handedOver: true }),
+      step('the area cannot be placed by its outline yet, so the DwC fields are read', 'TaxonWorks', { none: true }),
+      step('DwC country is Spain')])
+  ])
+  assert.equal(summary.how, 'by DwC country 1 [TaxonWorks]')
+})
+
 test('checklistHeader: fixed key order and the rules file', () => {
   const header = checklistHeader({
     key: 'french-guiana', name: 'French Guiana', iso2: 'GF', outline: 'GeographicArea/32253',

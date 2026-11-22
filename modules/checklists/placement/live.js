@@ -30,7 +30,7 @@
 // is normally the same text.
 import { toArea } from './areas.js'
 import { placeRecord, hasPoint, placementWithoutArea } from './engine.js'
-import { typeStatusName, typeNameKey, resolveTypeName, typeRow } from './typeStatus.js'
+import { typeStatusName, typeNameKey, resolveTypeName, typeRow, isUndeterminedType } from './typeStatus.js'
 import { recordFromDwc, eventAreaOf, specimenLabel, typeReasonPlacement } from './specimen.js'
 import { screenRecord, classificationFromParents } from './screen.js'
 
@@ -90,12 +90,22 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
       // An undetermined type specimen: the valid name of its type status, as the build.
       let dwc = rawDwc
       let typeReason = null
-      if (kind === 'CO' && !rawDwc.otu_id && String(rawDwc.typeStatus ?? '').trim()) {
+      const asRow = { ...rawDwc, dwc_occurrence_object_type: TYPE_OF_KIND[kind] }
+      if (isUndeterminedType(asRow)) {
         const parsed = typeStatusName(rawDwc.typeStatus)
-        const get = async (url, params) => (await request.get(url, { params })).data
+        // A client error is { error }, as the build's download gives it (resolveTypeName).
+        const get = async (url, params) => {
+          try {
+            return (await request.get(url, { params })).data
+          } catch (error) {
+            const status = error?.response?.status
+            if (status >= 400 && status < 500 && status !== 429) return { error: `${status} ${url}` }
+            throw error
+          }
+        }
         const typeNames = parsed ? { [typeNameKey(parsed)]: await resolveTypeName(parsed, get) } : {}
-        const typed = typeRow({ ...rawDwc, dwc_occurrence_object_type: 'CollectionObject' }, typeNames)
-        if (typed.unplaced) typeReason = typed.unplaced
+        const typed = typeRow(asRow, typeNames)
+        if (typed.left) typeReason = typed.left
         else dwc = typed
       }
       const record = recordFromDwc(TYPE_OF_KIND[kind], id, dwc)
@@ -117,9 +127,9 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
       const { data } = await request.get('/asserted_distributions', {
         params: { geo_shape_id: [id], geo_shape_type: [shapeType], per: 1, extend: ['asserted_distribution_shape'] }
       })
-      const ad = Array.isArray(data) ? data[0] : null
-      if (!ad?.asserted_distribution_shape) return usedByNoRecord(kind, id, areas)
-      const area = toArea(shapeType, ad.asserted_distribution_shape)
+      const shape = shapeOf(data, shapeType, id)
+      if (!shape) return usedByNoRecord(kind, id, areas)
+      const area = toArea(shapeType, shape)
       return { subject: { kind, id, label: area.name, area }, area, record: { type: 'AssertedDistribution', id: 0 } }
     }
     return { error: `unknown kind ${kind}` }
@@ -163,7 +173,8 @@ export function fromDistribution(ad) {
  */
 export async function placeLive(live, ctx) {
   if (live.record.type === 'AssertedDistribution' && !live.area) return placementWithoutArea()
-  // A type specimen whose type status cannot be resolved, as the build places it.
+  // A type specimen whose taxon cannot be known: left out by the build; this
+  // placement only explains why (specimen.js typeReasonPlacement).
   if (live.typeReason) return typeReasonPlacement(live.dwc ?? {}, live.typeReason)
   return placeRecord(live.record, ctx, live.area)
 }
@@ -211,7 +222,7 @@ export function otuLeftOut({ rank, parentNames }) {
 
 /**
  * Why the build leaves a record of an OTU out of every checklist: the
- * record's own DwC reason (leftOutReason), else 'absent' for an absent
+ * record's own DwC reason (leftOutReason), else 'distribution is absent' for an absent
  * distribution, else the OTU's reason (otuLeftOut). The OTU's reason also
  * covers a specimen whose DwC row has no superfamily: the build then takes the
  * classification of the OTU's parents and leaves it out when that is not
@@ -350,8 +361,18 @@ async function areaById(id, request) {
   const { data } = await request.get('/asserted_distributions', {
     params: { geo_shape_id: [id], geo_shape_type: ['GeographicArea'], per: 1, extend: ['asserted_distribution_shape'] }
   })
+  const shape = shapeOf(data, 'GeographicArea', id)
+  return shape ? toArea('GeographicArea', shape) : null
+}
+
+// The area of the first distribution TaxonWorks returned for a geo_shape_id
+// filter, only when it is the area asked for (a filter TaxonWorks ignored
+// would otherwise hand over another area); null otherwise.
+function shapeOf(data, shapeType, id) {
   const ad = Array.isArray(data) ? data[0] : null
-  return ad?.asserted_distribution_shape ? toArea('GeographicArea', ad.asserted_distribution_shape) : null
+  const shape = ad?.asserted_distribution_shape
+  if (!shape || ad.asserted_distribution_shape_type !== shapeType || Number(shape.id) !== Number(id)) return null
+  return shape
 }
 
 // 'used by no record', with the children when areas.json lists the area as a
@@ -385,26 +406,31 @@ export function plainLabel(html) {
  * Does the cache list the record? Looked up in the checklist file of the live
  * result, else in unplaced.json; when it is in neither, the build's filters
  * (buildContext.mjs, screenRow) are checked on the DwC fields at hand.
- * @param {{ kind: string, id: number, dwc?: Object, absent?: boolean }} record
+ * @param {{ kind: string, id: number, dwc?: Object, absent?: boolean, typeReason?: string|null }} record
+ *   typeReason: why an undetermined type's taxon is unknown (lookupLive), so the
+ *   build leaves it out
  * @param {Object} cache
  * @param {string|null} cache.checklistName  the checklist of the live result
  * @param {Object[]|null} cache.records  its records (data/compact.js expandChecklist), null when not loaded
  * @param {Object<string, Array<[string, number]>>} cache.unplaced  unplaced.json
- * @returns {{ listed: boolean, text: string }}  'listed in Ukraine (state Kyiv)',
- *   'not listed: locality text only', 'not listed: rank genus', 'not listed in the cache'
+ * @returns {{ listed: boolean, text: string, leftOut: boolean }}  'listed in Ukraine (state Kyiv)',
+ *   'not listed: locality text only', 'not listed: rank genus', 'not listed in the cache';
+ *   leftOut: the build's screening leaves the record out of every checklist
+ *   (screen.js, or a type without taxon), so it can never differ from the cache
  */
-export function cacheStatus({ kind, id, dwc = null, absent = false }, { checklistName, records, unplaced }) {
+export function cacheStatus({ kind, id, dwc = null, absent = false, typeReason = null }, { checklistName, records, unplaced }) {
+  if (typeReason) return { listed: false, text: `not listed: ${typeReason}`, leftOut: true }
   const type = TYPE_OF_KIND[kind]
   const found = (records ?? []).find((row) => row.dwc_occurrence_object_type === type && String(row.dwc_occurrence_object_id) === String(id))
   if (found) {
     const extra = [found.part && `part ${found.part}`, found.state && `state ${found.state}`].filter(Boolean)
-    return { listed: true, text: `listed in ${checklistName ?? found.country}${extra.length ? ` (${extra.join(', ')})` : ''}` }
+    return { listed: true, text: `listed in ${checklistName ?? found.country}${extra.length ? ` (${extra.join(', ')})` : ''}`, leftOut: false }
   }
   for (const [reason, ids] of Object.entries(unplaced ?? {})) {
-    if (ids.some(([k, i]) => k === kind && Number(i) === Number(id))) return { listed: false, text: `not listed: ${reason}` }
+    if (ids.some(([k, i]) => k === kind && Number(i) === Number(id))) return { listed: false, text: `not listed: ${reason}`, leftOut: false }
   }
   const leftOut = dwc && leftOutReason(dwc)
-  if (leftOut) return { listed: false, text: `not listed: ${leftOut}` }
-  if (absent) return { listed: false, text: 'not listed: distribution is absent' }
-  return { listed: false, text: 'not listed in the cache' }
+  if (leftOut) return { listed: false, text: `not listed: ${leftOut}`, leftOut: true }
+  if (absent) return { listed: false, text: 'not listed: distribution is absent', leftOut: true }
+  return { listed: false, text: 'not listed in the cache', leftOut: false }
 }

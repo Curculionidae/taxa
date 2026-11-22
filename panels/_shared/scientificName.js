@@ -103,6 +103,8 @@ function parseScientificName(name, rank) {
   }
   const nameWords = words.slice(0, g + 1).map((text, k) => ({ text, italic: k === g }))
   let i = g + 1
+  // "[sic]" between genus and subgenus ("Polydrosus [sic] (Tylodrusus) constellatus")
+  if (/^\[[^\]]*\]$/.test(words[i] || '') && SUBGENUS_WORD.test(words[i + 1] || '')) nameWords.push({ text: words[i++], italic: false })
   if (SUBGENUS_WORD.test(words[i] || '')) nameWords.push({ text: words[i++], italic: true })
   for (; i < words.length; i++) {
     const w = words[i]

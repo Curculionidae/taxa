@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { typeStatusName, pickTaxonName, resolveTypeName, typeRow, typeNameKey } from './typeStatus.js'
+import { typeStatusName, pickTaxonName, resolveTypeName, typeRow, typeNameKey, isUndeterminedType } from './typeStatus.js'
 
 test('typeStatusName: status, the name as printed (subgenus and var. kept), the authorship', () => {
   assert.deepEqual(typeStatusName('paratype of Phaeopholus vietnamensis Legalov, 2026'),
@@ -12,6 +12,11 @@ test('typeStatusName: status, the name as printed (subgenus and var. kept), the 
   assert.deepEqual(typeStatusName('lectotype of Anthonomus xanthocnemus var. picipes'),
     { status: 'lectotype', name: 'Anthonomus xanthocnemus var. picipes', author: '' })
   assert.equal(typeStatusName('one of the syntypes of Aus bus Author, 1900').name, 'Aus bus')
+  // Author particles start the authorship, not the name (shared splitter).
+  assert.deepEqual(typeStatusName('holotype of Otiorhynchus bus de Marseul, 1872'),
+    { status: 'holotype', name: 'Otiorhynchus bus', author: 'de Marseul, 1872' })
+  assert.equal(typeStatusName('syntype of Aus bus von Heyden, 1880').author, 'von Heyden, 1880')
+  assert.equal(typeStatusName('holotype of Polydrosus [sic] (Tylodrusus) constellatus Voss, 1959').name, 'Polydrosus [sic] (Tylodrusus) constellatus')
   assert.equal(typeStatusName('holotype'), null)
   assert.equal(typeStatusName(''), null)
   assert.equal(typeStatusName('holotype of Aus bus X, 1900; paratype of Aus cus Y, 1901'), null)
@@ -92,6 +97,25 @@ test('resolveTypeName: errors', async () => {
   assert.equal((await resolveTypeName(name, stubGet({ '/taxon_names?Aus bus': [aus], '/otus': [{ id: 1, name: 'Aus bus sensu X' }, { id: 4 }] }))).otuId, 4)
 })
 
+test('resolveTypeName: a client error of TaxonWorks is a result, not an exception', async () => {
+  const name = typeStatusName('holotype of Aus bus X, 1900')
+  const synonym = { id: 1, cached: 'Aus bus', cached_author_year: 'X, 1900', rank: 'species', cached_valid_taxon_name_id: 5 }
+  assert.deepEqual(await resolveTypeName(name, stubGet({ '/taxon_names?Aus bus': { error: '403 /taxon_names' } })),
+    { error: 'TaxonWorks lookup failed (403 /taxon_names)' })
+  assert.deepEqual(await resolveTypeName(name, stubGet({ '/taxon_names?Aus bus': [synonym], '/taxon_names/5': { error: '404 /taxon_names/5' } })),
+    { error: 'TaxonWorks lookup failed (404 /taxon_names/5)' })
+  assert.deepEqual(await resolveTypeName(name, stubGet({ '/taxon_names?Aus bus': [{ ...synonym, cached_valid_taxon_name_id: 1 }], '/otus': { error: '404 /otus' } })),
+    { error: 'TaxonWorks lookup failed (404 /otus)' })
+})
+
+test('isUndeterminedType: a collection object with a type status and no OTU', () => {
+  const co = { dwc_occurrence_object_type: 'CollectionObject', typeStatus: 'holotype of Aus bus X, 1900' }
+  assert.equal(isUndeterminedType(co), true)
+  assert.equal(isUndeterminedType({ ...co, otu_id: '7' }), false)
+  assert.equal(isUndeterminedType({ ...co, typeStatus: '  ' }), false)
+  assert.equal(isUndeterminedType({ ...co, dwc_occurrence_object_type: 'FieldOccurrence' }), false)
+})
+
 test('typeRow: an undetermined type takes the valid name, rank, OTU and classification', () => {
   const row = { dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: '2876460', otu_id: '', scientificName: '',
     taxonRank: '', typeStatus: 'paratype of Phaeopholus vietnamensis Legalov, 2026', country: 'Vietnam' }
@@ -109,9 +133,9 @@ test('typeRow: an undetermined type takes the valid name, rank, OTU and classifi
 
 test('typeRow: unresolved and unreadable types are listed with a reason; other rows unchanged', () => {
   const base = { dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: '1', otu_id: '' }
-  assert.deepEqual(typeRow({ ...base, typeStatus: 'holotype' }, {}, {}), { unplaced: 'type status names no single taxon' })
+  assert.deepEqual(typeRow({ ...base, typeStatus: 'holotype' }, {}, {}), { left: 'type status names no single taxon' })
   assert.deepEqual(typeRow({ ...base, typeStatus: 'holotype of Aus bus X, 1900' }, { 'Aus bus X, 1900': { error: 'type status name not found in TaxonWorks' } }, {}),
-    { unplaced: 'type status name not found in TaxonWorks' })
+    { left: 'type status name not found in TaxonWorks' })
   const genus = { id: 5, cached: 'Aus', cached_author_year: 'X, 1900', rank: 'genus', cached_valid_taxon_name_id: 5 }
   assert.equal(typeRow({ ...base, typeStatus: 'holotype of Aus bus X, 1900' }, { 'Aus bus X, 1900': { taxonName: genus, valid: genus, otuId: 3 } }, {}).taxonRank, 'genus')
   const determined = { ...base, otu_id: '12', typeStatus: 'holotype of Aus bus X, 1900', scientificName: 'Aus bus X, 1900' }

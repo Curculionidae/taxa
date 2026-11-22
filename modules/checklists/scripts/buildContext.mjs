@@ -65,12 +65,13 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   const { shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, rulesFile: RULES_FILE } = buildPaths(root)
   // Undetermined type specimens take the valid name of their type status
   // (placement/typeStatus.js typeRow); one that cannot be resolved keeps its
-  // row and is listed in unplaced.json with the reason (typeUnplaced).
-  const typeUnplaced = new Map() // 'CO 123' -> reason
+  // row and is left out of every checklist with the reason (typeLeft): without
+  // its taxon it belongs on no checklist.
+  const typeLeft = new Map() // 'CO 123' -> reason
   const rows = parseTsv(data.csv).map((row) => {
     const typed = typeRow(row, data.typeNames)
-    if (!typed.unplaced) return typed
-    typeUnplaced.set(`CO ${Number(row.dwc_occurrence_object_id)}`, typed.unplaced)
+    if (!typed.left) return typed
+    typeLeft.set(`CO ${Number(row.dwc_occurrence_object_id)}`, typed.left)
     return row
   })
   const distributions = new Map(data.distributions.map((ad) => [String(ad.id), ad]))
@@ -211,8 +212,8 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   // species rank and below, present (not absent) records. A failed parents
   // lookup is not left out: the build lists it as unplaced.
   function screenRow(row) {
-    const typeReason = row.dwc_occurrence_object_type === 'CollectionObject' && typeUnplaced.get(`CO ${Number(row.dwc_occurrence_object_id)}`)
-    if (typeReason) return { unplaced: typeReason }
+    const typeReason = row.dwc_occurrence_object_type === 'CollectionObject' && typeLeft.get(`CO ${Number(row.dwc_occurrence_object_id)}`)
+    if (typeReason) return { left: typeReason }
     const ad = row.dwc_occurrence_object_type === 'AssertedDistribution' ? distributions.get(String(row.dwc_occurrence_object_id)) : null
     // placement/screen.js, the same screening the curator page runs.
     const screened = screenRecord(row, { parentClassification: parentClassification.get(row.otu_id), distributionAbsent: Boolean(ad?.is_absent) })
@@ -246,7 +247,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
       return { subject, placement: await placeAreaRecord(area) }
     }
     if (!row) return { missing: `${kind} ${id}: not in the DwC export` }
-    const typeReason = kind === 'CO' && typeUnplaced.get(`CO ${Number(id)}`)
+    const typeReason = kind === 'CO' && typeLeft.get(`CO ${Number(id)}`)
     if (typeReason) return { subject: subjectOf(row, null), placement: typeReasonPlacement(row, typeReason) }
     return { subject: subjectOf(row, null), placement: await placeRecord(recordInput(row), ctx) }
   }

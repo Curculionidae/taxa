@@ -13,12 +13,12 @@
 //   --verbose      print every record's placement (placement/format.js)
 //   --explain <x>  print the placement of one record or area and stop: "AD 556796",
 //                  "co 12", "GA 8837", "GZ10453" (any form parseLookup reads)
-// Without --from it downloads (scripts/download.mjs, about 2 minutes).
+// Without --from it downloads (scripts/download.mjs, about 3 minutes).
 //
-// What it reads besides TaxonWorks: rules/placement.yml (the placement rules),
-// public/map-shapes/ (cached outlines), public/checklists/fallback-shapes.geojson
-// and subdivisions.geojson (Natural Earth outlines, never written here),
-// scripts/data/country-iso.json (ISO codes TaxonWorks does not give).
+// What it reads besides TaxonWorks: rules/placement.yml (the placement rules,
+// with the ISO codes TaxonWorks does not give in iso_codes), public/map-shapes/
+// (cached outlines), public/checklists/fallback-shapes.geojson and
+// subdivisions.geojson (Natural Earth outlines, never written here).
 //
 // What it writes to public/checklists/ (see the module README, "Building the cache"):
 //   index.json             build date, every checklist (key, file, name, iso2, of,
@@ -54,7 +54,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compactChecklist } from '../data/compact.js'
-import { placeRecord } from '../placement/engine.js'
+import { placeRecord, placementWithoutArea } from '../placement/engine.js'
 import { formatPlacement, parseLookup } from '../placement/format.js'
 import { downloadData, saveData, loadData } from './download.mjs'
 import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
@@ -192,7 +192,7 @@ for (const row of rows) {
   let placement
   if (type === 'AssertedDistribution') {
     placement = area ? await placeAreaRecord(area)
-      : { checklist: null, reason: ad ? 'distribution has no area' : 'distribution not downloaded', steps: [] }
+      : placementWithoutArea(ad ? 'distribution has no area' : 'distribution not downloaded')
   } else {
     placement = await placeRecord(recordInput(row), ctx)
   }

@@ -426,6 +426,11 @@ export function ruleSections(rules) {
     },
     { name: 'Parts', collapsed: false, rows: parts },
     {
+      name: 'ISO codes',
+      collapsed: false,
+      rows: (rules.isoCodes ?? []).map((entry) => ({ ref: entry.ref, match: entry.name, action: `ISO code ${entry.iso}`, why: 'TaxonWorks gives this country no ISO code' }))
+    },
+    {
       name: 'State countries',
       collapsed: false,
       rows: [{ ref: rules.stateCountries?.ref ?? null, match: (rules.stateCountries?.names ?? []).join(', '), action: 'browsed by state or province', why: '' }]
@@ -480,6 +485,7 @@ export function splitRefs(text) {
 export function sourceTags(placement) {
   const tags = []
   for (const step of placement?.steps ?? []) {
+    if (step.none) continue
     const tag = sourceTag(step)
     if (!tags.includes(tag)) tags.push(tag)
   }
@@ -547,7 +553,7 @@ export function plainReason(placement) {
     if (inCountry) return said(`GA hierarchy in TaxonWorks (${inCountry[1]})`)
     const parent = / is a subdivision of .*\((GA \d+)\)/.exec(text)
     if (parent) return said(`subdivision of ${parent[1]} in TaxonWorks`)
-    const iso = / has ISO code ([A-Z]{2})/.exec(text)
+    const iso = / has ISO code ([A-Z]{2})/.exec(text) ?? /^([A-Z]{2}) is the ISO code of /.exec(text)
     if (iso) return said(`gazetteer ISO code ${iso[1]}`)
     if (/^DwC country is /.test(text)) return said('DwC country')
     if (/has no country in TaxonWorks/.test(text)) return said('no country in TaxonWorks and no rule')
@@ -555,6 +561,8 @@ export function plainReason(placement) {
     return said('TaxonWorks')
   }
   if (step.source === 'manual') {
+    const isoLine = /^([A-Z]{2}) is the ISO code of /.exec(text)
+    if (isoLine) return said(`gazetteer ISO code ${isoLine[1]} (code from the rules file)`)
     if (/ is a spelling of /.test(text)) return said('spelling synonym')
     if (/belongs to the checklist |of the checklist /.test(text)) return said('own checklist entry')
     const same = / is the same area as (G[AZ] \d+)/.exec(text)
@@ -604,7 +612,7 @@ export function plainReasons(placement) {
 }
 
 function partReason(steps) {
-  const step = steps.find((candidate) => candidate.stage === 'part')
+  const step = steps.find((candidate) => candidate.stage === 'part' && !candidate.none)
   if (!step) {
     const rule = steps.find((candidate) => candidate.stage === 'checklist' && candidate.decidesPart)
     return rule ? { text: 'manual rule', ref: rule.ref ?? null } : null
@@ -618,7 +626,7 @@ function partReason(steps) {
 }
 
 function stateReason(steps) {
-  const step = steps.find((candidate) => candidate.stage === 'state' && !candidate.text.startsWith('no state'))
+  const step = steps.find((candidate) => candidate.stage === 'state' && !candidate.none && !candidate.text.startsWith('no state'))
   if (!step) return null
   const ref = step.ref ?? null
   const text = step.text

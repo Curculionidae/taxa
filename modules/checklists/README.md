@@ -14,7 +14,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/compare.mjs`, `scripts/compareCaches.mjs`: compare two caches record by record and write a report for the curator (see "Comparing two caches"); the pure helpers are tested in `compareCaches.test.js`.
 - `scripts/download.mjs`: everything the build fetches from TaxonWorks, and saving or reading it as files for offline runs (`--save`, `--from`).
 - `scripts/cacheFiles.mjs`: pure helpers that shape the written files (checklist keys, the country file header, index entries, `unplaced.json`); tested in `cacheFiles.test.js`.
-- `scripts/data/country-iso.json`: ISO codes of countries whose TaxonWorks area carries none.
+- `placement/specimen.js`, `placement/screen.js`, `placement/typeStatus.js`, `placement/footprint.js`: the specimen record and its label, the screening (which rows count), undetermined type specimens, the point of a georeference shape; each used by the build and the curator page alike (the curator page has no logic of its own: CLAUDE.md).
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
@@ -41,7 +41,8 @@ of the size). In short:
 
 - Every record is placed by the placement engine (see "How a record is
   placed"): asserted distributions by their area, specimens and field
-  occurrences by their DwC country, else by their coordinates. Each record
+  occurrences by their coordinates (or a point in their georeference shape),
+  their collecting event's area, or their DwC fields. Each record
   carries `part` (France: Corsica, Mainland France) and `state` (six
   countries) when the engine finds one.
 - Distributions asserted for a biological association (e.g. "egg of Lixus
@@ -49,8 +50,33 @@ of the size). In short:
   DwC export; the build adds them for each beetle side of the association,
   with the association's reading shown next to the place. They are asserted
   distributions on an area, so they are placed like any other.
-- Only Curculionoidea, species and subspecies, present records. One taxon per
-  name (several OTUs of a name count once).
+- Only Curculionoidea, species and subspecies, present records, with an OTU
+  (`placement/screen.js` `screenRecord`, the same screening for the build and
+  the curator page). One taxon per name (several OTUs of a name count once).
+- Undetermined type specimens (no determination, only a type status: types
+  are never determined in this project, the type status is the
+  identification) take the valid name of their type status
+  (`placement/typeStatus.js`): the name exactly as the type status prints it
+  (subgenus, `var.` and `[sic]` included) is looked up with
+  `GET /taxon_names?name=…&name_exact=true` (without `name_exact` it is a
+  substring search); rows without rank (Combination rows) are dropped; when
+  several valid names remain, those with the same number of epithets (a
+  species, not its nominotypical subspecies), then those with the same author
+  (homonyms); then the valid name of a synonym and its OTU (several unnamed
+  OTUs on one name, a duplicate in TaxonWorks: the lowest id; same name and
+  classification, so it changes nothing). The label says so: `Phaeopholus
+  vietnamensis Legalov, 2026 (paratype, no determination)`. A type status that
+  names no taxon (`holotype`), several, or a name that does not resolve is
+  left out of every checklist (without its taxon it belongs on none), like a
+  row of rank genus; the curator lookup shows the reason (`type status names
+  no single taxon`, `type status name is ambiguous in TaxonWorks`, `type
+  status name not found in TaxonWorks`, `no OTU`, `TaxonWorks lookup failed
+  (404 …)`). The name and the authorship are split by the site's shared
+  `splitScientificName` (`panels/_shared/scientificName.js`), which knows
+  author particles (`de Marseul`). A client error of TaxonWorks during the
+  lookup is such a reason, never a stop of the download. On 2026-11-22: 722
+  type rows, 704 resolved, 52 placed (two taxa new to their checklist), 648
+  without any locality.
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
   about 5% of the rows. The download uses `/dwc_occurrences.csv` (one request).
 
@@ -160,11 +186,13 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   its name (`french-guiana`, see "Building the cache").
 - ISO codes: a country takes its ISO code from its TaxonWorks area. Natural
   Earth country areas and countries used only through subdivisions carry
-  none, so the build passes `isoByName` (fourth argument, keys are
-  `normalizeName` of a country name), filled from
-  `scripts/data/country-iso.json`; it is looked up by the checklist name and
-  every synonym of it. Gazetteers are placed by ISO code, so without this a
-  Solomon Islands gazetteer (ISO SB) would find no checklist.
+  none; for those the rules file's `iso_codes` section gives it, looked up by
+  the checklist name and every synonym of it, and the checklist carries that
+  line as `isoRef` (also in `context.json`). Gazetteers are placed by ISO
+  code, so without it a Solomon Islands gazetteer (ISO SB) would find no
+  checklist; its step cites the line. A line no checklist uses is a build
+  warning saying why (no checklist of that name, or the checklist has its
+  code from TaxonWorks or its checklists entry).
 - `states` is true for the checklists named in the rules file's
   `state_countries` list (United States, Canada, Australia, China, Russia),
   the countries browsed by state. `parts` holds the part names
@@ -214,6 +242,10 @@ of the file describes every key; in short:
   outline but this close to one counts for that outline (coasts are
   simplified). Steps that used it say "within about 5 km of the coast of"
   and cite the line.
+- `share_threshold_percent` (90): the share of one outline that decides. The
+  measuring script writes `subdivision_of` for an area lying this much in one
+  country or state, else `not_placeable`; the build places a specimen's
+  georeference shape the same way, and its steps cite this line.
 - Validation: once the checklists are derived, `validateRules` (rules.js)
   stops the build with `placement.yml:N: unknown country "X"` (and the like)
   for a rule naming an unknown country, part or state, a state of a country
@@ -229,6 +261,13 @@ of the file describes every key; in short:
   Krai" finds Krasnoyarsk. Only for states, never for countries. The engine has
   no word list of its own; a state found only by leaving words out cites this
   line (see "States and provinces").
+- `iso_codes`: `Country name: XX`, one line per country whose TaxonWorks
+  country area carries no ISO code (41 on 2026-11-22; moved here from
+  `scripts/data/country-iso.json`). The ISO step of a gazetteer then reads
+  `Solomon Islands: Mbanika has ISO code SB` [TaxonWorks], `SB is the ISO
+  code of Solomon Islands` [manual, placement.yml:N]; with a code from
+  TaxonWorks the second step is [TaxonWorks] (`NZ is the ISO code of New
+  Zealand`).
 - `parts`: parts of a country that can be selected on their own, by country
   name (France: Corsica, Mainland France). Keys: `name`, `areas`, `names`,
   `box`, and `rest: true` on the part that takes every other record below
@@ -289,6 +328,21 @@ Every step is one short sentence with its source:
 - `overlap`: a measured line of the overlap section, with its line and the
   measured share (`pct`). Overrule it with a manual rule.
 
+Every check that runs prints a step, also when it finds nothing: `no manual
+rule for New Guinea (GZ 3614)` [manual], `New Guinea (GZ 3614) has no ISO
+code in TaxonWorks` [TaxonWorks], `no overlap rule gives ... a country or state` [overlap]. So an
+explanation shows each check of the order up to the one that decided; the
+checks after it do not run and are not printed. The step that decides
+(or gives the reason) still says everything on its own, as it is often shown
+alone. Such a step carries
+`none: true` and no line. Its tag says which kind of nothing it found:
+`[manual, no rule]` when no line of `placement.yml` matched, `[overlap, never
+measured]` when no overlap line exists for the area, `[overlap]` when a point
+lay in no outline (`pointTest`), and `[TaxonWorks]` for a fact TaxonWorks does
+not have (`New Guinea (GZ 3614) has no ISO code in TaxonWorks`). Where the step that decided is
+wanted (`format.js` `decidingStep`, the `how` of the country files, the source
+tags of the OTU table, the reasons of the area tree), these steps are skipped.
+
 Decision order for an area; the first that applies decides:
 
 1. A manual rule for the area. If an overlap rule matches the same area, the
@@ -302,7 +356,8 @@ Decision order for an area; the first that applies decides:
    (Texas, GA 26386, under GA 237 United States). A country area whose name
    differs from its checklist gets a second, manual step citing the synonym
    line (`United States of America is a spelling of United States`).
-4. The ISO code of a gazetteer.
+4. The ISO code of a gazetteer, and the checklist with that code (from
+   TaxonWorks, or a line of `iso_codes`).
 5. An overlap rule for the area.
 6. Otherwise not placeable. Reasons: `spans several countries: <shares>` (from
    a `not_placeable` rule), `no checklist for <country or ISO code>`,
@@ -325,20 +380,25 @@ Two worked examples (as the curator page shows them):
 
 ```
 GA 8837 Cayenne  =>  French Guiana
+  no manual rule gives Cayenne (GA 8837) a country or state    [manual, no rule]
   Cayenne is a subdivision of French Guiana (GA 78)            [TaxonWorks]
   French Guiana (GA 78) belongs to the checklist French Guiana [manual, placement.yml:69]
   outline: GeographicArea/32253
 
-GA 33639 Borneo (TDWG 42BOR)  =>  not placeable
-  reason: spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%
-  Borneo spans several countries: Indonesia 72%, ...           [overlap, placement.yml:211]
+GZ 3614 New Guinea  =>  not placeable
+  reason: spans several countries: Papua New Guinea 51%, Indonesia 49%
+  no manual rule gives New Guinea (GZ 3614) a country or state                              [manual, no rule]
+  New Guinea (GZ 3614) matches no checklist of its own (by area, parent, ISO code or name)  [manual]
+  New Guinea (GZ 3614) is a gazetteer; TaxonWorks gives gazetteers no country or parent     [TaxonWorks]
+  New Guinea (GZ 3614) has no ISO code in TaxonWorks                                        [TaxonWorks]
+  New Guinea spans several countries: Papua New Guinea 51%, Indonesia 49%                   [overlap, placement.yml:704]
 ```
 
 Cayenne has no country in TaxonWorks, but its parent GA 78 is listed in the
 French Guiana entry of the rules file, so step 2 decides before the country
-step. Borneo is a TDWG area with no country; the measuring script found it in
-three countries and wrote a `not_placeable` overlap line, whose shares become
-the reason.
+step. New Guinea is a gazetteer with no country and no ISO code; the
+measuring script found it in two countries and wrote a `not_placeable` overlap
+line, whose shares become the reason.
 
 ### Reading an explanation
 
@@ -350,6 +410,7 @@ and optionally the `area` behind it) and the `Placement`. Example:
 ```
 AD 556796  Phaedropus candidus (Fabricius, 1775)
   area      GA 8837 Cayenne (GA)
+  step      no manual rule gives Cayenne (GA 8837) a country or state     [manual, no rule]
   step      Cayenne is a subdivision of French Guiana (GA 78)             [TaxonWorks]
   step      French Guiana (GA 78) belongs to the checklist French Guiana  [manual, placement.yml:69]
   result    French Guiana checklist
@@ -375,7 +436,18 @@ Source tags:
 - `[overlap 72% Russia, placement.yml:N]`: a measured overlap rule; the share
   and the country (or state) it refers to.
 - `[overlap, placement.yml:N]`: an overlap rule without a share.
-- `[overlap]`: a live coordinate step (a point tested against the cached outlines), no rule line.
+- `[overlap]`: a live coordinate step (a point tested against the cached outlines), no rule line;
+  also a point that lay in no outline (a check that found nothing).
+- `[manual, no rule]`: a check of the rules file that found no line (`no manual rule gives … a country or state`).
+- `[overlap, never measured]`: no overlap line matches the area at all (`no overlap rule gives … a country or state`).
+- `[overlap, no such rule]`: the area has overlap lines, but none of the kind looked for
+  (`no overlap rule gives … a state`, next to a line saying it lies outside every state outline).
+
+A rule that gives a state also gives the country, so the country stage's
+"no manual (overlap) rule gives … a country or state" already answers the
+state stage's question: the state stage then skips that check. It runs when
+a rule gave only the country, or when the country came from TaxonWorks or
+an ISO code before the overlap rules were reached.
 - `[overlap, placement.yml:N]` on a coordinate step: the point lay outside
   every outline but within the coastal tolerance; N is the line of
   `coastal_tolerance_degrees`.
@@ -388,8 +460,58 @@ gives `null`.
 ### Specimens and field occurrences
 
 A specimen or field occurrence is placed by its DwC fields (`RecordInput`:
-`country`, `stateProvince`, `county`, `locality`, `lat`, `lng`). The first
-that applies decides:
+`country`, `stateProvince`, `county`, `locality`, `lat`, `lng`, and
+`footprint`, the DwC `footprintWKT`), and a collection object without
+coordinates also by its collecting event's area (`eventArea`).
+
+First, the point the outlines are tested with: the coordinates, else a point
+inside the georeference shape (a georeference drawn with TaxonWorks' shape
+tool gives `footprintWKT` but no latitude and longitude; `placement/footprint.js`
+takes the centre of its largest polygon, or the middle of a horizontal cut
+through it when the centre lies outside, rounded to 4 decimals; no point for a
+shape across the 180th meridian). The first step then says so:
+
+```
+CO 2707818  the georeference is a shape; its inside point is 36.8236, 78.254  [TaxonWorks]
+```
+
+Where the coordinates would be tested (no DwC country), the shape itself is
+measured instead, with the same sampling and the same 90% rule as the
+measuring script uses for areas (`geometry.js` `measureShares`,
+`share_threshold_percent`): `95% of the georeference shape lies in Austria
+(Austria 95%, Germany 5%); 90% or more decides` `[overlap, placement.yml:N]`,
+else not placeable `georeference shape spans several countries` ("Habitat in
+Saxonia, Austria" drawn over both). Two overlapping outlines that each hold
+90% (no `of` link between them) give `georeference shape in several countries
+(A, B)`, as coordinates inside both do. A share just below 90% is never
+printed as 90% (`89.9%`). A shape lying in no outline (at sea) goes
+on with its inside point, with the coastal tolerance. The state of a shape is
+found the same way among the state outlines (less than 90%: `no state: the
+georeference shape spans several states`). The part (France: Corsica) is still
+found by the inside point.
+
+Without a point, the collecting event's area decides, exactly as for an
+asserted distribution on that area (country, part and state, with the same
+steps), when a distribution uses that area (so its levels and parent are
+known). A reason from TaxonWorks data or a rule (`spans several countries`)
+stands, as for the distribution; only an area that cannot be placed by its
+outline yet (`no outline`, `no usable outline (no polygon)`, `not measured
+yet`) hands over to the DwC fields, after its steps. An area no distribution
+uses is named by its key and the DwC fields decide. Field occurrences have no
+collecting event area in the API.
+
+```
+CO 2874936  no coordinates and no georeference shape                     [TaxonWorks]
+            the collecting event's area is Sulawesi (TDWG 42SUL-OO)      [TaxonWorks]
+            ... the steps of the area, as for a distribution on it
+CO 1380033  no coordinates and no georeference shape                     [TaxonWorks]
+            the collecting event has no area                             [TaxonWorks]
+            ... the DwC fields, below
+```
+
+With a point, the collecting event area is not used: TaxonWorks derived the
+DwC fields from the georeference, which is more precise. Then the DwC fields,
+the first that applies decides:
 
 1. A checklist of its own: a word of the entry's `names` is in the DwC
    `country`, or in the `stateProvince` or `county` when the DwC country is
@@ -501,7 +623,8 @@ CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
   United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:137]
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
-  Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
+  Hawai'i: Kaua'i has ISO code US                                [TaxonWorks]
+  US is the ISO code of United States                            [TaxonWorks]
   Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:578]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state
@@ -610,7 +733,7 @@ manual rule overrides the measurement and cites both lines.
 Commands (from the project folder):
 
 ```
-npm run checklists                                   # download (about 2 minutes) and build
+npm run checklists                                   # download (about 3 minutes) and build
 npm run checklists -- --save                         # the same, and keep the download in modules/checklists/.cache/data
 npm run checklists -- --save /some/dir               # keep it elsewhere
 npm run checklists -- --from                         # build offline from modules/checklists/.cache/data (about 15 seconds)
@@ -639,9 +762,21 @@ The saved folder (`scripts/download.mjs`, `FILES`), one file per download:
 - `reassessments.json`, `reassessment_citations.json`: the Reassessment data
   attributes of distributions and their citations with source.
 - `associations.json`: the biological associations distributions are asserted for.
+- `type_names.json`: `{ [name and authorship]: { taxonName, valid, otuId } |
+  { error } }`, the type status names of undetermined type specimens resolved
+  by `placement/typeStatus.js` `resolveTypeName` (663 names, about 45 s); their
+  OTUs are added to the `otu_parents.json` lookups.
 - `association_otus.json`: OTU and taxon name of association OTUs without a
   DwC row; `otu_parents.json`: the parents of OTUs the DwC export leaves
   without classification. A stale or hidden OTU is kept as `{ error }`.
+- `specimen_areas.json`: `{ [collectionObjectId]: geographicAreaId }`, the
+  area of each specimen's collecting event, for the specimens whose
+  collecting event has one: `GET /collecting_events`, every page (ordered by
+  id, counted against `pagination-total`), then `GET /collection_objects` with
+  `collecting_event_id[]` for those with an area, 50 per request, each batch
+  counted (about 15 s; 15,731 collecting events, 293 with an area, 332
+  specimens on 2026-11-22). The DwC export has no collecting event id. A
+  folder saved before this file existed is refused, with a message saying so.
 
 `measure-overlap.mjs` reads the same folder.
 
@@ -889,6 +1024,11 @@ records only: no synonyms, no subordinate taxa. The page loads:
   taxon name, nor for an OTU the build leaves out (above species: the DwC
   index of a family is the whole family; outside Curculionoidea, such as a
   host plant); a line says why.
+- The collecting event areas of the OTU's collection objects without
+  coordinates or georeference shape (`attachEventAreas`): `GET
+  /collection_objects?collection_object_id[]=…` and `GET
+  /collecting_events?collecting_event_id[]=…` (100 per request), then each area
+  through `GET /asserted_distributions?geo_shape_id[]=…` as for a GA lookup.
 
 A record counts as left out (`live.js` `recordLeftOut`) for its own DwC
 reason, as absent, or for its OTU's reason: a specimen whose DwC row has no
@@ -1042,36 +1182,49 @@ What it shows:
 - What the cache says: `listed in French Guiana` (with the part and state of
   the cached record), or why not: its reason from `unplaced.json`, or `not
   listed: rank genus` (or `not in Curculionoidea`, `recorded as absent`,
-  `distribution is absent`) when the record is outside the checklists'
-  scope, else `not listed in the cache` (for example a record added after
+  `distribution is absent`, the reason of an undetermined type whose taxon is
+  unknown) when the build leaves the record out (`cacheStatus` `leftOut`;
+  such a record never shows "Differs from the cache"), else `not listed in the cache` (for example a record added after
   the build). The record is looked up in the country file of the live
   result only. For an area: its row in `areas.json`, with the number of
   records on it.
 - Links into TaxonWorks: the record's edit page, its area's page
   (`/geographic_areas/:id` or `/gazetteers/:id`) and the OTU.
 - A map with two layers and a legend: the record's own place (its area's
-  cached outline from `public/map-shapes/`, or a specimen's coordinates) and
+  cached outline from `public/map-shapes/`; for a specimen what the engine
+  tested, `engine.js` `recordLocation`: its coordinates, or its georeference
+  shape with the inside point, or the outline of its collecting event's area
+  when that area placed it) and
   the outline the placement chose (`shape`, else the checklist's Natural
   Earth fallback outline). A layer that does not exist is left out and named
   (`No outline cached for Cayenne (GA 8837).`). Colours are the map tokens
   of the taxon pages (area `--tp-map-asserted`, specimen point
   `--tp-map-collection-object` or `--tp-map-field-occurrence`, assigned
   outline `--tp-map-aggregate`). A Natural Earth outline is labelled so.
+  While a lookup runs, the map box keeps its place with a spinner over it
+  ("Placing the record…") and the legend line says the layers are loading,
+  so the page does not jump when the result arrives.
 
 Why it equals the build: the page fetches the record from TaxonWorks
 (`placement/live.js`: AD `GET /asserted_distributions/:id` with
-`extend[]=asserted_distribution_shape`, CO `GET /collection_objects/:id/dwc`,
-FO `GET /field_occurrences/:id/dwc`, GA and GZ through
+`extend[]=asserted_distribution_shape`, CO `GET /collection_objects/:id/dwc`
+(and, without coordinates or georeference shape, `GET /collection_objects/:id`,
+`GET /collecting_events/:id` and the area as for a GA lookup), FO
+`GET /field_occurrences/:id/dwc`, GA and GZ through
 `GET /asserted_distributions?geo_shape_id[]=…&geo_shape_type[]=…&per=1`),
 the same JSON the build downloads, and places it with the same engine in an
 engine context made from the cache files only (`context.json` and
 `rules.json`, `placement/geometry-browser.js`). The browser geometry fetches
-an outline only when a point lies within its `bbox` (one or two files per
-lookup) and runs the same point tests as the build (`placement/geometry.js`).
+an outline only when a point (or a georeference shape) lies within its `bbox`
+(one or two files per lookup for a point; a large shape meets more, CO
+2770887 about ten) and runs the same point tests and share measuring as the
+build (`placement/geometry.js`). 
 `scripts/browserContext.test.js` builds the context this way from disk and
 checks it reproduces every area of `areas.json` (2458 of 2458 on 2026-11-20)
 and 200 specimens of the country files (100 of them placed by their
-coordinates), and the coordinate reasons of `unplaced.json`. It needs the
+coordinates), every listed specimen placed through its georeference shape or
+its collecting event area (with the area set as `attachEventAreas` sets it),
+and the coordinate reasons of `unplaced.json`. It needs the
 saved data (`--save`, in `modules/checklists/.cache/data`) and a cache built
 from it, and is skipped without them (so a fresh checkout runs `npm test`
 without this check). The explanation can differ
@@ -1079,6 +1232,10 @@ from the cache only when TaxonWorks changed since the build (or the rules
 file, before the next build); the cache line then shows the old result.
 
 Limits:
+
+- Types of an OTU are not on the OTU tab: an undetermined type has no OTU in
+  TaxonWorks' DwC rows, which the tab loads by OTU. Look one up by its id
+  (`CO 2876460`); the lookup resolves its type status as the build does.
 
 - An area no distribution uses cannot be fetched (TaxonWorks has no area
   endpoint): `used by no record`. When `areas.json` knows it as a parent

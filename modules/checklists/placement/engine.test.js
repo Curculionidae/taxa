@@ -1,10 +1,11 @@
+import { formatStep } from './format.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileRules } from './rules.js'
 import { toArea } from './areas.js'
 import { deriveChecklists } from './checklists.js'
-import { createContext, placeArea, placeRecord } from './engine.js'
+import { hasPoint, recordLocation, createContext, placeArea, placeRecord } from './engine.js'
 import * as fx from './fixtures.js'
 
 const yamlText = readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8')
@@ -24,25 +25,25 @@ const areas = [
   fx.ga33639, fx.ga19713, fx.ga236, fx.ga34271, fx.ga15, fx.ga237, fx.ga33412, fx.ga33455,
   fx.ga26386, fx.ga31761
 ].map(ga).concat([fx.gz3529, fx.gz10453, fx.gz3575].map(gz))
-// Country ISO codes the build reads from scripts/data/country-iso.json (R18).
-const isoByName = new Map([['solomon islands', 'SB']])
 // New Zealand is used in TaxonWorks only through gazetteers here, so its
 // checklist is given by hand (id and ISO code as a country file would have them).
 const newZealand = { id: 158, name: 'New Zealand', iso2: 'NZ', areaIds: [158], states: false }
-const checklists = [...deriveChecklists(areas, rules, new Map(), isoByName).checklists, newZealand]
+const checklists = [...deriveChecklists(areas, rules, new Map()).checklists, newZealand]
 const shapes = new Set(['GeographicArea/32253', 'GeographicArea/77', 'GeographicArea/32254',
   'GeographicArea/19713', 'GeographicArea/236', 'GeographicArea/237', 'GeographicArea/33639', 'GeographicArea/33876'])
 const ctx = createContext({ checklists, rules, geometry: null, shapes })
-const sources = (placement) => placement.steps.map((step) => step.source)
+// The steps that found something (a check that found nothing, Step.none, is left out).
+const found = (placement) => placement.steps.filter((step) => !step.none)
+const sources = (placement) => found(placement).map((step) => step.source)
 
 test('Cayenne lands in French Guiana through its parent', () => {
   const placement = placeArea(ga(fx.ga8837), ctx)
   assert.equal(placement.checklist.name, 'French Guiana')
   assert.equal(placement.reason, null)
   assert.deepEqual(sources(placement), ['TaxonWorks', 'manual'])
-  assert.equal(placement.steps[0].text, 'Cayenne is a subdivision of French Guiana (GA 78)')
-  assert.equal(placement.steps[1].text, 'French Guiana (GA 78) belongs to the checklist French Guiana')
-  assert.equal(placement.steps[1].ref, refOf('- name: French Guiana'))
+  assert.equal(found(placement)[0].text, 'Cayenne is a subdivision of French Guiana (GA 78)')
+  assert.equal(found(placement)[1].text, 'French Guiana (GA 78) belongs to the checklist French Guiana')
+  assert.equal(found(placement)[1].ref, refOf('- name: French Guiana'))
 })
 
 test('the shape is the checklist outline', () => {
@@ -56,7 +57,7 @@ test('Natural Earth French Guiana (GA 32253) lands in French Guiana, not France'
   assert.equal(placement.checklist.id, 32253)
   assert.equal(placement.part, null)
   assert.deepEqual(sources(placement), ['manual'])
-  assert.equal(placement.steps[0].text, 'GA 32253 French Guiana belongs to the checklist French Guiana')
+  assert.equal(found(placement)[0].text, 'GA 32253 French Guiana belongs to the checklist French Guiana')
 })
 
 test('TDWG French Guiana (GA 34200) belongs to its own checklist before its overlap rule', () => {
@@ -69,10 +70,10 @@ test('TDWG Central European Russia lands in Russia by overlap', () => {
   const placement = placeArea(ga(fx.ga33876), ctx)
   assert.equal(placement.checklist.name, 'Russia')
   assert.deepEqual(sources(placement), ['overlap'])
-  assert.equal(placement.steps[0].text, 'Central European Russia (TDWG 14RUC) lies in Russia')
-  assert.equal(placement.steps[0].pct, 100)
-  assert.equal(placement.steps[0].ref, refOf('match: { tdwg: 14RUC }'))
-  assert.match(placement.steps[0].ref, /^placement\.yml:\d+$/)
+  assert.equal(found(placement)[0].text, 'Central European Russia (TDWG 14RUC) lies in Russia')
+  assert.equal(found(placement)[0].pct, 100)
+  assert.equal(found(placement)[0].ref, refOf('match: { tdwg: 14RUC }'))
+  assert.match(found(placement)[0].ref, /^placement\.yml:\d+$/)
   assert.deepEqual(placement.shape, { key: 'GeographicArea/19713', name: 'Russia' })
 })
 
@@ -82,16 +83,17 @@ test('TDWG Borneo is not placeable', () => {
   assert.equal(placement.shape, null)
   assert.equal(placement.reason, 'spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%')
   assert.deepEqual(sources(placement), ['overlap'])
-  assert.equal(placement.steps[0].ref, refOf('match: { tdwg: 42BOR }'))
-  assert.equal(placement.steps[0].text, 'Borneo spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%')
+  assert.equal(found(placement)[0].ref, refOf('match: { tdwg: 42BOR }'))
+  assert.equal(found(placement)[0].text, 'Borneo spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%')
 })
 
 test('NZCC: Northland lands in New Zealand by its ISO code', () => {
   const placement = placeArea(gz(fx.gz3529), ctx)
   assert.equal(placement.checklist.name, 'New Zealand')
-  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks'])
-  assert.equal(placement.steps[0].text, 'NZCC: Northland has ISO code NZ, New Zealand')
-  assert.equal(placement.steps[1].text, 'no outline cached for New Zealand')
+  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks', 'TaxonWorks'])
+  assert.equal(found(placement)[0].text, 'NZCC: Northland has ISO code NZ')
+  assert.equal(found(placement)[1].text, 'NZ is the ISO code of New Zealand')
+  assert.equal(found(placement)[2].text, 'no outline cached for New Zealand')
   assert.equal(placement.shape, null)
   assert.equal(placement.reason, null)
 })
@@ -106,21 +108,24 @@ test('a gazetteer whose ISO code has no checklist is not placeable', () => {
 test('a Solomon Islands gazetteer lands in Solomon Islands though its country area has no ISO (R18)', () => {
   const placement = placeArea(gz(fx.gz3575), ctx)
   assert.equal(placement.checklist.name, 'Solomon Islands')
-  assert.equal(placement.steps[0].text, 'Solomon Islands: Guadalcanal has ISO code SB, Solomon Islands')
+  assert.deepEqual(found(placement).slice(0, 2).map((step) => [step.text, step.source, step.ref]), [
+    ['Solomon Islands: Guadalcanal has ISO code SB', 'TaxonWorks', undefined],
+    ['SB is the ISO code of Solomon Islands', 'manual', refOf('  Solomon Islands: SB')]
+  ])
 })
 
 test('a US state under GA 33412 lands in United States (R17)', () => {
   const placement = placeArea(ga(fx.ga33455), ctx)
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.checklist.id, 237)
-  assert.equal(placement.steps[0].text, 'Alabama is in United States (GA 33412)')
+  assert.equal(found(placement)[0].text, 'Alabama is in United States (GA 33412)')
   const usa = placeArea(ga(fx.ga33412), ctx)
   assert.equal(usa.checklist.name, 'United States')
-  assert.deepEqual(usa.steps.map((step) => [step.text, step.source]), [
+  assert.deepEqual(found(usa).map((step) => [step.text, step.source]), [
     ['United States of America (GA 33412) is a country', 'TaxonWorks'],
     ['United States of America is a spelling of United States', 'manual']
   ])
-  assert.equal(usa.steps[1].ref, refOf('[United States, United States of America]'))
+  assert.equal(found(usa)[1].ref, refOf('[United States, United States of America]'))
   // GA 33412 has no shape; the outline is GA 237's.
   assert.deepEqual(usa.shape, { key: 'GeographicArea/237', name: 'United States' })
   assert.deepEqual(placement.shape, { key: 'GeographicArea/237', name: 'United States' })
@@ -130,7 +135,7 @@ test('Texas (no level0) lands in United States through its parent GA 237', () =>
   const placement = placeArea(ga(fx.ga26386), ctx)
   assert.equal(placement.checklist.name, 'United States')
   assert.deepEqual(sources(placement), ['TaxonWorks'])
-  assert.equal(placement.steps[0].text, 'Texas is a subdivision of United States (GA 237)')
+  assert.equal(found(placement)[0].text, 'Texas is a subdivision of United States (GA 237)')
 })
 
 test('Corse lands in France, part Corsica', () => {
@@ -138,8 +143,8 @@ test('Corse lands in France, part Corsica', () => {
   assert.equal(placement.checklist.name, 'France')
   assert.equal(placement.part, 'Corsica')
   assert.deepEqual(sources(placement), ['TaxonWorks', 'manual'])
-  assert.equal(placement.steps[0].text, 'Corse is in France (GA 77)')
-  assert.equal(placement.steps[1].ref, refOf('- name: Corsica'))
+  assert.equal(found(placement)[0].text, 'Corse is in France (GA 77)')
+  assert.equal(found(placement)[1].ref, refOf('- name: Corsica'))
   assert.deepEqual(placement.shape, { key: 'GeographicArea/32254', name: 'Corsica' })
 })
 
@@ -147,7 +152,8 @@ test('France itself has no part', () => {
   const placement = placeArea(ga(fx.ga77), ctx)
   assert.equal(placement.checklist.name, 'France')
   assert.equal(placement.part, null)
-  assert.deepEqual(sources(placement), ['TaxonWorks'])
+  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks'])
+  assert.equal(found(placement).at(-1).text, 'no part: France (GA 77) is the whole of France')
   assert.deepEqual(placement.shape, { key: 'GeographicArea/77', name: 'France' })
 })
 
@@ -156,8 +162,8 @@ test('TDWG 12FRA lands in France, part Mainland France, manual', () => {
   assert.equal(placement.checklist.name, 'France')
   assert.equal(placement.part, 'Mainland France')
   assert.deepEqual(sources(placement), ['manual'])
-  assert.equal(placement.steps[0].ref, refOf('match: { tdwg: 12FRA }'))
-  assert.ok(placement.steps[0].text.startsWith(
+  assert.equal(found(placement)[0].ref, refOf('match: { tdwg: 12FRA }'))
+  assert.ok(found(placement)[0].text.startsWith(
     'France (TDWG 12FRA) counts as France, part Mainland France (approximately; TDWG France also covers Jersey and Guernsey)'
   ))
   // Mainland France lists no areas, so the outline is the checklist's.
@@ -170,10 +176,10 @@ test('TDWG Northern Ireland: manual beats overlap', () => {
   assert.deepEqual(sources(placement), ['manual'])
   const manualRef = refOf('match: { tdwg: 10IRE-NI }')
   const overlapRef = refOf('match: { tdwg: 10IRE-NI }', Number(manualRef.split(':')[1]))
-  assert.equal(placement.steps[0].ref, manualRef)
-  assert.ok(placement.steps[0].text.endsWith(
+  assert.equal(found(placement)[0].ref, manualRef)
+  assert.ok(found(placement)[0].text.endsWith(
     `; overrides the overlap measurement United Kingdom 99%, Ireland 1% (2026-11-20) (${overlapRef})`
-  ), placement.steps[0].text)
+  ), found(placement)[0].text)
 })
 
 test('an area without outline and without rule', () => {
@@ -264,9 +270,9 @@ test('Tanzania specimen through synonym', async () => {
   const placement = await placeRecord(specimen({ country: 'United Republic of Tanzania' }), rctx)
   assert.equal(placement.checklist.name, 'Tanzania')
   assert.deepEqual(sources(placement), ['TaxonWorks', 'manual'])
-  assert.equal(placement.steps[0].text, 'DwC country is United Republic of Tanzania')
-  assert.equal(placement.steps[1].text, 'United Republic of Tanzania is a spelling of Tanzania')
-  assert.equal(placement.steps[1].ref, refOf('- [Tanzania, United Republic of Tanzania]'))
+  assert.equal(found(placement)[0].text, 'DwC country is United Republic of Tanzania')
+  assert.equal(found(placement)[1].text, 'United Republic of Tanzania is a spelling of Tanzania')
+  assert.equal(found(placement)[1].ref, refOf('- [Tanzania, United Republic of Tanzania]'))
   assert.equal(placement.state, null)
 })
 
@@ -274,9 +280,9 @@ test('specimen France + stateProvince French Guiana lands in French Guiana', asy
   const placement = await placeRecord(specimen({ country: 'France', stateProvince: 'French Guiana' }), rctx)
   assert.equal(placement.checklist.name, 'French Guiana')
   assert.deepEqual(sources(placement), ['manual'])
-  assert.equal(placement.steps[0].text,
+  assert.equal(found(placement)[0].text,
     'DwC stateProvince French Guiana contains the name French Guiana of the checklist French Guiana')
-  assert.equal(placement.steps[0].ref, refOf('- name: French Guiana'))
+  assert.equal(found(placement)[0].ref, refOf('- name: French Guiana'))
   assert.deepEqual(placement.shape, { key: 'GeographicArea/32253', name: 'French Guiana' })
 })
 
@@ -285,8 +291,8 @@ test('specimen France + stateProvince Corse lands in France, part Corsica', asyn
   assert.equal(placement.checklist.name, 'France')
   assert.equal(placement.part, 'Corsica')
   assert.deepEqual(sources(placement), ['TaxonWorks', 'manual'])
-  assert.equal(placement.steps[1].text, 'DwC stateProvince Corse carries the name Corse of the part Corsica')
-  assert.equal(placement.steps[1].ref, refOf('- name: Corsica'))
+  assert.equal(found(placement)[1].text, 'DwC stateProvince Corse carries the name Corse of the part Corsica')
+  assert.equal(found(placement)[1].ref, refOf('- name: Corsica'))
   const mainland = await placeRecord(specimen({ country: 'France', stateProvince: 'Alsace' }), rctx)
   assert.equal(mainland.part, 'Mainland France')
   const none = await placeRecord(specimen({ country: 'France' }), rctx)
@@ -297,13 +303,13 @@ test('coordinates only', async () => {
   const placement = await placeRecord(specimen({ lat: 50.4, lng: 30.5 }), rctx)
   assert.equal(placement.checklist.name, 'Ukraine')
   assert.equal(placement.reason, null)
-  assert.deepEqual(placement.steps[0], { text: 'coordinates 50.4, 30.5 lie inside Ukraine', source: 'overlap', stage: 'checklist' })
+  assert.deepEqual(found(placement)[0], { text: 'coordinates 50.4, 30.5 lie inside Ukraine', source: 'overlap', stage: 'checklist' })
 })
 
 test('coordinates within the coastal tolerance say so and cite the rules line (R48)', async () => {
   const placement = await placeRecord(specimen({ lat: 44.4, lng: 33.4 }), rctx)
   assert.equal(placement.checklist.name, 'Ukraine')
-  assert.deepEqual(placement.steps[0], {
+  assert.deepEqual(found(placement)[0], {
     text: 'coordinates 44.4, 33.4 lie within about 5 km of the coast of Ukraine',
     source: 'overlap',
     ref: refOf('coastal_tolerance_degrees:'),
@@ -311,8 +317,8 @@ test('coordinates within the coastal tolerance say so and cite the rules line (R
   })
   const state = await placeRecord(specimen({ lat: 33.8, lng: -84.5 }), rctx)
   assert.equal(state.state, 'Georgia')
-  assert.equal(state.steps.at(-1).text, 'coordinates 33.8, -84.5 lie within about 5 km of the coast of the state Georgia')
-  assert.equal(state.steps.at(-1).ref, refOf('coastal_tolerance_degrees:'))
+  assert.equal(found(state).at(-1).text, 'coordinates 33.8, -84.5 lie within about 5 km of the coast of the state Georgia')
+  assert.equal(found(state).at(-1).ref, refOf('coastal_tolerance_degrees:'))
 })
 
 test('border point', async () => {
@@ -343,44 +349,45 @@ test('a Kosovo specimen lands in the Kosovo checklist (R34)', async () => {
   const placement = await placeRecord(specimen({ country: 'Kosovo', lat: 42.6, lng: 21.1 }), rctx)
   assert.equal(placement.checklist.name, 'Kosovo')
   assert.equal(placement.reason, null)
-  assert.equal(placement.steps[0].text, 'DwC country is Kosovo')
+  assert.equal(found(placement)[0].text, 'DwC country is Kosovo')
 })
 
 test('TDWG Norfolk Is. is the Norfolk Island checklist; Lord Howe I. below it stays in Australia (R35)', () => {
   const norfolk = placeArea(ga(fx.ga33700), ctx)
   assert.equal(norfolk.checklist.name, 'Norfolk Island')
-  assert.equal(norfolk.steps[0].ref, refOf('- name: Norfolk Island'))
+  assert.equal(found(norfolk)[0].ref, refOf('- name: Norfolk Island'))
   const lordHowe = placeArea(ga(fx.ga34374), ctx)
   assert.equal(lordHowe.checklist.name, 'Australia')
-  assert.equal(lordHowe.steps[0].source, 'manual')
-  assert.equal(lordHowe.steps[0].ref, refOf('match: { tdwg: 50NFK-LH }'))
+  assert.equal(found(lordHowe)[0].source, 'manual')
+  assert.equal(found(lordHowe)[0].ref, refOf('match: { tdwg: 50NFK-LH }'))
 })
 
 test('Kralicky Sneznik is not placeable by a manual rule (R36)', () => {
   const placement = placeArea(gz(fx.gz10572), ctx)
   assert.equal(placement.checklist, null)
   assert.equal(placement.reason, 'lies on the border of Czech Republic and Poland')
-  assert.equal(placement.steps[0].source, 'manual')
+  assert.equal(found(placement)[0].source, 'manual')
   assert.ok(!rules.overlap.some((rule) => rule.match.area === 'GZ 10572'))
 })
 
 test('a US specimen takes its state from DwC stateProvince', async () => {
   const placement = await placeRecord(specimen({ country: 'United States', stateProvince: 'Texas' }), rctx)
   assert.equal(placement.state, 'Texas')
-  assert.deepEqual(placement.steps.at(-1), { text: 'DwC stateProvince Texas is the state Texas', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'DwC stateProvince Texas is the state Texas', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('a US specimen without stateProvince takes its state from its coordinates', async () => {
   const placement = await placeRecord(specimen({ country: 'United States of America', lat: 33.7, lng: -84.4 }), rctx)
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, 'Georgia')
-  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 33.7, -84.4 lie inside the state Georgia', source: 'overlap', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'coordinates 33.7, -84.4 lie inside the state Georgia', source: 'overlap', stage: 'state' })
 })
 
 test('a US specimen with neither gets no state, with the reason', async () => {
   const placement = await placeRecord(specimen({ country: 'United States', stateProvince: 'Atlantis' }), rctx)
   assert.equal(placement.state, null)
-  assert.equal(placement.steps.at(-1).text, 'no state: Atlantis is not a state of United States')
+  assert.equal(found(placement).at(-1).text, 'no state: Atlantis is not a state of United States')
+  assert.ok(placement.steps.some((step) => step.none && step.text === 'DwC stateProvince Atlantis is no state name of United States'))
 })
 
 test('a specimen with DwC country Georgia and stateProvince Georgia lands in the country Georgia with no state', async () => {
@@ -394,14 +401,14 @@ test('the US state Georgia stays in the United States (state Georgia) and does n
   const placement = await ad(usGeorgia)
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, 'Georgia')
-  assert.deepEqual(placement.steps.at(-1), { text: 'Georgia (GA 900002) is the state Georgia', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'Georgia (GA 900002) is the state Georgia', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('Hawaiian gazetteer gets state Hawaii by its measured overlap rule', async () => {
   const placement = await ad(gz(fx.gz10453))
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, 'Hawaii')
-  const step = placement.steps.find((s) => s.text.includes('state'))
+  const step = found(placement).find((s) => s.text.includes('state'))
   assert.deepEqual(step, {
     text: "Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii",
     source: 'overlap',
@@ -416,7 +423,7 @@ test('a state rule can match gazetteers by name prefix', async () => {
   const niihau = gz({ ...fx.gz10453, id: 900004, name: "Hawai'i: Ni'ihau" })
   const placement = await ad(niihau)
   assert.equal(placement.state, 'Hawaii')
-  assert.equal(placement.steps.at(-1).ref, recordRefOf("gazetteer_prefix: \"Hawai'i: Ni\""))
+  assert.equal(found(placement).at(-1).ref, recordRefOf("gazetteer_prefix: \"Hawai'i: Ni\""))
 })
 
 test('Evenk (political) gets state Krasnoyarsk by overlap rule', async () => {
@@ -424,7 +431,7 @@ test('Evenk (political) gets state Krasnoyarsk by overlap rule', async () => {
   assert.equal(placement.checklist.name, 'Russia')
   assert.equal(placement.state, 'Krasnoyarsk')
   assert.deepEqual(sources(placement), ['TaxonWorks', 'overlap'])
-  assert.equal(placement.steps[1].ref, recordRefOf('match: { area: GA 900001 }'))
+  assert.equal(found(placement)[1].ref, recordRefOf('match: { area: GA 900001 }'))
 })
 
 test('Chukot (GA 20379) gets the Chukotka state from its manual rule, not from its wrong outline', async () => {
@@ -434,7 +441,7 @@ test('Chukot (GA 20379) gets the Chukotka state from its manual rule, not from i
   assert.equal(placement.state, 'Chukchi Autonomous Okrug')
   const ref = refOf('match: { area: GA 20379 }')
   assert.ok(placement.steps.every((step) => step.source !== 'overlap'))
-  assert.deepEqual(placement.steps.at(-1), {
+  assert.deepEqual(found(placement).at(-1), {
     text: 'Chukot (GA 20379) counts as the state Chukchi Autonomous Okrug (the cached TaxonWorks outline of Chukot ' +
       'also covers Yakutia; fix the shape in TaxonWorks)',
     source: 'manual',
@@ -448,42 +455,42 @@ test('Central European Russia has no state, reason spans', async () => {
   assert.equal(placement.checklist.name, 'Russia')
   assert.equal(placement.state, null)
   // The country still comes from the country overlap line, not the state line.
-  assert.equal(placement.steps[0].ref, refOf('match: { tdwg: 14RUC }'))
+  assert.equal(found(placement)[0].ref, refOf('match: { tdwg: 14RUC }'))
   // The state line is the measured one, the last line matching 14RUC.
   const spans = recordRules.overlap.find((rule) => rule.match.tdwg === '14RUC' && rule.action.notPlaceable)
-  assert.deepEqual(placement.steps[1], {
+  assert.deepEqual(found(placement)[1], {
     text: `no state: spans several states: ${spans.measured.replace(/ \(\d{4}-\d{2}-\d{2}\)$/, '')}`,
     source: 'overlap',
     ref: recordRefOf('match: { tdwg: 14RUC }'),
     stage: 'state'
   })
-  assert.notEqual(placement.steps[0].ref, placement.steps[1].ref)
+  assert.notEqual(found(placement)[0].ref, found(placement)[1].ref)
 })
 
 test('an area for the whole country gets no state', async () => {
   const placement = await ad(ga(fx.ga19713))
   assert.equal(placement.state, null)
-  assert.deepEqual(placement.steps.at(-1), { text: 'no state: record is for the whole country', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'no state: record is for the whole country', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('a state area no rule measured yet', async () => {
   const placement = await ad({ ...evenk, key: 'GA 900003', id: 900003, name: 'Somewhere' })
-  assert.equal(placement.steps.at(-1).text, 'no state: not measured yet')
+  assert.equal(found(placement).at(-1).text, 'no state: not measured yet')
 })
 
 test('no state for an area without outline, or whose outline holds no polygon', async () => {
   const bare = await ad({ ...evenk, key: 'GA 900005', id: 900005, name: 'Somewhere' })
-  assert.equal(bare.steps.at(-1).text, 'no state: no outline to measure')
+  assert.equal(found(bare).at(-1).text, 'no state: no outline to measure')
   const point = await ad({ ...gz(fx.gz10453), key: 'GZ 900004', id: 900004, name: "Hawai'i: Somewhere" })
   assert.equal(point.checklist.name, 'United States')
-  assert.equal(point.steps.at(-1).text, 'no state: no usable outline (no polygon)')
+  assert.equal(found(point).at(-1).text, 'no state: no usable outline (no polygon)')
 })
 
 test('a country area whose outline holds no polygon is not measurable, not "not measured yet"', () => {
   const point = { ...gz(fx.gz3529), key: 'GZ 900004', id: 900004, name: 'Low Beskids', iso2: null }
   const placement = placeArea(point, rctx)
   assert.equal(placement.reason, 'no usable outline (no polygon)')
-  assert.equal(placement.steps[0].text, 'Low Beskids (GZ 900004) has no country in TaxonWorks and no rule; its cached outline holds no polygon to measure')
+  assert.equal(found(placement)[0].text, 'Low Beskids (GZ 900004) has no country in TaxonWorks and no rule; its cached outline holds no polygon to measure')
 })
 
 test('a state rule "outside every state outline" gives the reason for no state', async () => {
@@ -494,8 +501,8 @@ test('a state rule "outside every state outline" gives the reason for no state',
   const local = createContext({ checklists: recordChecklists, rules: outsideRules, geometry, shapes: recordShapes })
   const placement = await placeRecord({ type: 'AssertedDistribution', id: 1 }, local, { ...evenk, key: 'GA 900006', id: 900006, name: 'Island' })
   assert.equal(placement.checklist.name, 'Russia')
-  assert.equal(placement.steps.at(-1).text, 'no state: outside every state outline')
-  assert.match(placement.steps.at(-1).ref, /^placement\.yml:\d+$/)
+  assert.equal(found(placement).at(-1).text, 'no state: outside every state outline')
+  assert.match(found(placement).at(-1).ref, /^placement\.yml:\d+$/)
 })
 
 test('a country without states gets no state step', async () => {
@@ -507,25 +514,25 @@ test('a country without states gets no state step', async () => {
 test('a France specimen with only coordinates in Corsica gets part Corsica', async () => {
   const placement = await placeRecord(specimen({ country: 'France', lat: 42.1, lng: 9.1 }), rctx)
   assert.equal(placement.part, 'Corsica')
-  assert.deepEqual(placement.steps.at(-1), { text: 'coordinates 42.1, 9.1 lie inside Corsica', source: 'overlap', stage: 'part' })
+  assert.deepEqual(found(placement).at(-1), { text: 'coordinates 42.1, 9.1 lie inside Corsica', source: 'overlap', stage: 'part' })
   assert.deepEqual(placement.shape, { key: 'GeographicArea/32254', name: 'Corsica' })
 })
 
 test('a France specimen with coordinates on the mainland gets Mainland France', async () => {
   const byOutline = await placeRecord(specimen({ country: 'France', lat: 48.9, lng: 2.3 }), rctx)
   assert.equal(byOutline.part, 'Mainland France')
-  assert.equal(byOutline.steps.at(-1).source, 'overlap')
+  assert.equal(found(byOutline).at(-1).source, 'overlap')
   // A point only the rough box of a part holds says so and cites the part's line.
   const byBox = await placeRecord(specimen({ country: 'France', lat: 46, lng: -1.5 }), rctx)
   assert.equal(byBox.part, 'Mainland France')
-  assert.deepEqual(byBox.steps.at(-1), {
+  assert.deepEqual(found(byBox).at(-1), {
     text: 'coordinates 46, -1.5 lie inside the rough box of the part Mainland France', source: 'manual', ref: refOf('- name: Mainland France'),
     stage: 'part'
   })
   // A point no part outline or box holds still lies below country level: the rest part.
   const byRest = await placeRecord(specimen({ country: 'France', lat: 45.5, lng: 4.8 }), rctx)
   assert.equal(byRest.part, 'Mainland France')
-  assert.equal(byRest.steps.at(-1).text, 'coordinates 45.5, 4.8 lie below country level, so they go to the part Mainland France')
+  assert.equal(found(byRest).at(-1).text, 'coordinates 45.5, 4.8 lie below country level, so they go to the part Mainland France')
 })
 
 test('a county abroad named like an overseas department stays in its own country', async () => {
@@ -545,8 +552,8 @@ test('coordinates without geometry are not checked', async () => {
 
 test('an overlap step names what its share refers to', () => {
   const placement = placeArea(ga(fx.ga33876), ctx)
-  assert.equal(placement.steps[0].pct, 100)
-  assert.equal(placement.steps[0].pctOf, 'Russia')
+  assert.equal(found(placement)[0].pct, 100)
+  assert.equal(found(placement)[0].pctOf, 'Russia')
 })
 
 // R30: an area's own name is a state only when the area is a state.
@@ -557,7 +564,7 @@ test('a county named like a state gets the state it lies in, not the state of it
     const placement = await ad(ga(shape))
     assert.equal(placement.checklist.name, 'United States')
     assert.equal(placement.state, state, shape.name)
-    assert.deepEqual(placement.steps.at(-1), {
+    assert.deepEqual(found(placement).at(-1), {
       text: `${shape.name} is a subdivision of ${state} (GA ${shape.parent_id}), the state ${state}`,
       source: 'TaxonWorks',
       stage: 'state'
@@ -568,13 +575,14 @@ test('a county named like a state gets the state it lies in, not the state of it
 test('a gadm state (type Unknown, parent the country) is the state of its own name', async () => {
   const placement = await ad(ga(fx.ga26370))
   assert.equal(placement.state, 'Washington')
-  assert.deepEqual(placement.steps.at(-1), { text: 'Washington (GA 26370) is the state Washington', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'Washington (GA 26370) is the state Washington', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('a Natural Earth alias decides nothing: stateProvince Moskva is no state name (R51)', async () => {
   const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moskva' }), rctx)
   assert.equal(placement.state, null)
-  assert.deepEqual(placement.steps.at(-1), { text: 'no state: Moskva is not a state of Russia', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'no state: Moskva is not a state of Russia', source: 'TaxonWorks', stage: 'state' })
+  assert.ok(placement.steps.some((step) => step.none && step.text === 'DwC stateProvince Moskva is no state name of Russia'))
   assert.ok(!placement.steps.some((step) => step.source === 'Natural Earth'))
 })
 
@@ -586,7 +594,7 @@ test('a stateProvince that names a TaxonWorks area of the checklist takes that a
   })
   const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Evenk', lat: 50.4, lng: 30.5 }), local)
   assert.equal(placement.state, 'Krasnoyarsk')
-  assert.deepEqual(placement.steps.at(-1), {
+  assert.deepEqual(found(placement).at(-1), {
     text: 'DwC stateProvince Evenk is TaxonWorks area GA 900001, which lies in the state Krasnoyarsk',
     source: 'overlap', ref: recordRefOf('match: { area: GA 900001 }'), pct: 100, pctOf: 'Krasnoyarsk',
     stage: 'state'
@@ -603,7 +611,7 @@ test('a stateProvince that names a TaxonWorks area of the checklist takes that a
 test('a stateProvince matched by ignoring words cites the word list', async () => {
   const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Krasnoyarsk Krai' }), rctx)
   assert.equal(placement.state, 'Krasnoyarsk')
-  assert.deepEqual(placement.steps.at(-1), {
+  assert.deepEqual(found(placement).at(-1), {
     text: 'DwC stateProvince "Krasnoyarsk Krai" matches the state Krasnoyarsk (ignoring "krai")',
     source: 'manual',
     ref: ignoredRef,
@@ -617,18 +625,18 @@ test('a stateProvince matched by ignoring words cites the word list', async () =
 test('an exact stateProvince wins over coordinates and needs no Natural Earth step', async () => {
   const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moscow Oblast' }), rctx)
   assert.equal(placement.state, 'Moscow Oblast')
-  assert.equal(placement.steps.at(-1).source, 'TaxonWorks')
+  assert.equal(found(placement).at(-1).source, 'TaxonWorks')
 })
 
 test('a state area named by an alias gets no state from it (R51), a parent matched by ignoring words does', async () => {
   const moskva = { ...evenk, key: 'GA 900005', id: 900005, name: 'Moskva' }
   const own = await ad(moskva)
   assert.equal(own.state, null)
-  assert.deepEqual(own.steps.at(-1), { text: 'no state: no outline to measure', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(own).at(-1), { text: 'no state: no outline to measure', source: 'TaxonWorks', stage: 'state' })
   const district = { ...evenk, key: 'GA 900006', id: 900006, name: 'Some District', level1: 900007, parentId: 900007, parentName: 'Pskov Oblast', origin: 'gadm', type: 'Raion' }
   const parent = await ad(district)
   assert.equal(parent.state, 'Pskov')
-  assert.deepEqual(parent.steps.at(-1), {
+  assert.deepEqual(found(parent).at(-1), {
     text: 'Some District is a subdivision of Pskov Oblast (GA 900007), which matches the state Pskov (ignoring "oblast")',
     source: 'manual',
     ref: ignoredRef,
@@ -641,7 +649,7 @@ test('a TDWG area, which has no levels, is still tried by its own name', async (
   const tdwg = { ...ga(fx.ga33876), key: 'GA 900008', id: 900008, name: 'Krasnoyarsk' }
   const placement = await ad(tdwg)
   assert.equal(placement.state, 'Krasnoyarsk')
-  assert.deepEqual(placement.steps.at(-1), { text: 'Krasnoyarsk (TDWG 14RUC) is the state Krasnoyarsk', source: 'TaxonWorks', stage: 'state' })
+  assert.deepEqual(found(placement).at(-1), { text: 'Krasnoyarsk (TDWG 14RUC) is the state Krasnoyarsk', source: 'TaxonWorks', stage: 'state' })
 })
 
 test('an area below a county does not take the county name as its state', async () => {
@@ -650,7 +658,7 @@ test('an area below a county does not take the county name as its state', async 
   const placement = await ad(town)
   assert.equal(placement.checklist.name, 'United States')
   assert.equal(placement.state, null)
-  assert.equal(placement.steps.at(-1).text, 'no state: not measured yet')
+  assert.equal(found(placement).at(-1).text, 'no state: not measured yet')
 })
 
 test('a Cornwall-like county lands in the United Kingdom with no state and no state step (R50)', async () => {
@@ -659,4 +667,259 @@ test('a Cornwall-like county lands in the United Kingdom with no state and no st
   assert.equal(placement.checklist.name, 'United Kingdom')
   assert.equal(placement.state, null)
   assert.ok(!placement.steps.some((step) => step.text.startsWith('no state')))
+})
+
+test('a gazetteer without ISO code and without rule lists every check before its reason', () => {
+  const area = { ...gz(fx.gz3529), key: 'GZ 900010', id: 900010, name: 'Nowhere Island', iso2: null }
+  const placement = placeArea(area, rctx)
+  assert.equal(placement.reason, 'no outline')
+  assert.deepEqual(placement.steps.map((step) => [step.text, step.source, Boolean(step.none)]), [
+    ['no manual rule gives Nowhere Island (GZ 900010) a country or state', 'manual', true],
+    ['Nowhere Island (GZ 900010) matches no checklist of its own (by area, parent, ISO code or name)', 'manual', true],
+    ['Nowhere Island (GZ 900010) is a gazetteer; TaxonWorks gives gazetteers no country or parent', 'TaxonWorks', true],
+    ['Nowhere Island (GZ 900010) has no ISO code in TaxonWorks', 'TaxonWorks', true],
+    ['no overlap rule gives Nowhere Island (GZ 900010) a country or state', 'overlap', true],
+    ['Nowhere Island (GZ 900010) has no country in TaxonWorks, no rule and no cached outline to measure', 'TaxonWorks', false]
+  ])
+})
+
+test('a specimen lists the checks it passed before the one that placed it', async () => {
+  const placement = await placeRecord(specimen({ lat: 50.4, lng: 30.5 }), rctx)
+  const none = placement.steps.filter((step) => step.none).map((step) => step.text)
+  assert.deepEqual(none.slice(0, 2), ['no DwC country, stateProvince or county to name a checklist of its own', 'no DwC country'])
+})
+
+test('the own-checklist step names the DwC fields it read', async () => {
+  const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Moskva' }), rctx)
+  const own = placement.steps.find((step) => step.text.includes('of a checklist of its own'))
+  assert.equal(own.text, 'DwC country Russia carries no name of a checklist of its own')
+  assert.equal(own.none, true)
+})
+
+test('the state stage skips a rule check the country stage already answered (a rule giving a state gives the country)', async () => {
+  // GZ 10453: no manual rule at the country stage, so no manual state check; its
+  // country comes from the ISO code, so the overlap state check runs (and finds its rule).
+  const placement = await ad(gz(fx.gz10453))
+  const texts = placement.steps.map((step) => step.text)
+  assert.ok(texts.some((text) => /^no manual rule gives .* a country or state$/.test(text)), texts.join('\n'))
+  assert.ok(!texts.some((text) => /^no manual rule gives .* a state$/.test(text)), texts.join('\n'))
+  assert.equal(placement.state, 'Hawaii')
+})
+
+test('a manual rule giving only the country leaves the manual state check running', async () => {
+  const countryOnly = compileRules(recordYaml.replace(/manual:\n/, `manual:
+  - match: { area: GA 900014 }
+    subdivision_of: { country: Russia }
+    why: test
+`))
+  const local = createContext({ checklists: recordChecklists, rules: countryOnly, geometry, shapes: recordShapes })
+  const area = { ...evenk, key: 'GA 900014', id: 900014, name: 'Testland' }
+  const texts = (await placeRecord({ type: 'AssertedDistribution', id: 1 }, local, area)).steps.map((step) => step.text)
+  assert.ok(texts.includes('no manual rule gives Testland (GA 900014) a state'), texts.join('\n'))
+})
+
+test('an overlap rule lookup is tagged never measured only when no overlap line matches the area', async () => {
+  const outsideRules = compileRules(recordYaml.replace(/\n*$/, '\n') + `  - match: { area: GA 900006 }
+    not_placeable: outside every state outline
+    measured: "no sample in any outline (2026-11-20)"
+`)
+  const local = createContext({ checklists: recordChecklists, rules: outsideRules, geometry, shapes: recordShapes })
+  const measured = await placeRecord({ type: 'AssertedDistribution', id: 1 }, local, { ...evenk, key: 'GA 900006', id: 900006, name: 'Island' })
+  const lookup = measured.steps.find((step) => step.text === 'no overlap rule gives Island (GA 900006) a state')
+  assert.equal(formatStep(lookup), 'no overlap rule gives Island (GA 900006) a state [overlap, no such rule]')
+  const never = (await placeRecord({ type: 'AssertedDistribution', id: 1 }, local, { ...evenk, key: 'GA 900015', id: 900015, name: 'Elsewhere' }))
+    .steps.find((step) => step.text === 'no overlap rule gives Elsewhere (GA 900015) a state')
+  assert.equal(formatStep(never), 'no overlap rule gives Elsewhere (GA 900015) a state [overlap, never measured]')
+})
+
+// Task 1 (PLAN-specimen-data.md): a specimen without coordinates is placed by
+// its collecting event's area, exactly as an asserted distribution on it.
+test('a specimen without coordinates is placed by its collecting event area, as an AD on it', async () => {
+  const placement = await placeRecord(specimen({ country: 'Russia', stateProvince: 'Evenkia', eventArea: evenk }), rctx)
+  const asAd = await ad(evenk)
+  assert.equal(placement.checklist.name, 'Russia')
+  assert.equal(placement.state, 'Krasnoyarsk')
+  assert.equal(placement.state, asAd.state)
+  assert.deepEqual(placement.steps.slice(0, 2), [
+    { text: 'no coordinates and no georeference shape', source: 'TaxonWorks', none: true, stage: 'checklist' },
+    { text: "the collecting event's area is Evenk (GA 900001)", source: 'TaxonWorks', via: 'eventArea', stage: 'checklist' }
+  ])
+  assert.deepEqual(placement.steps.slice(2), asAd.steps)
+})
+
+test('with coordinates the collecting event area is not used', async () => {
+  const fields = { country: 'Russia', stateProvince: 'Moskva', lat: 50.4, lng: 30.5 }
+  const withArea = await placeRecord(specimen({ ...fields, eventArea: evenk }), rctx)
+  const without = await placeRecord(specimen(fields), rctx)
+  assert.deepEqual(withArea, without)
+})
+
+test('an event area that gives no checklist hands over to the DwC fields, after its steps', async () => {
+  const nowhere = { ...gz(fx.gz3529), key: 'GZ 900010', id: 900010, name: 'Nowhere Island', iso2: null }
+  const placement = await placeRecord(specimen({ country: 'Russia', eventArea: nowhere }), rctx)
+  assert.equal(placement.checklist.name, 'Russia')
+  const texts = placement.steps.map((step) => step.text)
+  assert.equal(texts[1], "the collecting event's area is Nowhere Island (GZ 900010)")
+  assert.ok(texts.includes('Nowhere Island (GZ 900010) has no country in TaxonWorks, no rule and no cached outline to measure'), texts.join('\n'))
+  const handOver = texts.indexOf('the area cannot be placed by its outline yet, so the DwC fields are read')
+  assert.ok(handOver > 0, texts.join('\n'))
+  assert.ok(texts.indexOf('DwC country is Russia') > handOver)
+  // The area's steps did not decide (cacheFiles.mjs specimensSummary skips them).
+  assert.ok(placement.steps.slice(0, handOver).every((step) => step.none || step.handedOver))
+  assert.ok(!placement.steps.slice(handOver).some((step) => step.handedOver))
+})
+
+test('an event area no distribution uses is named, then the DwC fields decide', async () => {
+  const placement = await placeRecord(specimen({ country: 'Russia', eventArea: { key: 'GA 999999' } }), rctx)
+  const without = await placeRecord(specimen({ country: 'Russia' }), rctx)
+  assert.equal(placement.checklist.name, without.checklist.name)
+  assert.deepEqual(placement.steps[1], {
+    text: "the collecting event's area GA 999999 is used by no distribution, so its country and levels are not known; the DwC fields are read",
+    source: 'TaxonWorks', none: true, stage: 'checklist'
+  })
+  assert.deepEqual(placement.steps.slice(2), without.steps.slice(2))
+})
+
+// Task 1b: a georeference drawn as a shape (DwC footprintWKT, no decimalLatitude).
+const SQUARE = 'POLYGON Z ((30.4 50.3 0,30.6 50.3 0,30.6 50.5 0,30.4 50.5 0,30.4 50.3 0))'
+
+test('a georeference shape gives the point inside it, tested like coordinates', async () => {
+  const placement = await placeRecord(specimen({ footprint: SQUARE, locality: 'Kyiv' }), rctx)
+  assert.equal(placement.checklist.name, 'Ukraine')
+  assert.deepEqual(placement.steps[0], { text: 'the georeference is a shape; its inside point is 50.4, 30.5', source: 'TaxonWorks', via: 'shape', stage: 'checklist' })
+  assert.ok(placement.steps.some((step) => step.text === 'coordinates 50.4, 30.5 lie inside Ukraine'))
+})
+
+// A shape measured with the 90% rule (share_threshold_percent), as areas are.
+const shareCtx = (countryShares, stateShares = []) => createContext({
+  checklists: recordChecklists, rules: recordRules, shapes: recordShapes,
+  geometry: { ...geometry, checklistShares: async () => ({ shares: countryShares }), stateShares: async () => ({ shares: stateShares }) }
+})
+const shareRef = recordRefOf('share_threshold_percent:')
+
+test('a georeference shape lying 90% or more in one country is placed there', async () => {
+  const placement = await placeRecord(specimen({ footprint: SQUARE }), shareCtx([['Ukraine', 95.2], ['Russia', 4.8]]))
+  assert.equal(placement.checklist.name, 'Ukraine')
+  const step = placement.steps.find((candidate) => candidate.shapeShare)
+  assert.equal(step.text, '95% of the georeference shape lies in Ukraine (Ukraine 95%, Russia 5%); 90% or more decides')
+  assert.equal(step.source, 'overlap')
+  assert.equal(step.ref, shareRef)
+  assert.equal(step.pct, 95) // rounded, as the shares of overlap lines
+  assert.ok(!placement.steps.some((candidate) => candidate.text.startsWith('coordinates')))
+})
+
+test('a georeference shape across a border spans several countries', async () => {
+  const placement = await placeRecord(specimen({ footprint: SQUARE }), shareCtx([['Ukraine', 62], ['Russia', 38]]))
+  assert.equal(placement.checklist, null)
+  assert.equal(placement.reason, 'georeference shape spans several countries')
+  assert.equal(found(placement).at(-1).text, 'the georeference shape spans several countries (Ukraine 62%, Russia 38%); none holds 90%')
+  // The DwC country still comes first.
+  assert.equal((await placeRecord(specimen({ footprint: SQUARE, country: 'Russia' }), shareCtx([['Ukraine', 62], ['Russia', 38]]))).checklist.name, 'Russia')
+})
+
+test('a georeference shape in two overlapping outlines of 90% or more each is in several countries', async () => {
+  const placement = await placeRecord(specimen({ footprint: SQUARE }), shareCtx([['Ukraine', 100], ['Russia', 95]]))
+  assert.equal(placement.checklist, null)
+  assert.equal(placement.reason, 'georeference shape in several countries (Russia, Ukraine)')
+  assert.equal(found(placement).at(-1).text, '90% or more of the georeference shape lies in each of Russia, Ukraine (Ukraine 100%, Russia 95%); their outlines overlap')
+})
+
+test('a share just below 90% is never shown as 90%', async () => {
+  const placement = await placeRecord(specimen({ footprint: SQUARE }), shareCtx([['Ukraine', 89.96], ['Russia', 10.04]]))
+  assert.equal(placement.reason, 'georeference shape spans several countries')
+  assert.equal(found(placement).at(-1).text, 'the georeference shape spans several countries (Ukraine 89.9%, Russia 10%); none holds 90%')
+})
+
+test('a share of an outline without checklist is an error, not a reason', async () => {
+  await assert.rejects(placeRecord(specimen({ footprint: SQUARE }), shareCtx([['Atlantis', 100]])), /Atlantis has no checklist/)
+})
+
+test('a georeference shape in no outline (at sea) goes on with its inside point', async () => {
+  const placement = await placeRecord(specimen({ footprint: SQUARE }), shareCtx([]))
+  assert.equal(placement.checklist.name, 'Ukraine')
+  assert.ok(placement.steps.some((step) => step.none && step.text === 'the georeference shape lies in no checklist outline, so its inside point is tested'))
+  assert.ok(placement.steps.some((step) => step.text === 'coordinates 50.4, 30.5 lie inside Ukraine'))
+})
+
+test('the state of a georeference shape by the 90% rule', async () => {
+  const us = [['United States', 100]]
+  const inOne = await placeRecord(specimen({ footprint: SQUARE }), shareCtx(us, [['Georgia', 97], ['Alabama', 3]]))
+  assert.equal(inOne.state, 'Georgia')
+  assert.equal(found(inOne).at(-1).text, '97% of the georeference shape lies in the state Georgia (Georgia 97%, Alabama 3%); 90% or more decides')
+  assert.equal(found(inOne).at(-1).ref, shareRef)
+  const spans = await placeRecord(specimen({ footprint: SQUARE }), shareCtx(us, [['Georgia', 70], ['Alabama', 30]]))
+  assert.equal(spans.state, null)
+  assert.equal(found(spans).at(-1).text, 'no state: the georeference shape spans several states (Georgia 70%, Alabama 30%); none holds 90%')
+})
+
+test('coordinates win over the shape, and the shape over the collecting event area', async () => {
+  const point = { lat: 50.4, lng: 30.5 }
+  const withShape = await placeRecord(specimen({ ...point, footprint: 'POLYGON ((0 0,1 0,1 1,0 0))' }), rctx)
+  assert.deepEqual(withShape, await placeRecord(specimen(point), rctx))
+  const shapeAndArea = await placeRecord(specimen({ footprint: SQUARE, eventArea: evenk }), rctx)
+  assert.equal(shapeAndArea.checklist.name, 'Ukraine')
+  assert.ok(!shapeAndArea.steps.some((step) => step.text.startsWith("the collecting event's area")))
+})
+
+test('a specimen without a point says so first, then whether its collecting event has an area', async () => {
+  const co = await placeRecord(specimen({ locality: 'somewhere' }), rctx)
+  assert.deepEqual(co.steps.map((step) => step.text), [
+    'no coordinates and no georeference shape',
+    'the collecting event has no area',
+    'no DwC country, stateProvince or county to name a checklist of its own',
+    'no DwC country',
+    'no DwC country and no coordinates, only locality text'
+  ])
+  const fo = await placeRecord({ type: 'FieldOccurrence', id: 3, country: 'Russia' }, rctx)
+  assert.equal(fo.steps[1].text, 'the collecting event area of a field occurrence is not available from TaxonWorks')
+  const badShape = await placeRecord(specimen({ footprint: 'POINT (1 2)' }), rctx)
+  assert.equal(badShape.steps[0].text, 'no coordinates, and the georeference shape gives no point')
+})
+
+test('an event area that a rule makes not placeable stays not placeable for the specimen too', async () => {
+  const spansRules = compileRules(recordYaml.replace(/\n*$/, '\n') + `  - match: { area: GA 900012 }
+    not_placeable: spans several countries
+    measured: "Russia 60%, Kazakhstan 40% (2026-11-20)"
+`)
+  const local = createContext({ checklists: recordChecklists, rules: spansRules, geometry, shapes: recordShapes })
+  const border = { ...evenk, key: 'GA 900012', id: 900012, name: 'Border Steppe', level0: null, parentId: null, parentName: null }
+  const asAd = await placeRecord({ type: 'AssertedDistribution', id: 1 }, local, border)
+  const placement = await placeRecord(specimen({ country: 'Russia', eventArea: border }), local)
+  assert.equal(placement.checklist, null)
+  assert.equal(placement.reason, asAd.reason)
+  assert.ok(!placement.steps.some((step) => step.text.startsWith('DwC country')), placement.steps.map((step) => step.text).join('\n'))
+})
+
+test('a parent without a name is named by its key', () => {
+  const area = { ...gz(fx.gz3529), kind: 'GA', key: 'GA 900013', id: 900013, name: 'Orphan', iso2: null, level0: null, parentId: 555, parentName: null }
+  const texts = placeArea(area, rctx).steps.map((step) => step.text)
+  assert.ok(texts.includes('Orphan (GA 900013) has no country in TaxonWorks, and its parent GA 555 has no checklist'), texts.join('\n'))
+})
+
+test('recordLocation: coordinates first, else the shape with its inside point', () => {
+  assert.deepEqual(recordLocation({ lat: '50.4', lng: '30.5', footprint: SQUARE }), { point: { lat: 50.4, lng: 30.5 }, shape: null })
+  const fromShape = recordLocation({ footprint: SQUARE })
+  assert.deepEqual(fromShape.point, { lat: 50.4, lng: 30.5 })
+  assert.equal(fromShape.shape.length, 1)
+  assert.equal(recordLocation({ locality: 'Kyiv' }), null)
+})
+
+test('hasPoint: coordinates or a point in the georeference shape, not text that is no number', () => {
+  assert.equal(hasPoint({ lat: '50.4', lng: '30.5' }), true)
+  assert.equal(hasPoint({ footprint: SQUARE }), true)
+  assert.equal(hasPoint({ lat: 'n/a', lng: '30.5' }), false)
+  assert.equal(hasPoint({}), false)
+})
+
+test('the first step of a specimen placed through its shape or collecting event area says how (via)', async () => {
+  assert.equal((await placeRecord(specimen({ footprint: SQUARE }), rctx)).steps[0].via, 'shape')
+  assert.equal((await placeRecord(specimen({ eventArea: evenk }), rctx)).steps[1].via, 'eventArea')
+})
+
+// Task 4: no state check against a parent that is the country itself.
+test('the parent-name state check does not run when the parent is the country', async () => {
+  const sakha = { ...evenk, name: 'Sakha' }
+  const texts = (await ad(sakha)).steps.map((step) => step.text)
+  assert.ok(texts.includes('the parent of Sakha (GA 900001) is the country itself'), texts.join('\n'))
+  assert.ok(!texts.some((text) => text.startsWith('the parent Russia')), texts.join('\n'))
 })

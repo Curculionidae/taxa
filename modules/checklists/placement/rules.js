@@ -21,7 +21,7 @@ import { LineCounter, parseDocument, isMap, isSeq, isScalar } from 'yaml'
 import { normalizeName } from './areas.js'
 import { stateIndex, matchSubdivision } from './states.js'
 
-const SECTIONS = ['checklists', 'state_countries', 'synonyms', 'ignored_name_words', 'coastal_tolerance_degrees', 'parts', 'manual', 'overlap']
+const SECTIONS = ['checklists', 'state_countries', 'synonyms', 'ignored_name_words', 'coastal_tolerance_degrees', 'share_threshold_percent', 'parts', 'iso_codes', 'manual', 'overlap']
 const CHECKLIST_KEYS = ['name', 'iso2', 'of', 'areas', 'names', 'box', 'outline', 'why']
 const OUTLINES = ['natural_earth']
 const PART_KEYS = ['name', 'areas', 'names', 'box', 'rest']
@@ -51,11 +51,17 @@ const AREA_KEY = /^G[AZ] \d+$/
  * @property {{ names: string[], ref: string|null }} stateCountries  checklists browsed by
  *   state or province (ref is the line of the key, null when the file has no such list)
  * @property {{ names: string[], ref: string }[]} synonyms  first name is the checklist name
+ * @property {{ name: string, iso: string, ref: string }[]} isoCodes  ISO codes of countries whose
+ *   TaxonWorks country area carries none (section iso_codes), each with its line
  * @property {{ words: string[], ref: string|null }} ignoredNameWords  words left out when a
  *   state name is compared (lower case, as written; ref is the line of the key, null when
  *   the file has no such list)
  * @property {{ degrees: number, ref: string|null }} coastalTolerance  a point outside every
  *   outline but this close to one counts for it (0 and ref null when the file gives none)
+ * @property {{ percent: number, ref: string }|null} shareThreshold  the share of an outline
+ *   that decides (90): the measuring script writes subdivision_of from it, the engine
+ *   places a specimen's georeference shape by it; null when the file gives none (the
+ *   engine then tests only the point inside a shape)
  * @property {Object<string, { name: string, areas: AreaKey[], names: string[], box?: number[],
  *   rest?: true, ref: string }[]>} parts  by country name
  * @property {Object<string, string>} partsRefs  the line of each country key of `parts`
@@ -88,8 +94,10 @@ export function compileRules(yamlText, file = 'placement.yml') {
     synonyms: [],
     ignoredNameWords: { words: [], ref: null },
     coastalTolerance: { degrees: 0, ref: null },
+    shareThreshold: null,
     parts: {},
     partsRefs: {},
+    isoCodes: [],
     manual: [],
     overlap: []
   }
@@ -214,6 +222,14 @@ export function compileRules(yamlText, file = 'placement.yml') {
         if (names.length < 2) fail(lineOf(item), 'a synonym entry needs at least two names')
         return { names, ref: ref(item) }
       })
+    } else if (key === 'iso_codes') {
+      if (!isMap(node)) fail(section.line, '"iso_codes" must be a map from country name to its ISO 3166-1 alpha-2 code')
+      out.isoCodes = node.items.map((pair) => {
+        const name = String(pair.key?.value ?? pair.key)
+        const iso = String(pair.value?.value ?? pair.value ?? '')
+        if (!/^[A-Z]{2}$/.test(iso)) fail(lineOf(pair.key), `the ISO code of ${name} must be two capital letters`)
+        return { name, iso, ref: ref(pair.key) }
+      })
     } else if (key === 'state_countries') {
       out.stateCountries = { names: list(section), ref: `${file}:${section.line}` }
     } else if (key === 'ignored_name_words') {
@@ -224,6 +240,12 @@ export function compileRules(yamlText, file = 'placement.yml') {
         fail(section.line, '"coastal_tolerance_degrees" must be a number of degrees from 0 to below 1')
       }
       out.coastalTolerance = { degrees, ref: `${file}:${section.line}` }
+    } else if (key === 'share_threshold_percent') {
+      const percent = isScalar(node) ? node.value : null
+      if (typeof percent !== 'number' || !(percent > 50) || percent > 100) {
+        fail(section.line, '"share_threshold_percent" must be a percentage above 50, at most 100')
+      }
+      out.shareThreshold = { percent, ref: `${file}:${section.line}` }
     } else {
       if (!isMap(node)) fail(section.line, '"parts" must be a map from country name to a list of parts')
       for (const pair of node.items) {

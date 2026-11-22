@@ -232,3 +232,16 @@ test('the real rules file names no state of the United Kingdom, which has no sta
   assert.throws(() => validateRules(withState, { checklists: uk, stateNamesOf: () => [] }),
     /placement.yml:2: United Kingdom is not in state_countries, so it has no state "England"/)
 })
+
+test('compiles iso_codes, one entry per line with its line', () => {
+  const rules = compileRules(`iso_codes:
+  Solomon Islands: SB
+  "Virgin Islands, U.S.": VI
+`)
+  assert.deepEqual(rules.isoCodes, [
+    { name: 'Solomon Islands', iso: 'SB', ref: 'placement.yml:2' },
+    { name: 'Virgin Islands, U.S.', iso: 'VI', ref: 'placement.yml:3' }
+  ])
+  assert.throws(() => compileRules('iso_codes:\n  Solomon Islands: sbx\n'), /placement\.yml:2/)
+  assert.deepEqual(compileRules('manual: []\n').isoCodes, [])
+})

@@ -25,7 +25,12 @@ const row = (name, text) => `  ${name.padEnd(LABEL_WIDTH)}${text}`
  */
 export function sourceTag(step) {
   if (step.source === 'TaxonWorks') return '[TaxonWorks]'
-  if (step.source === 'manual') return `[manual, ${step.ref}]`
+  // A check that found nothing: no line of the rules file matched; for an
+  // overlap rule lookup, the area has overlap lines but none of that kind
+  // (measured) or none at all; pointTest: a point lay in no outline.
+  if (step.none && step.source === 'manual') return '[manual, no rule]'
+  if (step.none && step.source === 'overlap' && !step.pointTest) return step.measured ? '[overlap, no such rule]' : '[overlap, never measured]'
+  if (step.source === 'manual') return step.ref ? `[manual, ${step.ref}]` : '[manual]'
   const share = step.pct !== undefined ? ` ${step.pct}%${step.pctOf ? ` ${step.pctOf}` : ''}` : ''
   return `[overlap${share}${step.ref ? `, ${step.ref}` : ''}]`
 }
@@ -45,9 +50,11 @@ const AFTER_DECISION = /\bthe part |^no state|the state |^no outline cached|^out
 export function decidingStep(placement) {
   // A step of the engine says which decision it belongs to (Step.stage); the
   // wording is only used for steps of an older cache.
-  const staged = placement.steps.some((step) => step.stage)
-  const steps = placement.steps.filter((step) => (staged ? step.stage === 'checklist' : !AFTER_DECISION.test(step.text)))
-  return steps.at(-1) ?? placement.steps[0] ?? null
+  // Checks that found nothing (Step.none) never decide.
+  const found = placement.steps.filter((step) => !step.none)
+  const staged = found.some((step) => step.stage)
+  const steps = found.filter((step) => (staged ? step.stage === 'checklist' : !AFTER_DECISION.test(step.text)))
+  return steps.at(-1) ?? found[0] ?? null
 }
 
 /**

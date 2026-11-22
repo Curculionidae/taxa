@@ -44,7 +44,7 @@
 import { createContext } from './engine.js'
 import { normalizeName } from './areas.js'
 import {
-  polygonsOf, preparedTarget, entriesOf, inBox, ofByName, toleranceOf,
+  polygonsOf, preparedTarget, entriesOf, inBox, ofByName, toleranceOf, measureShares, polygonsBox, boxesMeet,
   checklistsAtPoint, stateAtPoint, stateTargetsOf, partOutlineId, partAtPoint
 } from './geometry.js'
 
@@ -190,6 +190,18 @@ export async function createBrowserGeometry({ context, rules, fetchJson }) {
     },
     async partAt(checklistId, point) {
       return partAtPoint(await partsOf(checklistId), point)
+    },
+    async checklistShares(polygons) {
+      // Only outlines whose bbox meets the shape's (widened by the coastal
+      // tolerance) can hold a sample; the others are not fetched. The order
+      // stays the checklist order, as in the Node geometry.
+      const box = polygonsBox(polygons)
+      const near = context.outlines.filter(({ bbox }) => bbox && boxesMeet(bbox, box, bboxMargin))
+      const found = (await Promise.all(near.map(checklistTarget))).filter(Boolean)
+      return measureShares(polygons, found, { near: tolerance })
+    },
+    async stateShares(checklistId, polygons) {
+      return measureShares(polygons, stateTargets(checklistId), { near: tolerance })
     },
     stateNames(checklistId) {
       return stateTargets(checklistId).map(({ name }) => ({ name }))

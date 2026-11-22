@@ -36,6 +36,13 @@ test('splitScientificName: bracketed qualifier stays in the italic part', () => 
   })
 })
 
+test('splitScientificName: [sic] between genus and subgenus', () => {
+  assert.deepEqual(splitScientificName('Polydrosus [sic] (Tylodrusus) constellatus Voss, 1959'), {
+    italic: 'Polydrosus [sic] (Tylodrusus) constellatus',
+    plain: 'Voss, 1959'
+  })
+})
+
 test('typeStatusHtml: splits on the LAST " of ", not the first', () => {
   // Regression case: "one of the syntypes of ..." has an earlier " of " that
   // must not be mistaken for the name/status boundary.

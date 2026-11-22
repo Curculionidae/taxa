@@ -11,7 +11,7 @@
 //
 // Input:  the data of download.mjs (downloadData or loadData), the project root
 //         (for rules/placement.yml, public/map-shapes/, the outline files of
-//         public/checklists/ and scripts/data/country-iso.json).
+//         public/checklists/).
 // Output: createBuildContext returns the parsed rows, the asserted
 //         distributions by id, the areas, the compiled rules, the checklists
 //         and their keys, the outlines, the engine context and the helpers
@@ -21,21 +21,21 @@
 //         saved data folder.
 // Side effects: none besides reading files and the log and warn calls.
 
+import { typeRow } from '../placement/typeStatus.js'
+import { screenRecord, classificationFromParents } from '../placement/screen.js'
+import { recordFromDwc, eventAreaOf, specimenLabel, typeReasonPlacement } from '../placement/specimen.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compileRules, validateRules } from '../placement/rules.js'
-import { toArea, normalizeName } from '../placement/areas.js'
+import { toArea } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
-import { createContext, placeRecord, ruleMatches, stateAreasOf } from '../placement/engine.js'
+import { createContext, placeRecord, ruleMatches, stateAreasOf, placementWithoutArea } from '../placement/engine.js'
 import { formatPlacement, formatExplanation } from '../placement/format.js'
 import { createNodeGeometry, listShapes, unusableOutlines } from './geometry-node.mjs'
 import { loadData, parseTsv, level0NamesFrom, beetleSides } from './download.mjs'
 import { assignKeys } from './cacheFiles.mjs'
 
 export const KIND = { AssertedDistribution: 'AD', CollectionObject: 'CO', FieldOccurrence: 'FO' }
-const SUPERFAMILY = 'Curculionoidea'
-const RANKS = new Set(['species', 'subspecies'])
-const normalize = (name) => String(name || '').trim().toLocaleLowerCase()
 
 /**
  * The paths the build reads besides the TaxonWorks data.
@@ -62,8 +62,18 @@ export function buildPaths(root) {
  *   fromDir only names the folder in the first log line
  */
 export async function createBuildContext(data, { root, log = console.log, warn = console.warn, fromDir = null }) {
-  const { module: MODULE, shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, rulesFile: RULES_FILE } = buildPaths(root)
-  const rows = parseTsv(data.csv)
+  const { shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, rulesFile: RULES_FILE } = buildPaths(root)
+  // Undetermined type specimens take the valid name of their type status
+  // (placement/typeStatus.js typeRow); one that cannot be resolved keeps its
+  // row and is left out of every checklist with the reason (typeLeft): without
+  // its taxon it belongs on no checklist.
+  const typeLeft = new Map() // 'CO 123' -> reason
+  const rows = parseTsv(data.csv).map((row) => {
+    const typed = typeRow(row, data.typeNames)
+    if (!typed.left) return typed
+    typeLeft.set(`CO ${Number(row.dwc_occurrence_object_id)}`, typed.left)
+    return row
+  })
   const distributions = new Map(data.distributions.map((ad) => [String(ad.id), ad]))
   log(`${rows.length} occurrences, ${distributions.size} asserted distributions${fromDir ? ` (from ${fromDir})` : ''}`)
 
@@ -126,10 +136,6 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   // 4. Classification of OTUs the DwC export leaves without one (field
   // occurrences): from the OTU's parents, by name endings. null marks a failed
   // lookup (a stale or hidden OTU): its records are not counted anywhere.
-  const RANK_ENDINGS = [
-    ['superfamily', /oidea$/], ['family', /idae$/], ['subfamily', /inae$/],
-    ['tribe', /ini$/], ['subtribe', /ina$/]
-  ]
   const parentClassification = new Map()
   const failedLookups = []
   for (const [otuId, parents] of Object.entries(data.otuParents)) {
@@ -138,11 +144,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
       failedLookups.push(`${otuId} (${parents.error})`)
       continue
     }
-    const classification = {}
-    for (const name of Object.keys(parents || {})) {
-      for (const [rank, ending] of RANK_ENDINGS) if (ending.test(name)) classification[rank] = name
-    }
-    parentClassification.set(otuId, classification)
+    parentClassification.set(otuId, classificationFromParents(Object.keys(parents || {})))
   }
   log(`${parentClassification.size - failedLookups.length} OTUs classified from their parents`)
   if (failedLookups.length) warn(`classification lookup failed for ${failedLookups.length} OTUs: ${failedLookups.join(', ')}`)
@@ -160,9 +162,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   const areasById = new Map([...areas.values()].filter((area) => area.kind === 'GA').map((area) => [area.id, area]))
   const rules = compileRules(readFileSync(RULES_FILE, 'utf8'))
   const level0Names = level0NamesFrom(rows, data.distributions)
-  const isoByName = new Map(Object.entries(JSON.parse(readFileSync(join(MODULE, 'scripts/data/country-iso.json'), 'utf8')))
-    .map(([name, iso]) => [normalizeName(name), iso]))
-  const { checklists, warnings } = deriveChecklists([...areas.values()], rules, level0Names, isoByName)
+  const { checklists, warnings } = deriveChecklists([...areas.values()], rules, level0Names)
   const keys = assignKeys(checklists) // stops on two checklists with one key
   const checklistById = new Map(checklists.map((checklist) => [checklist.id, checklist]))
   const shapes = listShapes(SHAPE_DIR)
@@ -189,22 +189,20 @@ export async function createBuildContext(data, { root, log = console.log, warn =
     if (!areaPlacements.has(area.key)) areaPlacements.set(area.key, await placeRecord({ type: 'AssertedDistribution', id: 0 }, ctx, area))
     return areaPlacements.get(area.key)
   }
-  // A specimen or field occurrence, by its DwC fields.
-  const recordInput = (row) => ({
-    type: row.dwc_occurrence_object_type,
-    id: Number(row.dwc_occurrence_object_id),
-    country: row.country,
-    stateProvince: row.stateProvince,
-    county: row.county,
-    locality: row.verbatimLocality || row.locality,
-    lat: row.decimalLatitude,
-    lng: row.decimalLongitude
-  })
+  // A specimen or field occurrence, by its DwC fields (with the georeference
+  // shape, footprintWKT), and for a collection
+  // object the area of its collecting event (download.mjs specimen_areas.json):
+  // the full Area when a distribution uses it, else only its key.
+  const recordInput = (row) => {
+    const id = Number(row.dwc_occurrence_object_id)
+    const eventAreaId = row.dwc_occurrence_object_type === 'CollectionObject' ? data.specimenAreas?.[id] : null
+    return recordFromDwc(row.dwc_occurrence_object_type, id, row, eventAreaOf(eventAreaId, areasById.get(Number(eventAreaId))))
+  }
   // What formatPlacement prints first: kind, id, label and the area behind it.
   const subjectOf = (row, area) => ({
     kind: KIND[row.dwc_occurrence_object_type] ?? row.dwc_occurrence_object_type,
     id: row.dwc_occurrence_object_id,
-    label: row.scientificName || '',
+    label: specimenLabel(row),
     ...(area ? { area } : {})
   })
 
@@ -214,16 +212,12 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   // species rank and below, present (not absent) records. A failed parents
   // lookup is not left out: the build lists it as unplaced.
   function screenRow(row) {
-    if (!RANKS.has(row.taxonRank)) return { left: `rank ${row.taxonRank || 'none'}` }
-    if (!row.otu_id) return { left: 'no OTU' }
-    if (normalize(row.occurrenceStatus) === 'absent') return { left: 'recorded as absent' }
-    const lookupFailed = !row.superfamily && parentClassification.get(row.otu_id) === null
-    const classification = row.superfamily ? row : { ...row, ...parentClassification.get(row.otu_id) }
-    if (!classification.genus) classification.genus = String(row.scientificName || '').split(' ')[0]
-    if (classification.superfamily !== SUPERFAMILY && !lookupFailed) return { left: `not in ${SUPERFAMILY} (${classification.superfamily || 'no superfamily'})` }
+    const typeReason = row.dwc_occurrence_object_type === 'CollectionObject' && typeLeft.get(`CO ${Number(row.dwc_occurrence_object_id)}`)
+    if (typeReason) return { left: typeReason }
     const ad = row.dwc_occurrence_object_type === 'AssertedDistribution' ? distributions.get(String(row.dwc_occurrence_object_id)) : null
-    if (ad?.is_absent) return { left: 'distribution is absent' }
-    return { classification, lookupFailed, ad }
+    // placement/screen.js, the same screening the curator page runs.
+    const screened = screenRecord(row, { parentClassification: parentClassification.get(row.otu_id), distributionAbsent: Boolean(ad?.is_absent) })
+    return screened.left ? screened : { ...screened, ad }
   }
 
   // The rows by "<KIND> <id>" (an association distribution has one per beetle side).
@@ -249,10 +243,12 @@ export async function createBuildContext(data, { root, log = console.log, warn =
       if (!ad) return { missing: `AD ${id}: not among the downloaded asserted distributions` }
       const area = areaOf(ad)
       const subject = { kind, id, label: row?.scientificName || '', ...(area ? { area } : {}) }
-      if (!area) return { subject, placement: { checklist: null, part: null, state: null, shape: null, reason: 'distribution has no area', steps: [] } }
+      if (!area) return { subject, placement: placementWithoutArea() }
       return { subject, placement: await placeAreaRecord(area) }
     }
     if (!row) return { missing: `${kind} ${id}: not in the DwC export` }
+    const typeReason = kind === 'CO' && typeLeft.get(`CO ${Number(id)}`)
+    if (typeReason) return { subject: subjectOf(row, null), placement: typeReasonPlacement(row, typeReason) }
     return { subject: subjectOf(row, null), placement: await placeRecord(recordInput(row), ctx) }
   }
 
@@ -269,6 +265,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   }
 
   return {
+    typeReasonPlacement,
     rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
     checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
     parentClassification, screenRow, rowsOf, placementOf

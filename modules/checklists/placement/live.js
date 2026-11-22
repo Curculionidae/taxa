@@ -29,11 +29,15 @@
 // object_tag; the build takes the DwC scientificName of the same OTU, which
 // is normally the same text.
 import { toArea } from './areas.js'
-import { placeRecord } from './engine.js'
+import { placeRecord, hasPoint, placementWithoutArea } from './engine.js'
+import { typeStatusName, typeNameKey, resolveTypeName, typeRow, isUndeterminedType } from './typeStatus.js'
+import { recordFromDwc, eventAreaOf, specimenLabel, typeReasonPlacement } from './specimen.js'
+import { screenRecord, classificationFromParents } from './screen.js'
+
+// The specimen record is made by specimen.js, as in the build.
+export { recordFromDwc }
 import { parseTsv } from '../data/tsv.js'
 
-const SUPERFAMILY = 'Curculionoidea'
-const RANKS = new Set(['species', 'subspecies'])
 const TYPE_OF_KIND = { AD: 'AssertedDistribution', CO: 'CollectionObject', FO: 'FieldOccurrence' }
 const KIND_OF_TYPE = { AssertedDistribution: 'AD', CollectionObject: 'CO', FieldOccurrence: 'FO' }
 
@@ -82,12 +86,40 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
     }
     if (kind === 'CO' || kind === 'FO') {
       const path = kind === 'CO' ? `/collection_objects/${id}/dwc` : `/field_occurrences/${id}/dwc`
-      const { data: dwc } = await request.get(path)
+      const { data: rawDwc } = await request.get(path)
+      // An undetermined type specimen: the valid name of its type status, as the build.
+      let dwc = rawDwc
+      let typeReason = null
+      const asRow = { ...rawDwc, dwc_occurrence_object_type: TYPE_OF_KIND[kind] }
+      if (isUndeterminedType(asRow)) {
+        const parsed = typeStatusName(rawDwc.typeStatus)
+        // A client error is { error }, as the build's download gives it (resolveTypeName).
+        const get = async (url, params) => {
+          try {
+            return (await request.get(url, { params })).data
+          } catch (error) {
+            const status = error?.response?.status
+            if (status >= 400 && status < 500 && status !== 429) return { error: `${status} ${url}` }
+            throw error
+          }
+        }
+        const typeNames = parsed ? { [typeNameKey(parsed)]: await resolveTypeName(parsed, get) } : {}
+        const typed = typeRow(asRow, typeNames)
+        if (typed.left) typeReason = typed.left
+        else dwc = typed
+      }
+      const record = recordFromDwc(TYPE_OF_KIND[kind], id, dwc)
+      if (kind === 'CO' && !hasPoint(record)) {
+        const { data: object } = await request.get(`/collection_objects/${id}`)
+        const event = object?.collecting_event_id ? (await request.get(`/collecting_events/${object.collecting_event_id}`)).data : null
+        if (event?.geographic_area_id) record.eventArea = eventAreaOf(event.geographic_area_id, await areaById(event.geographic_area_id, request))
+      }
       return {
-        subject: { kind, id, label: dwc.scientificName || '' },
-        record: recordFromDwc(TYPE_OF_KIND[kind], id, dwc),
+        subject: { kind, id, label: specimenLabel(dwc) },
+        record,
         dwc,
-        ...(dwc.otu_id ? { otuId: dwc.otu_id } : {})
+        ...(dwc.otu_id ? { otuId: Number(dwc.otu_id) } : {}),
+        ...(typeReason ? { typeReason } : {})
       }
     }
     if (kind === 'GA' || kind === 'GZ') {
@@ -95,9 +127,9 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
       const { data } = await request.get('/asserted_distributions', {
         params: { geo_shape_id: [id], geo_shape_type: [shapeType], per: 1, extend: ['asserted_distribution_shape'] }
       })
-      const ad = Array.isArray(data) ? data[0] : null
-      if (!ad?.asserted_distribution_shape) return usedByNoRecord(kind, id, areas)
-      const area = toArea(shapeType, ad.asserted_distribution_shape)
+      const shape = shapeOf(data, shapeType, id)
+      if (!shape) return usedByNoRecord(kind, id, areas)
+      const area = toArea(shapeType, shape)
       return { subject: { kind, id, label: area.name, area }, area, record: { type: 'AssertedDistribution', id: 0 } }
     }
     return { error: `unknown kind ${kind}` }
@@ -129,8 +161,7 @@ export function fromDistribution(ad) {
   }
 }
 
-/** The build's placement of a distribution without area (buildContext.mjs, placementOf). */
-const NO_AREA = Object.freeze({ checklist: null, part: null, state: null, shape: null, reason: 'distribution has no area', steps: Object.freeze([]) })
+
 
 /**
  * Place what lookupLive (or fromDistribution, fromDwcRow) returned, as the
@@ -141,7 +172,10 @@ const NO_AREA = Object.freeze({ checklist: null, part: null, state: null, shape:
  * @returns {Promise<import('./engine.js').Placement>}
  */
 export async function placeLive(live, ctx) {
-  if (live.record.type === 'AssertedDistribution' && !live.area) return { ...NO_AREA, steps: [] }
+  if (live.record.type === 'AssertedDistribution' && !live.area) return placementWithoutArea()
+  // A type specimen whose taxon cannot be known: left out by the build; this
+  // placement only explains why (specimen.js typeReasonPlacement).
+  if (live.typeReason) return typeReasonPlacement(live.dwc ?? {}, live.typeReason)
   return placeRecord(live.record, ctx, live.area)
 }
 
@@ -154,7 +188,7 @@ export function fromDwcRow(dwc) {
   const type = dwc.dwc_occurrence_object_type
   const kind = KIND_OF_TYPE[type]
   const id = Number(dwc.dwc_occurrence_object_id)
-  return { subject: { kind, id, label: dwc.scientificName || '' }, record: recordFromDwc(type, id, dwc), dwc }
+  return { subject: { kind, id, label: specimenLabel(dwc) }, record: recordFromDwc(type, id, dwc), dwc }
 }
 
 /**
@@ -165,10 +199,9 @@ export function fromDwcRow(dwc) {
  * @returns {string|null}
  */
 export function leftOutReason(dwc) {
-  if (!RANKS.has(dwc.taxonRank)) return `rank ${dwc.taxonRank || 'none'}`
-  if (String(dwc.occurrenceStatus ?? '').trim().toLowerCase() === 'absent') return 'recorded as absent'
-  if (dwc.superfamily && dwc.superfamily !== SUPERFAMILY) return `not in ${SUPERFAMILY} (${dwc.superfamily})`
-  return null
+  // placement/screen.js, as the build; the OTU's parents are not known here, so
+  // a row without superfamily is not left out for it (recordLeftOut knows them).
+  return screenRecord(dwc, { parentClassification: null }).left ?? null
 }
 
 /**
@@ -182,14 +215,14 @@ export function leftOutReason(dwc) {
  * @returns {string|null}
  */
 export function otuLeftOut({ rank, parentNames }) {
-  if (!RANKS.has(rank)) return `rank ${rank || 'none'}`
-  if (!parentNames.includes(SUPERFAMILY)) return `not in ${SUPERFAMILY}`
-  return null
+  // A distribution row of this OTU, screened as the build screens it (placement/screen.js).
+  return screenRecord({ taxonRank: rank, otu_id: 'otu', superfamily: '' },
+    { parentClassification: classificationFromParents(parentNames) }).left ?? null
 }
 
 /**
  * Why the build leaves a record of an OTU out of every checklist: the
- * record's own DwC reason (leftOutReason), else 'absent' for an absent
+ * record's own DwC reason (leftOutReason), else 'distribution is absent' for an absent
  * distribution, else the OTU's reason (otuLeftOut). The OTU's reason also
  * covers a specimen whose DwC row has no superfamily: the build then takes the
  * classification of the OTU's parents and leaves it out when that is not
@@ -200,7 +233,7 @@ export function otuLeftOut({ rank, parentNames }) {
  */
 export function recordLeftOut({ dwc = null, absent = false }, otuReason) {
   if (dwc) return leftOutReason(dwc) ?? otuReason ?? null
-  if (absent) return 'absent'
+  if (absent) return 'distribution is absent'
   return otuReason ?? null
 }
 
@@ -282,6 +315,66 @@ export async function fetchOtuSpecimens({ id, taxonNameId }, request = defaultRe
   return rows
 }
 
+/**
+ * The collecting event areas of the collection objects among `lives` that have
+ * no coordinates, set as `record.eventArea`, as the build has them
+ * (download.mjs specimen_areas.json, buildContext.mjs recordInput): the full
+ * Area when a distribution uses it, else only its key. The engine uses the
+ * area only without coordinates, so the others are not asked for.
+ *   GET /collection_objects?collection_object_id[]=…   (100 per request)
+ *   GET /collecting_events?collecting_event_id[]=…     (100 per request)
+ *   GET /asserted_distributions?geo_shape_id[]=…        (one per area)
+ * @param {LiveResult[]} lives  from fromDwcRow (changed in place)
+ * @param {Request} [request]
+ * @returns {Promise<void>}
+ */
+export async function attachEventAreas(lives, request = defaultRequest) {
+  const wanted = lives.filter((live) => live.record.type === 'CollectionObject' && !hasPoint(live.record))
+  const eventOf = new Map()
+  for (const ids of batches(wanted.map((live) => live.record.id))) {
+    const { data } = await request.get('/collection_objects', { params: { collection_object_id: ids, per: ids.length } })
+    for (const object of data ?? []) if (object.collecting_event_id) eventOf.set(Number(object.id), object.collecting_event_id)
+  }
+  const areaOfEvent = new Map()
+  for (const ids of batches([...new Set(eventOf.values())])) {
+    const { data } = await request.get('/collecting_events', { params: { collecting_event_id: ids, per: ids.length } })
+    for (const event of data ?? []) if (event.geographic_area_id) areaOfEvent.set(event.id, event.geographic_area_id)
+  }
+  const areas = new Map()
+  for (const areaId of new Set(areaOfEvent.values())) areas.set(areaId, await areaById(areaId, request))
+  for (const live of wanted) {
+    const areaId = areaOfEvent.get(eventOf.get(live.record.id))
+    if (areaId) live.record.eventArea = eventAreaOf(areaId, areas.get(areaId))
+  }
+}
+
+// Lists of at most 100, the most ids TaxonWorks takes in one URL here.
+function batches(ids) {
+  const out = []
+  for (let i = 0; i < ids.length; i += 100) out.push(ids.slice(i, i + 100))
+  return out
+}
+
+// A geographic area by its id, through any distribution on it, as the build
+// knows areas; null when no distribution uses it (eventAreaOf then gives its key).
+async function areaById(id, request) {
+  const { data } = await request.get('/asserted_distributions', {
+    params: { geo_shape_id: [id], geo_shape_type: ['GeographicArea'], per: 1, extend: ['asserted_distribution_shape'] }
+  })
+  const shape = shapeOf(data, 'GeographicArea', id)
+  return shape ? toArea('GeographicArea', shape) : null
+}
+
+// The area of the first distribution TaxonWorks returned for a geo_shape_id
+// filter, only when it is the area asked for (a filter TaxonWorks ignored
+// would otherwise hand over another area); null otherwise.
+function shapeOf(data, shapeType, id) {
+  const ad = Array.isArray(data) ? data[0] : null
+  const shape = ad?.asserted_distribution_shape
+  if (!shape || ad.asserted_distribution_shape_type !== shapeType || Number(shape.id) !== Number(id)) return null
+  return shape
+}
+
 // 'used by no record', with the children when areas.json lists the area as a
 // parent known only by name (French Guiana, the parent of Cayenne).
 function usedByNoRecord(kind, id, areas) {
@@ -290,27 +383,6 @@ function usedByNoRecord(kind, id, areas) {
   if (kind !== 'GA' || !own) return { error: 'used by no record' }
   const children = areas.filter((row) => row.parentId === id).map((row) => ({ key: row.key, name: row.name }))
   return { error: 'used by no record', stub: { name: own.name, children } }
-}
-
-/**
- * The RecordInput of a specimen or field occurrence, exactly as the build
- * makes it from a DwC row (buildContext.mjs, recordInput).
- * @param {'CollectionObject'|'FieldOccurrence'} type
- * @param {number} id
- * @param {Object} dwc  DwC fields (the JSON of /collection_objects/:id/dwc or a CSV row)
- * @returns {import('./engine.js').RecordInput}
- */
-export function recordFromDwc(type, id, dwc) {
-  return {
-    type,
-    id,
-    country: dwc.country,
-    stateProvince: dwc.stateProvince,
-    county: dwc.county,
-    locality: dwc.verbatimLocality || dwc.locality,
-    lat: dwc.decimalLatitude,
-    lng: dwc.decimalLongitude
-  }
 }
 
 /**
@@ -334,26 +406,31 @@ export function plainLabel(html) {
  * Does the cache list the record? Looked up in the checklist file of the live
  * result, else in unplaced.json; when it is in neither, the build's filters
  * (buildContext.mjs, screenRow) are checked on the DwC fields at hand.
- * @param {{ kind: string, id: number, dwc?: Object, absent?: boolean }} record
+ * @param {{ kind: string, id: number, dwc?: Object, absent?: boolean, typeReason?: string|null }} record
+ *   typeReason: why an undetermined type's taxon is unknown (lookupLive), so the
+ *   build leaves it out
  * @param {Object} cache
  * @param {string|null} cache.checklistName  the checklist of the live result
  * @param {Object[]|null} cache.records  its records (data/compact.js expandChecklist), null when not loaded
  * @param {Object<string, Array<[string, number]>>} cache.unplaced  unplaced.json
- * @returns {{ listed: boolean, text: string }}  'listed in Ukraine (state Kyiv)',
- *   'not listed: locality text only', 'not listed: rank genus', 'not listed in the cache'
+ * @returns {{ listed: boolean, text: string, leftOut: boolean }}  'listed in Ukraine (state Kyiv)',
+ *   'not listed: locality text only', 'not listed: rank genus', 'not listed in the cache';
+ *   leftOut: the build's screening leaves the record out of every checklist
+ *   (screen.js, or a type without taxon), so it can never differ from the cache
  */
-export function cacheStatus({ kind, id, dwc = null, absent = false }, { checklistName, records, unplaced }) {
+export function cacheStatus({ kind, id, dwc = null, absent = false, typeReason = null }, { checklistName, records, unplaced }) {
+  if (typeReason) return { listed: false, text: `not listed: ${typeReason}`, leftOut: true }
   const type = TYPE_OF_KIND[kind]
   const found = (records ?? []).find((row) => row.dwc_occurrence_object_type === type && String(row.dwc_occurrence_object_id) === String(id))
   if (found) {
     const extra = [found.part && `part ${found.part}`, found.state && `state ${found.state}`].filter(Boolean)
-    return { listed: true, text: `listed in ${checklistName ?? found.country}${extra.length ? ` (${extra.join(', ')})` : ''}` }
+    return { listed: true, text: `listed in ${checklistName ?? found.country}${extra.length ? ` (${extra.join(', ')})` : ''}`, leftOut: false }
   }
   for (const [reason, ids] of Object.entries(unplaced ?? {})) {
-    if (ids.some(([k, i]) => k === kind && Number(i) === Number(id))) return { listed: false, text: `not listed: ${reason}` }
+    if (ids.some(([k, i]) => k === kind && Number(i) === Number(id))) return { listed: false, text: `not listed: ${reason}`, leftOut: false }
   }
   const leftOut = dwc && leftOutReason(dwc)
-  if (leftOut) return { listed: false, text: `not listed: ${leftOut}` }
-  if (absent) return { listed: false, text: 'not listed: distribution is absent' }
-  return { listed: false, text: 'not listed in the cache' }
+  if (leftOut) return { listed: false, text: `not listed: ${leftOut}`, leftOut: true }
+  if (absent) return { listed: false, text: 'not listed: distribution is absent', leftOut: true }
+  return { listed: false, text: 'not listed in the cache', leftOut: false }
 }

@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-20",
+ "updated": "2026-11-22",
  "countries": [
   {
    "key": "afghanistan",
@@ -142,8 +142,8 @@
     -21.7869
    ],
    "states": false,
-   "taxa": 280,
-   "records": 386
+   "taxa": 281,
+   "records": 387
   },
   {
    "key": "armenia",
@@ -159,7 +159,7 @@
    ],
    "states": false,
    "taxa": 236,
-   "records": 247
+   "records": 248
   },
   {
    "key": "australia",
@@ -190,8 +190,8 @@
     49.0098
    ],
    "states": false,
-   "taxa": 482,
-   "records": 517
+   "taxa": 483,
+   "records": 518
   },
   {
    "key": "azerbaijan",
@@ -207,7 +207,7 @@
    ],
    "states": false,
    "taxa": 185,
-   "records": 196
+   "records": 197
   },
   {
    "key": "bahamas",
@@ -479,7 +479,7 @@
    ],
    "states": false,
    "taxa": 632,
-   "records": 678
+   "records": 679
   },
   {
    "key": "burkina-faso",
@@ -655,7 +655,7 @@
    ],
    "states": true,
    "taxa": 885,
-   "records": 1709
+   "records": 1711
   },
   {
    "key": "christmas-island",
@@ -783,7 +783,7 @@
    ],
    "states": false,
    "taxa": 32,
-   "records": 33
+   "records": 34
   },
   {
    "key": "croatia",
@@ -863,7 +863,7 @@
    ],
    "states": false,
    "taxa": 392,
-   "records": 441
+   "records": 444
   },
   {
    "key": "denmark",
@@ -1128,8 +1128,8 @@
     }
    ],
    "states": false,
-   "taxa": 790,
-   "records": 867
+   "taxa": 791,
+   "records": 868
   },
   {
    "key": "french-guiana",
@@ -1227,7 +1227,7 @@
    ],
    "states": false,
    "taxa": 906,
-   "records": 1084
+   "records": 1085
   },
   {
    "key": "germany",
@@ -1371,8 +1371,8 @@
     17.816
    ],
    "states": false,
-   "taxa": 189,
-   "records": 210
+   "taxa": 190,
+   "records": 211
   },
   {
    "key": "guernsey",
@@ -1547,8 +1547,8 @@
     35.4954
    ],
    "states": false,
-   "taxa": 712,
-   "records": 1161
+   "taxa": 715,
+   "records": 1165
   },
   {
    "key": "indonesia",
@@ -1564,7 +1564,7 @@
    ],
    "states": false,
    "taxa": 844,
-   "records": 1221
+   "records": 1223
   },
   {
    "key": "iran",
@@ -1708,7 +1708,7 @@
    ],
    "states": false,
    "taxa": 562,
-   "records": 640
+   "records": 641
   },
   {
    "key": "kenya",
@@ -1723,8 +1723,8 @@
     5.0304
    ],
    "states": false,
-   "taxa": 294,
-   "records": 417
+   "taxa": 295,
+   "records": 420
   },
   {
    "key": "kiribati",
@@ -2126,8 +2126,8 @@
     32.7128
    ],
    "states": false,
-   "taxa": 443,
-   "records": 708
+   "taxa": 445,
+   "records": 718
   },
   {
    "key": "micronesia",
@@ -2270,8 +2270,8 @@
     28.5385
    ],
    "states": false,
-   "taxa": 248,
-   "records": 259
+   "taxa": 249,
+   "records": 260
   },
   {
    "key": "namibia",
@@ -2287,7 +2287,7 @@
    ],
    "states": false,
    "taxa": 82,
-   "records": 96
+   "records": 97
   },
   {
    "key": "nepal",
@@ -2350,8 +2350,8 @@
     -8.5432
    ],
    "states": false,
-   "taxa": 569,
-   "records": 783
+   "taxa": 582,
+   "records": 797
   },
   {
    "key": "nicaragua",
@@ -2625,7 +2625,7 @@
    ],
    "states": false,
    "taxa": 965,
-   "records": 1064
+   "records": 1067
   },
   {
    "key": "pitcairn-islands",
@@ -2738,7 +2738,7 @@
    ],
    "states": true,
    "taxa": 946,
-   "records": 3614
+   "records": 3619
   },
   {
    "key": "rwanda",
@@ -3090,8 +3090,8 @@
     -22.1265
    ],
    "states": false,
-   "taxa": 863,
-   "records": 998
+   "taxa": 864,
+   "records": 999
   },
   {
    "key": "south-korea",
@@ -3155,7 +3155,7 @@
     9.8259
    ],
    "states": false,
-   "taxa": 87,
+   "taxa": 86,
    "records": 89
   },
   {
@@ -3236,7 +3236,7 @@
    ],
    "states": false,
    "taxa": 493,
-   "records": 499
+   "records": 500
   },
   {
    "key": "taiwan",
@@ -3284,7 +3284,7 @@
    ],
    "states": false,
    "taxa": 397,
-   "records": 720
+   "records": 722
   },
   {
    "key": "thailand",
@@ -3396,7 +3396,7 @@
    ],
    "states": false,
    "taxa": 984,
-   "records": 1137
+   "records": 1139
   },
   {
    "key": "turkmenistan",
@@ -3443,8 +3443,8 @@
     4.2197
    ],
    "states": false,
-   "taxa": 71,
-   "records": 85
+   "taxa": 72,
+   "records": 86
   },
   {
    "key": "ukraine",
@@ -3460,7 +3460,7 @@
    ],
    "states": false,
    "taxa": 1366,
-   "records": 18543
+   "records": 18545
   },
   {
    "key": "united-arab-emirates",
@@ -3507,8 +3507,8 @@
     71.4125
    ],
    "states": true,
-   "taxa": 1107,
-   "records": 4127
+   "taxa": 1108,
+   "records": 4156
   },
   {
    "key": "united-states-minor-outlying-islands",
@@ -3605,7 +3605,7 @@
    ],
    "states": false,
    "taxa": 75,
-   "records": 76
+   "records": 78
   },
   {
    "key": "virgin-islands-u-s",
@@ -3690,7 +3690,7 @@
   }
  ],
  "unplaced": {
-  "records": 4897,
-  "taxa": 1692
+  "records": 5536,
+  "taxa": 2249
  }
 }

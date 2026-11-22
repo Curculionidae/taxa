@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   lookupLive, recordFromDwc, cacheStatus, plainLabel, fromDistribution, fromDwcRow, placeLive, leftOutReason,
-  fetchOtuDistributions, fetchDistributionsByIds, fetchOtuSpecimens, otuLeftOut, recordLeftOut
+  fetchOtuDistributions, fetchDistributionsByIds, fetchOtuSpecimens, otuLeftOut, recordLeftOut, attachEventAreas
 } from './live.js'
 import { compileRules } from './rules.js'
 import { toArea } from './areas.js'
@@ -119,6 +119,13 @@ test('lookupLive: GZ through any distribution on it', async () => {
   })
 })
 
+test('lookupLive: a distribution on another area than asked for is not taken', async () => {
+  const other = { ...AD_556796, asserted_distribution_shape_type: 'GeographicArea', asserted_distribution_shape: { ...AREA_22258, id: 99 } }
+  assert.deepEqual(await lookupLive({ kind: 'GA', id: 22258 }, stub({ '/asserted_distributions': [other] })), { error: 'used by no record' })
+  const gazetteer = { ...other, asserted_distribution_shape_type: 'Gazetteer', asserted_distribution_shape: AREA_22258 }
+  assert.deepEqual(await lookupLive({ kind: 'GA', id: 22258 }, stub({ '/asserted_distributions': [gazetteer] })), { error: 'used by no record' })
+})
+
 test('lookupLive: a GA no distribution uses is "used by no record", with children for a parent stub', async () => {
   const request = stub({ '/asserted_distributions': [] })
   assert.deepEqual(await lookupLive({ kind: 'GA', id: 5 }, request), { error: 'used by no record' })
@@ -152,29 +159,42 @@ const UNPLACED = { 'locality text only': [['CO', 12], ['FO', 4]] }
 
 test('cacheStatus: listed in the checklist file of the result', () => {
   assert.deepEqual(cacheStatus({ kind: 'CO', id: 1385165 }, { checklistName: 'Ukraine', records: COUNTRY_RECORDS, unplaced: UNPLACED }), {
-    listed: true, text: 'listed in Ukraine (state Kyiv)'
+    listed: true, text: 'listed in Ukraine (state Kyiv)', leftOut: false
   })
   assert.deepEqual(cacheStatus({ kind: 'AD', id: 556796 }, { checklistName: 'French Guiana', records: COUNTRY_RECORDS, unplaced: UNPLACED }), {
-    listed: true, text: 'listed in French Guiana'
+    listed: true, text: 'listed in French Guiana', leftOut: false
   })
 })
 
 test('cacheStatus: unplaced in the cache, with the reason', () => {
   assert.deepEqual(cacheStatus({ kind: 'FO', id: 4 }, { checklistName: null, records: null, unplaced: UNPLACED }), {
-    listed: false, text: 'not listed: locality text only'
+    listed: false, text: 'not listed: locality text only', leftOut: false
   })
 })
 
 test('cacheStatus: outside the scope of the checklists, from the DwC fields', () => {
-  const status = (dwc, kind = 'CO') => cacheStatus({ kind, id: 1, dwc }, { checklistName: 'Ukraine', records: [], unplaced: {} }).text
+  const status = (dwc, kind = 'CO') => cacheStatus({ kind, id: 1, dwc: { otu_id: 7, ...dwc } }, { checklistName: 'Ukraine', records: [], unplaced: {} }).text
   assert.equal(status({ taxonRank: 'genus', superfamily: 'Curculionoidea' }), 'not listed: rank genus')
   assert.equal(status({ taxonRank: 'species', superfamily: 'Chrysomeloidea' }), 'not listed: not in Curculionoidea (Chrysomeloidea)')
   assert.equal(status({ taxonRank: 'species', superfamily: 'Curculionoidea', occurrenceStatus: 'absent' }), 'not listed: recorded as absent')
   assert.equal(status({ taxonRank: 'species', superfamily: 'Curculionoidea' }), 'not listed in the cache')
   // Field occurrences carry no superfamily: nothing to tell from.
   assert.equal(status({ taxonRank: 'species' }, 'FO'), 'not listed in the cache')
+  // A row without OTU: the build's reason (placement/screen.js).
+  assert.equal(cacheStatus({ kind: 'CO', id: 1, dwc: { taxonRank: 'species' } }, { checklistName: null, records: [], unplaced: {} }).text, 'not listed: no OTU')
   assert.equal(cacheStatus({ kind: 'AD', id: 1, absent: true }, { checklistName: null, records: null, unplaced: {} }).text,
     'not listed: distribution is absent')
+})
+
+test('cacheStatus: leftOut marks what the build screening leaves out, never an unplaced reason', () => {
+  const at = (record) => cacheStatus(record, { checklistName: null, records: [], unplaced: { 'no OTU of the area': [['CO', 9]] } })
+  assert.equal(at({ kind: 'CO', id: 1, dwc: { taxonRank: 'genus' } }).leftOut, true)
+  assert.equal(at({ kind: 'AD', id: 1, absent: true }).leftOut, true)
+  // An unplaced reason that starts like a screening reason stays unplaced.
+  assert.equal(at({ kind: 'CO', id: 9, dwc: { taxonRank: 'species', otu_id: 7, superfamily: 'Curculionoidea' } }).leftOut, false)
+  // An undetermined type whose taxon is unknown is left out with its reason.
+  assert.deepEqual(at({ kind: 'CO', id: 2, dwc: {}, typeReason: 'type status names no single taxon' }),
+    { listed: false, text: 'not listed: type status names no single taxon', leftOut: true })
 })
 
 test('lookupLive: an AD without area gives the build text "distribution has no area"', async () => {
@@ -205,11 +225,13 @@ test('fromDwcRow: kind, id and RecordInput from a DwC row', () => {
   assert.equal(live.record.country, 'France')
 })
 
-test('leftOutReason: rank, absent, superfamily, else null', () => {
+test('leftOutReason: the build screening (screen.js) with the OTU parents unknown', () => {
   assert.equal(leftOutReason({ taxonRank: 'genus' }), 'rank genus')
-  assert.equal(leftOutReason({ taxonRank: 'species', occurrenceStatus: 'Absent' }), 'recorded as absent')
-  assert.equal(leftOutReason({ taxonRank: 'species', superfamily: 'Chrysomeloidea' }), 'not in Curculionoidea (Chrysomeloidea)')
-  assert.equal(leftOutReason({ taxonRank: 'subspecies', superfamily: 'Curculionoidea' }), null)
+  assert.equal(leftOutReason({ taxonRank: 'species' }), 'no OTU')
+  assert.equal(leftOutReason({ taxonRank: 'species', otu_id: 7, occurrenceStatus: 'Absent' }), 'recorded as absent')
+  assert.equal(leftOutReason({ taxonRank: 'species', otu_id: 7, superfamily: 'Chrysomeloidea' }), 'not in Curculionoidea (Chrysomeloidea)')
+  assert.equal(leftOutReason({ taxonRank: 'subspecies', otu_id: 7, superfamily: 'Curculionoidea' }), null)
+  assert.equal(leftOutReason({ taxonRank: 'species', otu_id: 7, superfamily: '' }), null)
 })
 
 // A paging stub: answers /asserted_distributions page by page, with headers.
@@ -276,17 +298,91 @@ test('fetchOtuSpecimens: by taxon name and kind, own OTU only, CSV when paged', 
 test('otuLeftOut: the OTU of the distributions must be a species or subspecies of Curculionoidea', () => {
   assert.equal(otuLeftOut({ rank: 'family', parentNames: ['Root', 'Curculionoidea'] }), 'rank family')
   assert.equal(otuLeftOut({ rank: null, parentNames: [] }), 'rank none')
-  assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] }), 'not in Curculionoidea')
+  assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] }), 'not in Curculionoidea (no superfamily)')
+  assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Chrysomeloidea'] }), 'not in Curculionoidea (Chrysomeloidea)')
   assert.equal(otuLeftOut({ rank: 'subspecies', parentNames: ['Root', 'Curculionoidea', 'Curculionidae'] }), null)
 })
 
 test('recordLeftOut: own DwC reason, absent, else the OTU reason (host plant specimen)', () => {
   const plant = otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] })
   // A host plant specimen: species rank, no superfamily in its DwC row.
-  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', superfamily: '' } }, plant), 'not in Curculionoidea')
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', otu_id: 7, superfamily: '' } }, plant), 'not in Curculionoidea (no superfamily)')
   assert.equal(recordLeftOut({ dwc: { taxonRank: 'genus' } }, plant), 'rank genus')
-  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', superfamily: '' } }, null), null)
-  assert.equal(recordLeftOut({ absent: true }, null), 'absent')
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', otu_id: 7, superfamily: '' } }, null), null)
+  assert.equal(recordLeftOut({ absent: true }, null), 'distribution is absent')
   assert.equal(recordLeftOut({ absent: false }, 'rank family'), 'rank family')
   assert.equal(recordLeftOut({}, null), null)
+})
+
+// Task 1 (PLAN-specimen-data.md): the collecting event's area, as the build has it.
+const AREA_22258 = {
+  type: 'GeographicArea', id: 22258, name: 'Yakutsk gorsovet', level0_id: 19713, level1_id: 20864, level2_id: 22258,
+  parent_id: 20864, iso_3166_a2: null, tdwgID: null, data_origin: 'gadm',
+  geographic_area_type: { id: 9, name: 'District' }, parent: { name: 'Sakha' }
+}
+
+test('lookupLive: a CO without coordinates gets its collecting event area, through a distribution on it', async () => {
+  const request = stub({
+    '/collection_objects/1383838/dwc': { scientificName: 'Parameira gebleri', country: 'Russia', stateProvince: 'Sakha', verbatimLocality: 'Yakutsk env.' },
+    '/collection_objects/1383838': { id: 1383838, collecting_event_id: 406911 },
+    '/collecting_events/406911': { id: 406911, geographic_area_id: 22258 },
+    '/asserted_distributions': [{ id: 1, asserted_distribution_shape_type: 'GeographicArea', asserted_distribution_shape: AREA_22258 }]
+  })
+  const result = await lookupLive({ kind: 'CO', id: 1383838 }, request)
+  assert.deepEqual(result.record.eventArea, toArea('GeographicArea', AREA_22258))
+  assert.deepEqual(request.calls.at(-1).params, { geo_shape_id: [22258], geo_shape_type: ['GeographicArea'], per: 1, extend: ['asserted_distribution_shape'] })
+})
+
+test('lookupLive: an event area no distribution uses is only its key; no area, no eventArea', async () => {
+  const dwc = { scientificName: 'x', country: 'Russia' }
+  const unused = await lookupLive({ kind: 'CO', id: 5 }, stub({
+    '/collection_objects/5/dwc': dwc, '/collection_objects/5': { collecting_event_id: 9 },
+    '/collecting_events/9': { geographic_area_id: 777 }, '/asserted_distributions': []
+  }))
+  assert.deepEqual(unused.record.eventArea, { key: 'GA 777' })
+  const none = await lookupLive({ kind: 'CO', id: 5 }, stub({
+    '/collection_objects/5/dwc': dwc, '/collection_objects/5': { collecting_event_id: 9 }, '/collecting_events/9': { geographic_area_id: null }
+  }))
+  assert.equal('eventArea' in none.record, false)
+})
+
+test('attachEventAreas: the OTU tab asks in batches and only for COs without coordinates', async () => {
+  const lives = [
+    fromDwcRow({ dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: '1', country: 'Russia' }),
+    fromDwcRow({ dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: '2', decimalLatitude: '1', decimalLongitude: '2' }),
+    fromDwcRow({ dwc_occurrence_object_type: 'FieldOccurrence', dwc_occurrence_object_id: '3' })
+  ]
+  const request = stub({
+    '/collection_objects': [{ id: 1, collecting_event_id: 406911 }],
+    '/collecting_events': [{ id: 406911, geographic_area_id: 22258 }],
+    '/asserted_distributions': [{ id: 1, asserted_distribution_shape_type: 'GeographicArea', asserted_distribution_shape: AREA_22258 }]
+  })
+  await attachEventAreas(lives, request)
+  assert.equal(lives[0].record.eventArea.key, 'GA 22258')
+  assert.equal('eventArea' in lives[1].record, false)
+  assert.equal('eventArea' in lives[2].record, false)
+  assert.deepEqual(request.calls[0].params.collection_object_id, [1])
+})
+
+// Task 2: an undetermined type specimen, resolved like the build (typeStatus.js).
+test('lookupLive: an undetermined type takes the valid name of its type status, as the build', async () => {
+  const dwc = { scientificName: '', taxonRank: '', otu_id: null, typeStatus: 'paratype of Phaeopholus vietnamensis Legalov, 2026',
+    country: 'Vietnam', stateProvince: 'Yên Bái', decimalLatitude: 21.7, decimalLongitude: 104.9 }
+  const valid = { id: 1662470, cached: 'Phaeopholus vietnamensis', cached_author_year: 'Legalov, 2026', rank: 'species', cached_valid_taxon_name_id: 1662470 }
+  const request = stub({ '/collection_objects/2876460/dwc': dwc, '/taxon_names': [valid], '/otus': [{ id: 1475795 }] })
+  const result = await lookupLive({ kind: 'CO', id: 2876460 }, request)
+  assert.equal(result.subject.label, 'Phaeopholus vietnamensis Legalov, 2026 (paratype, no determination)')
+  assert.equal(result.otuId, 1475795)
+  assert.equal(result.dwc.taxonRank, 'species')
+  assert.equal(recordLeftOut({ dwc: result.dwc }, null), null)
+  assert.deepEqual(request.calls.find((call) => call.url === '/taxon_names').params, { name: 'Phaeopholus vietnamensis', name_exact: true })
+})
+
+test('lookupLive: a type status that names no taxon is not placeable, with the build reason', async () => {
+  const request = stub({ '/collection_objects/5/dwc': { typeStatus: 'holotype', country: 'Vietnam', decimalLatitude: 21.7, decimalLongitude: 104.9 } })
+  const result = await lookupLive({ kind: 'CO', id: 5 }, request)
+  const placement = await placeLive(result, createContext({ ...fixtures(), geometry: null }))
+  assert.equal(placement.checklist, null)
+  assert.equal(placement.reason, 'type status names no single taxon')
+  assert.equal(placement.steps[0].text, 'the type status "holotype" names no single taxon')
 })

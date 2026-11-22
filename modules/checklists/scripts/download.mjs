@@ -8,7 +8,7 @@
 // seconds. measure-overlap.mjs reads the same folder (distributions.json and
 // dwc_occurrences.csv).
 //
-// What is downloaded (about 2 minutes), and the file it is saved as:
+// What is downloaded (about 3 minutes), and the file it is saved as:
 //   dwc_occurrences.csv          GET /dwc_occurrences.csv, every DwC occurrence
 //                                in one request, as TaxonWorks sends it (tab
 //                                separated). Not paged: /dwc_occurrences has no
@@ -34,10 +34,27 @@
 //   otu_parents.json             { [otuId]: parents | { error } } for OTUs the
 //                                DwC export leaves without classification (field
 //                                occurrences), GET /otus/:id?extend[]=parents
+//   type_names.json              { [name and authorship]: { taxonName, valid,
+//                                otuId } | { error } }: the names in the
+//                                typeStatus of undetermined type specimens
+//                                (collection objects without otu_id),
+//                                resolved by placement/typeStatus.js
+//                                resolveTypeName (about 45 s); their OTUs are
+//                                added to the otu_parents.json lookups
+//   specimen_areas.json          { [collectionObjectId]: geographicAreaId }, the
+//                                area of each specimen's collecting event, for
+//                                the specimens whose collecting event has one:
+//                                GET /collecting_events, every page (ordered by
+//                                id), then GET /collection_objects with
+//                                collecting_event_id[] for those with an area
+//                                (about 15 s). The DwC export has no collecting
+//                                event id, and field occurrences have no index
+//                                route, so they are not covered.
 // A client error (404, 403: a stale or hidden OTU) is kept as { error } and
 // reported by the build; a server or network failure after retries stops the
 // download, so a cache missing data is never written.
 
+import { typeStatusName, typeNameKey, resolveTypeName, isUndeterminedType } from '../placement/typeStatus.js'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseTsv } from '../data/tsv.js'
@@ -56,7 +73,9 @@ export const FILES = {
   reassessmentCitations: 'reassessment_citations.json',
   associations: 'associations.json',
   associationOtus: 'association_otus.json',
-  otuParents: 'otu_parents.json'
+  otuParents: 'otu_parents.json',
+  specimenAreas: 'specimen_areas.json',
+  typeNames: 'type_names.json'
 }
 
 /**
@@ -176,12 +195,14 @@ export async function downloadData({ root, log = console.log }) {
     if (Number.isFinite(total) && total > list.length) throw new Error(`${path}: ${total} rows, only ${list.length} in one page`)
     return list
   }
-  // A 4xx answer is kept as { error }, anything else stops the download.
+  // A 4xx answer is kept as { error }, anything else stops the download. A
+  // rate limit (429) that outlasts the retries stops it too: it says nothing
+  // about the record, and saved as { error } it would leave records out.
   async function jsonOrError(path, params) {
     try {
       return await (await request(path, params)).json()
     } catch (error) {
-      if (!/^4\d\d /.test(error.message)) throw error
+      if (!/^4\d\d /.test(error.message) || error.message.startsWith('429 ')) throw error
       return { error: error.message }
     }
   }
@@ -245,6 +266,28 @@ export async function downloadData({ root, log = console.log }) {
     // Such an OTU has no DwC classification either: look up its parents too.
     if (SPECIES_RANKS.has(taxonName?.rank)) parentOtus.push(otuId)
   }
+  // The names in the type status of undetermined type specimens, and their OTUs' parents.
+  const getJson = async (path, params = {}) => {
+    const pairs = Object.entries(params).flatMap(([key, value]) =>
+      Array.isArray(value) ? value.map((item) => [`${key}[]`, item]) : [[key, value]])
+    return jsonOrError(path, pairs) // a client error is { error }, see resolveTypeName
+  }
+  const typeNames = {}
+  const typeParsed = new Map()
+  for (const row of rows) {
+    if (!isUndeterminedType(row)) continue
+    const parsed = typeStatusName(row.typeStatus)
+    if (parsed) typeParsed.set(typeNameKey(parsed), parsed)
+  }
+  await forEachLimited([...typeParsed.keys()], PARALLEL, async (key) => {
+    typeNames[key] = await resolveTypeName(typeParsed.get(key), getJson)
+  })
+  // OTU ids are text here (as from the CSV), so each OTU is looked up once.
+  for (const resolved of Object.values(typeNames)) {
+    if (resolved.otuId && !parentOtus.includes(String(resolved.otuId))) parentOtus.push(String(resolved.otuId))
+  }
+  log(`${typeParsed.size} type status names, ${Object.values(typeNames).filter((resolved) => !resolved.error).length} resolved`)
+
   const otuParents = {}
   await forEachLimited(parentOtus, PARALLEL, async (otuId) => {
     const otu = await jsonOrError(`/otus/${otuId}`, [['extend[]', 'parents']])
@@ -252,7 +295,41 @@ export async function downloadData({ root, log = console.log }) {
   })
   log(`${associations.length} associations, ${otuIds.length} association OTUs and ${parentOtus.length} OTU classifications looked up`)
 
-  return { csv, distributions, statusTags, reassessments, reassessmentCitations, associations, associationOtus, otuParents }
+  // 6. The areas of the specimens' collecting events.
+  const eventParams = (page) => [['per', PER], ['page', page]]
+  const firstEvents = await request('/collecting_events', eventParams(1))
+  const eventPages = Number(firstEvents.headers.get('pagination-total-pages')) || 1
+  const events = new Map((await firstEvents.json()).map((event) => [event.id, event]))
+  await forEachLimited(Array.from({ length: eventPages - 1 }, (_, i) => i + 2), PARALLEL, async (page) => {
+    for (const event of await (await request('/collecting_events', eventParams(page))).json()) events.set(event.id, event)
+  })
+  const expectedEvents = Number(firstEvents.headers.get('pagination-total'))
+  if (events.size !== expectedEvents) throw new Error(`got ${events.size} of ${expectedEvents} collecting events`)
+  const areaOfEvent = new Map([...events.values()].filter((event) => event.geographic_area_id).map((event) => [event.id, event.geographic_area_id]))
+  const specimenAreas = {}
+  const eventIds = [...areaOfEvent.keys()]
+  for (let i = 0; i < eventIds.length; i += 50) {
+    const batch = eventIds.slice(i, i + 50).map((id) => ['collecting_event_id[]', id])
+    let total = null
+    const seenInBatch = new Set()
+    for (let page = 1, pages = 1; page <= pages; page++) {
+      const response = await request('/collection_objects', [...batch, ['per', PER], ['page', page]])
+      pages = Number(response.headers.get('pagination-total-pages')) || 1
+      total = Number(response.headers.get('pagination-total'))
+      for (const object of await response.json()) {
+        seenInBatch.add(object.id)
+        const area = areaOfEvent.get(object.collecting_event_id)
+        if (!area) throw new Error(`collection object ${object.id} has collecting event ${object.collecting_event_id}, which was not asked for`)
+        specimenAreas[object.id] = area
+      }
+    }
+    if (Number.isFinite(total) && seenInBatch.size !== total) {
+      throw new Error(`got ${seenInBatch.size} of ${total} collection objects of collecting events ${i + 1} to ${i + batch.length}`)
+    }
+  }
+  log(`${events.size} collecting events, ${areaOfEvent.size} with an area, ${Object.keys(specimenAreas).length} specimens on them`)
+
+  return { csv, distributions, statusTags, reassessments, reassessmentCitations, associations, associationOtus, otuParents, specimenAreas, typeNames }
 }
 
 /**
@@ -277,7 +354,12 @@ export function loadData(dir) {
   const data = {}
   for (const [part, file] of Object.entries(FILES)) {
     const path = join(dir, file)
-    if (!existsSync(path)) throw new Error(`no ${path}: save a download first (npm run checklists -- --save ${dir})`)
+    if (!existsSync(path)) {
+      const older = Object.values(FILES).some((name) => existsSync(join(dir, name)))
+      throw new Error(older
+        ? `no ${path}: this folder was saved before ${file} was part of the download; save a new one (npm run checklists -- --save ${dir})`
+        : `no ${path}: save a download first (npm run checklists -- --save ${dir})`)
+    }
     const text = readFileSync(path, 'utf8')
     data[part] = part === 'csv' ? text : JSON.parse(text)
   }

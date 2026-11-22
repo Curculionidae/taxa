@@ -21,11 +21,13 @@ test('Cayenne explanation reads as the short text form', () => {
   const ref = `placement.yml:${index + 1}`
   const area = ga(fx.ga8837)
   const text = formatPlacement({ label: 'Phaedropus candidus', kind: 'AD', area, id: 556796 }, placeArea(area, ctx))
+  const none = 'no manual rule gives Cayenne (GA 8837) a country or state'
   const first = 'Cayenne is a subdivision of French Guiana (GA 78)'
   const second = 'French Guiana (GA 78) belongs to the checklist French Guiana'
   assert.equal(text, [
     'AD 556796  Phaedropus candidus',
     '  area      GA 8837 Cayenne (GA)',
+    `  step      ${none.padEnd(second.length + 2)}[manual, no rule]`,
     `  step      ${first.padEnd(second.length + 2)}[TaxonWorks]`,
     `  step      ${second}  [manual, ${ref}]`,
     '  result    French Guiana checklist',
@@ -69,13 +71,17 @@ test('Borneo step tag carries no share', () => {
   const ref = `placement.yml:${index + 1}`
   const text = formatPlacement({ kind: 'GA', id: 33639, label: 'Borneo' }, placeArea(ga(fx.ga33639), ctx))
   const step = 'Borneo spans several countries: Indonesia 72%, Malaysia 28%, Brunei 1%'
-  assert.ok(text.includes(`  step      ${step}  [overlap, ${ref}]\n`), text)
+  assert.ok(new RegExp(`  step      ${step} +\\[overlap, ${ref}\\]\n`).test(text), text)
   assert.ok(!/overlap \d/.test(text))
 })
 
 test('formatStep: one step as text and source tag', () => {
   assert.equal(formatStep({ text: 'Cayenne is in France (GA 77)', source: 'TaxonWorks' }), 'Cayenne is in France (GA 77) [TaxonWorks]')
   assert.equal(formatStep({ text: 'x', source: 'manual', ref: 'placement.yml:66' }), 'x [manual, placement.yml:66]')
+  assert.equal(formatStep({ text: 'no manual rule gives x a country or state', source: 'manual', none: true }), 'no manual rule gives x a country or state [manual, no rule]')
+  assert.equal(formatStep({ text: 'no overlap rule gives x a country or state', source: 'overlap', none: true }), 'no overlap rule gives x a country or state [overlap, never measured]')
+  assert.equal(formatStep({ text: 'no overlap rule gives x a state', source: 'overlap', none: true, measured: true }), 'no overlap rule gives x a state [overlap, no such rule]')
+  assert.equal(formatStep({ text: 'coordinates 1, 2 lie in no part of France', source: 'overlap', none: true, pointTest: true }), 'coordinates 1, 2 lie in no part of France [overlap]')
   assert.equal(formatStep({ text: 'y', source: 'overlap', ref: 'placement.yml:9', pct: 100, pctOf: 'Russia' }), 'y [overlap 100% Russia, placement.yml:9]')
 })
 

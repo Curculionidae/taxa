@@ -144,7 +144,7 @@ export function areasUsed(entries) {
         name: area.name,
         kind: area.kind === 'GZ' ? 'Gazetteer' : area.type,
         records: 0,
-        how: placement.steps[0] ? formatStep(placement.steps[0]) : ''
+        how: firstFound(placement) ? formatStep(firstFound(placement)) : ''
       })
     }
     rows.get(area.key).records += 1
@@ -152,16 +152,25 @@ export function areasUsed(entries) {
   return [...rows.values()]
 }
 
+// The first step that found something (checks that found nothing, Step.none, are skipped).
+function firstFound(placement) {
+  return placement.steps.find((step) => !step.none) ?? null
+}
+
 const SPECIMEN_WAYS = [
   ['by DwC country', 'TaxonWorks', (step) => step.source === 'TaxonWorks' && step.text.startsWith('DwC country')],
   ['by a name of the checklist entry', 'manual', (step) => step.source === 'manual'],
-  ['by coordinates inside the outline', 'overlap', (step) => step.source === 'overlap']
+  ['by the share of the georeference shape', 'overlap', (step) => step.shapeShare],
+  ['by coordinates inside the outline', 'overlap', (step) => step.source === 'overlap'],
+  ['by the collecting event area', 'TaxonWorks', (step) => step.via === 'eventArea']
 ]
 
 /**
  * `specimens` of the country file header: the number of specimens and field
- * occurrences in the file, and how many were placed which way (by the first
- * step of their decision).
+ * occurrences in the file, and how many were placed which way: by the
+ * collecting event area when its step decided (Step.via), else by the first
+ * step that found something, after the step naming a georeference shape and
+ * the steps of a collecting event area that handed over (Step.handedOver).
  * @param {import('../placement/engine.js').Placement[]} placements
  * @returns {{ records: number, how: string }}
  */
@@ -169,7 +178,8 @@ export function specimensSummary(placements) {
   if (!placements.length) return { records: 0, how: 'none' }
   const counts = new Map()
   for (const placement of placements) {
-    const step = placement.steps[0]
+    const step = placement.steps.find((candidate) => candidate.via === 'eventArea') ??
+      placement.steps.find((candidate) => !candidate.none && !candidate.handedOver && candidate.via !== 'shape') ?? null
     const way = SPECIMEN_WAYS.find(([, , test]) => step && test(step))
     const label = way ? `${way[0]} COUNT [${way[1]}]` : 'otherwise COUNT'
     counts.set(label, (counts.get(label) ?? 0) + 1)

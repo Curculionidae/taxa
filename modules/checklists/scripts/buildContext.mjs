@@ -11,7 +11,7 @@
 //
 // Input:  the data of download.mjs (downloadData or loadData), the project root
 //         (for rules/placement.yml, public/map-shapes/, the outline files of
-//         public/checklists/ and scripts/data/country-iso.json).
+//         public/checklists/).
 // Output: createBuildContext returns the parsed rows, the asserted
 //         distributions by id, the areas, the compiled rules, the checklists
 //         and their keys, the outlines, the engine context and the helpers
@@ -27,7 +27,7 @@ import { recordFromDwc, eventAreaOf, specimenLabel, typeReasonPlacement } from '
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compileRules, validateRules } from '../placement/rules.js'
-import { toArea, normalizeName } from '../placement/areas.js'
+import { toArea } from '../placement/areas.js'
 import { deriveChecklists } from '../placement/checklists.js'
 import { createContext, placeRecord, ruleMatches, stateAreasOf, placementWithoutArea } from '../placement/engine.js'
 import { formatPlacement, formatExplanation } from '../placement/format.js'
@@ -62,7 +62,7 @@ export function buildPaths(root) {
  *   fromDir only names the folder in the first log line
  */
 export async function createBuildContext(data, { root, log = console.log, warn = console.warn, fromDir = null }) {
-  const { module: MODULE, shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, rulesFile: RULES_FILE } = buildPaths(root)
+  const { shapeDir: SHAPE_DIR, fallbackFile: FALLBACK_FILE, subdivisionsFile: SUBDIVISIONS_FILE, rulesFile: RULES_FILE } = buildPaths(root)
   // Undetermined type specimens take the valid name of their type status
   // (placement/typeStatus.js typeRow); one that cannot be resolved keeps its
   // row and is listed in unplaced.json with the reason (typeUnplaced).
@@ -161,9 +161,7 @@ export async function createBuildContext(data, { root, log = console.log, warn =
   const areasById = new Map([...areas.values()].filter((area) => area.kind === 'GA').map((area) => [area.id, area]))
   const rules = compileRules(readFileSync(RULES_FILE, 'utf8'))
   const level0Names = level0NamesFrom(rows, data.distributions)
-  const isoByName = new Map(Object.entries(JSON.parse(readFileSync(join(MODULE, 'scripts/data/country-iso.json'), 'utf8')))
-    .map(([name, iso]) => [normalizeName(name), iso]))
-  const { checklists, warnings } = deriveChecklists([...areas.values()], rules, level0Names, isoByName)
+  const { checklists, warnings } = deriveChecklists([...areas.values()], rules, level0Names)
   const keys = assignKeys(checklists) // stops on two checklists with one key
   const checklistById = new Map(checklists.map((checklist) => [checklist.id, checklist]))
   const shapes = listShapes(SHAPE_DIR)

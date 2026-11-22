@@ -24,7 +24,7 @@
 //
 // Inputs besides --from: modules/checklists/rules/placement.yml, the cached
 // outlines in public/map-shapes/, public/checklists/fallback-shapes.geojson,
-// public/checklists/subdivisions.geojson, scripts/data/country-iso.json.
+// public/checklists/subdivisions.geojson.
 //
 // What gets measured (only areas some distribution uses, and only when no
 // manual or overlap rule decides them yet; the placement engine says which):
@@ -108,15 +108,13 @@ const csvFile = join(fromDir, 'dwc_occurrences.csv')
 if (!existsSync(csvFile)) console.warn(`no ${csvFile}: countries used only through their subdivisions get no checklist`)
 // Names of countries used only through their subdivisions, as the build finds them.
 const level0Names = existsSync(csvFile) ? level0NamesFrom(parseTsv(readFileSync(csvFile, 'utf8')), distributions) : new Map()
-const isoByName = new Map(Object.entries(JSON.parse(readFileSync(join(MODULE, 'scripts/data/country-iso.json'), 'utf8')))
-  .map(([name, iso]) => [normalizeName(name), iso]))
 const shapeDir = join(ROOT, 'public/map-shapes')
 const shapes = listShapes(shapeDir)
 
 // Rules, checklists, geometry and engine context for a rules text.
 function setUp(text) {
   const rules = compileRules(text)
-  const { checklists } = deriveChecklists([...areas.values()], rules, level0Names, isoByName)
+  const { checklists } = deriveChecklists([...areas.values()], rules, level0Names)
   const geometry = createNodeGeometry({
     shapeDir,
     fallbackFile: join(ROOT, 'public/checklists/fallback-shapes.geojson'),

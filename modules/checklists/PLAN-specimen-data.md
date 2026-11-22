@@ -104,7 +104,11 @@ that country's checklist.
   the reason `type status name not found in TaxonWorks`, never dropped silently.
 - Curator page: the lookup and the OTU tab resolve the same way.
 
-## 3. The ISO dictionary becomes a cited section of placement.yml
+## 3. The ISO dictionary becomes a cited section of placement.yml (done 2026-11-22)
+
+Done: 41 lines (Guadeloupe and Saint Barthelemy dropped: their code comes from
+their checklists entry and from TaxonWorks); an unused line is a build warning
+saying why.
 
 Why: `scripts/data/country-iso.json` (43 countries whose TaxonWorks area has
 no ISO code) decides the checklist of 38 gazetteers (187 records: Solomon

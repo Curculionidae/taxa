@@ -464,7 +464,13 @@ function decide(area, ctx) {
     const iso = area.iso2.toUpperCase()
     const checklist = ctx.byIso.get(iso)
     if (checklist) {
-      return decided(placed(checklist, [{ text: `${area.name} has ISO code ${iso}, ${checklist.name}`, source: 'TaxonWorks' }]))
+      // The link from the code to the checklist: TaxonWorks' country area, or a
+      // line of the rules file's iso_codes when that area carries no code.
+      const link = `${iso} is the ISO code of ${checklist.name}`
+      return decided(placed(checklist, [
+        { text: `${area.name} has ISO code ${iso}`, source: 'TaxonWorks' },
+        checklist.isoRef ? { text: link, source: 'manual', ref: checklist.isoRef } : { text: link, source: 'TaxonWorks' }
+      ]))
     }
     return decided(notPlaced(`no checklist for ${iso}`, [
       { text: `${area.name} has ISO code ${iso}, which has no checklist`, source: 'TaxonWorks' }

@@ -31,8 +31,8 @@
 //    is the area with the only ISO code; with none or several, the lowest id.
 //    Today's ids stay the same, because country files are named <id>.json.
 //  - A country without an ISO code from TaxonWorks (Natural Earth country
-//    areas and stubs carry none) takes it from `isoByName`, by its name or
-//    any synonym of it (R18). The build passes scripts/data/country-iso.json.
+//    areas and stubs carry none) takes it from the rules file's iso_codes, by
+//    its name or any synonym of it (R18), and carries that line as `isoRef`.
 //  - Every rules.checklists entry is a checklist of its own, even with `of:`.
 //    Its id is its first GA area, so its areas must list the areas of today's
 //    country file. No area id belongs to two checklists: an id listed by such
@@ -61,11 +61,9 @@ import { normalizeName, isCountryArea } from './areas.js'
  * @param {import('./areas.js').Area[]} areas
  * @param {import('./rules.js').CompiledRules} rules
  * @param {Map<number, string>} [level0Names]  names of level0 ids no area is itself (R9)
- * @param {Map<string, string>} [isoByName]  ISO 3166-1 alpha-2 code by normalizeName(country
- *   name), used for countries TaxonWorks gives no ISO code (R18)
  * @returns {{ checklists: Checklist[], warnings: string[] }}  warnings name level0 ids skipped for lack of a name
  */
-export function deriveChecklists(areas, rules, level0Names = new Map(), isoByName = new Map()) {
+export function deriveChecklists(areas, rules, level0Names = new Map()) {
   const canonical = new Map() // normalized synonym -> checklist name
   const stateCountries = new Set((rules.stateCountries?.names ?? []).map(normalizeName))
   for (const { names } of rules.synonyms) {
@@ -118,14 +116,16 @@ export function deriveChecklists(areas, rules, level0Names = new Map(), isoByNam
     else addCountry(area.id, area.name, area.iso2)
   }
 
-  // ISO code from isoByName by the checklist name or any synonym of it (R18).
+  // ISO code from the rules file's iso_codes by the checklist name or any synonym of it (R18).
+  const isoByName = new Map((rules.isoCodes ?? []).map((entry) => [normalizeName(entry.name), entry]))
+  const usedIso = new Set()
   const isoFor = (name) => {
     const names = [name, ...(rules.synonyms.find((s) => s.names.some((n) => normalizeName(n) === normalizeName(name)))?.names ?? [])]
     for (const n of names) {
-      const iso = isoByName.get(normalizeName(n))
-      if (iso) return iso
+      const entry = isoByName.get(normalizeName(n))
+      if (entry) { usedIso.add(entry); return entry }
     }
-    return ''
+    return null
   }
 
   /** @type {Checklist[]} */
@@ -133,10 +133,12 @@ export function deriveChecklists(areas, rules, level0Names = new Map(), isoByNam
   for (const entry of countries.values()) {
     const withIso = entry.members.filter((member) => member.iso2)
     const id = withIso.length === 1 ? withIso[0].id : Math.min(...entry.members.map((member) => member.id))
+    const fromRules = withIso.length ? null : isoFor(entry.name)
     const checklist = {
       id,
       name: entry.name,
-      iso2: withIso[0]?.iso2 ?? isoFor(entry.name),
+      iso2: withIso[0]?.iso2 ?? fromRules?.iso ?? '',
+      ...(fromRules ? { isoRef: fromRules.ref } : {}),
       areaIds: entry.members.map((member) => member.id),
       states: stateCountries.has(normalizeName(entry.name))
     }
@@ -155,6 +157,16 @@ export function deriveChecklists(areas, rules, level0Names = new Map(), isoByNam
       states: stateCountries.has(normalizeName(entry.name)),
       ref: entry.ref
     })
+  }
+  // An unused iso_codes line: no checklist of that name (or synonym), or one
+  // that already has its code from TaxonWorks or its checklists entry.
+  for (const entry of rules.isoCodes ?? []) {
+    if (usedIso.has(entry)) continue
+    const names = [entry.name, ...(rules.synonyms.find((s) => s.names.some((n) => normalizeName(n) === normalizeName(entry.name)))?.names ?? [])]
+    const checklist = list.find((candidate) => names.some((n) => normalizeName(n) === normalizeName(candidate.name)))
+    warnings.push(checklist
+      ? `${entry.ref}: iso_codes entry ${entry.name} is not needed: the checklist ${checklist.name} has ISO code ${checklist.iso2} from ${checklist.ref ? `its checklists entry (${checklist.ref})` : 'TaxonWorks'}`
+      : `${entry.ref}: iso_codes entry ${entry.name} matches no checklist`)
   }
   return { checklists: list, warnings }
 }

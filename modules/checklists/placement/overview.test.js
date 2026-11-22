@@ -216,7 +216,7 @@ test('ruleSections: every rule of the rules file with its ref', () => {
   const rules = compileRules(readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8'))
   const sections = ruleSections(rules)
   assert.deepEqual(sections.map((section) => section.name), [
-    'Checklists of their own', 'Synonyms', 'Parts', 'State countries', 'Ignored name words', 'Manual rules', 'Overlap rules'
+    'Checklists of their own', 'Synonyms', 'Parts', 'ISO codes', 'State countries', 'Ignored name words', 'Manual rules', 'Overlap rules'
   ])
   const byName = Object.fromEntries(sections.map((section) => [section.name, section]))
   assert.equal(byName['Overlap rules'].collapsed, true)
@@ -227,6 +227,9 @@ test('ruleSections: every rule of the rules file with its ref', () => {
   assert.match(guiana.match, /GA 78/)
   assert.match(byName['State countries'].rows[0].match, /United States/)
   assert.match(byName['Ignored name words'].rows[0].match, /oblast/)
+  const solomon = byName['ISO codes'].rows.find((row) => row.match === 'Solomon Islands')
+  assert.equal(solomon.action, 'ISO code SB')
+  assert.match(solomon.ref, /^placement\.yml:\d+$/)
   assert.ok(sections.every((section) => section.rows.every((row) => row.ref && row.match && row.action)))
   const borneo = byName['Overlap rules'].rows.find((row) => row.match === 'TDWG 42BOR')
   assert.equal(borneo.action, 'not placeable: spans several countries')
@@ -246,6 +249,11 @@ test('plainReason: the deciding step in a few words, with its rules line (R54)',
   assert.deepEqual(reason([{ text: 'Corse is in France (GA 77)', source: 'TaxonWorks' }]), { text: 'GA hierarchy in TaxonWorks (GA 77)', ref: null })
   assert.deepEqual(reason([{ text: 'Spain (GA 210) is a country', source: 'TaxonWorks' }]), { text: 'country area in TaxonWorks', ref: null })
   assert.deepEqual(reason([{ text: 'Auckland has ISO code NZ, New Zealand', source: 'TaxonWorks' }]), { text: 'gazetteer ISO code NZ', ref: null })
+  assert.deepEqual(reason([{ text: 'Auckland has ISO code NZ', source: 'TaxonWorks' }, { text: 'NZ is the ISO code of New Zealand', source: 'TaxonWorks' }]),
+    { text: 'gazetteer ISO code NZ', ref: null })
+  assert.deepEqual(reason([{ text: 'Guadalcanal has ISO code SB', source: 'TaxonWorks' },
+    { text: 'SB is the ISO code of Solomon Islands', source: 'manual', ref: 'placement.yml:220' }]),
+  { text: 'gazetteer ISO code SB (code from the rules file)', ref: 'placement.yml:220' })
   assert.deepEqual(reason([{ text: 'GA 32253 French Guiana belongs to the checklist French Guiana', source: 'manual', ref: 'placement.yml:74' }]),
     { text: 'own checklist entry', ref: 'placement.yml:74' })
   assert.deepEqual(reason([{ text: 'Yakutskiya (TDWG 30YAK) lies in Russia', source: 'overlap', ref: 'placement.yml:240', pct: 100, pctOf: 'Russia' },

@@ -15,10 +15,10 @@
 //                  "co 12", "GA 8837", "GZ10453" (any form parseLookup reads)
 // Without --from it downloads (scripts/download.mjs, about 3 minutes).
 //
-// What it reads besides TaxonWorks: rules/placement.yml (the placement rules),
-// public/map-shapes/ (cached outlines), public/checklists/fallback-shapes.geojson
-// and subdivisions.geojson (Natural Earth outlines, never written here),
-// scripts/data/country-iso.json (ISO codes TaxonWorks does not give).
+// What it reads besides TaxonWorks: rules/placement.yml (the placement rules,
+// with the ISO codes TaxonWorks does not give in iso_codes), public/map-shapes/
+// (cached outlines), public/checklists/fallback-shapes.geojson and
+// subdivisions.geojson (Natural Earth outlines, never written here).
 //
 // What it writes to public/checklists/ (see the module README, "Building the cache"):
 //   index.json             build date, every checklist (key, file, name, iso2, of,

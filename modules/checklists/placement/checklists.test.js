@@ -6,9 +6,12 @@ import { toArea, normalizeName, containsName, isCountryArea, isStateArea } from 
 import { deriveChecklists, checklistNames, findByName } from './checklists.js'
 import * as fx from './fixtures.js'
 
-const rules = compileRules(
-  readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8')
-)
+// The real rules file without its iso_codes: with only these fixture areas,
+// every iso_codes line would be an unused-line warning (the ISO tests give their own).
+const rules = {
+  ...compileRules(readFileSync(new URL('../rules/placement.yml', import.meta.url), 'utf8')),
+  isoCodes: []
+}
 const ga = (shape) => toArea('GeographicArea', shape)
 const gz = (shape) => toArea('Gazetteer', shape)
 const areas = [
@@ -195,14 +198,28 @@ test('GA 33412 is a country area itself, not a stub: its own name, no level0Name
   assert.deepEqual(result.warnings, [])
 })
 
-test('a checklist without ISO code takes it from isoByName, also through a synonym (R18)', () => {
-  const iso = new Map([[normalizeName('Solomon Islands'), 'SB'], [normalizeName('France'), 'XX']])
-  const list = deriveChecklists([fx.ga31761, fx.ga77].map(ga), rules, new Map(), iso).checklists
+test('a checklist without ISO code takes it from iso_codes, cited, also through a synonym (R18)', () => {
+  const withIso = (entries) => ({ ...rules, isoCodes: entries })
+  const solomon = { name: 'Solomon Islands', iso: 'SB', ref: 'placement.yml:7' }
+  const result = deriveChecklists([fx.ga31761, fx.ga77].map(ga), withIso([solomon, { name: 'France', iso: 'XX', ref: 'placement.yml:8' }]), new Map())
+  const list = result.checklists
   assert.equal(list.find((c) => c.name === 'Solomon Islands').iso2, 'SB')
-  // An ISO code from TaxonWorks is kept.
+  assert.equal(list.find((c) => c.name === 'Solomon Islands').isoRef, 'placement.yml:7')
+  // An ISO code from TaxonWorks is kept, with no isoRef.
   assert.equal(list.find((c) => c.name === 'France').iso2, 'FR')
-  const viaSynonym = deriveChecklists([fx.ga31761].map(ga), rules, new Map(), new Map([['solomon is', 'SB']])).checklists
+  assert.equal('isoRef' in list.find((c) => c.name === 'France'), false)
+  const viaSynonym = deriveChecklists([fx.ga31761].map(ga), withIso([{ name: 'Solomon Is', iso: 'SB', ref: 'placement.yml:9' }]), new Map()).checklists
   assert.equal(viaSynonym[0].iso2, 'SB')
+  assert.equal(viaSynonym[0].isoRef, 'placement.yml:9')
+})
+
+test('an iso_codes line that no checklist uses is a warning saying why', () => {
+  const result = deriveChecklists([fx.ga31761, fx.ga77].map(ga), { ...rules, isoCodes: [
+    { name: 'Atlantis', iso: 'AT', ref: 'placement.yml:5' },
+    { name: 'France', iso: 'FR', ref: 'placement.yml:6' }
+  ] }, new Map())
+  assert.ok(result.warnings.includes('placement.yml:5: iso_codes entry Atlantis matches no checklist'), result.warnings.join('\n'))
+  assert.ok(result.warnings.includes('placement.yml:6: iso_codes entry France is not needed: the checklist France has ISO code FR from TaxonWorks'), result.warnings.join('\n'))
 })
 
 test('isStateArea follows TaxonWorks GeographicArea#categorize (R30)', () => {

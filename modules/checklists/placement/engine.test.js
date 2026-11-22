@@ -24,12 +24,10 @@ const areas = [
   fx.ga33639, fx.ga19713, fx.ga236, fx.ga34271, fx.ga15, fx.ga237, fx.ga33412, fx.ga33455,
   fx.ga26386, fx.ga31761
 ].map(ga).concat([fx.gz3529, fx.gz10453, fx.gz3575].map(gz))
-// Country ISO codes the build reads from scripts/data/country-iso.json (R18).
-const isoByName = new Map([['solomon islands', 'SB']])
 // New Zealand is used in TaxonWorks only through gazetteers here, so its
 // checklist is given by hand (id and ISO code as a country file would have them).
 const newZealand = { id: 158, name: 'New Zealand', iso2: 'NZ', areaIds: [158], states: false }
-const checklists = [...deriveChecklists(areas, rules, new Map(), isoByName).checklists, newZealand]
+const checklists = [...deriveChecklists(areas, rules, new Map()).checklists, newZealand]
 const shapes = new Set(['GeographicArea/32253', 'GeographicArea/77', 'GeographicArea/32254',
   'GeographicArea/19713', 'GeographicArea/236', 'GeographicArea/237', 'GeographicArea/33639', 'GeographicArea/33876'])
 const ctx = createContext({ checklists, rules, geometry: null, shapes })
@@ -91,9 +89,10 @@ test('TDWG Borneo is not placeable', () => {
 test('NZCC: Northland lands in New Zealand by its ISO code', () => {
   const placement = placeArea(gz(fx.gz3529), ctx)
   assert.equal(placement.checklist.name, 'New Zealand')
-  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks'])
-  assert.equal(found(placement)[0].text, 'NZCC: Northland has ISO code NZ, New Zealand')
-  assert.equal(found(placement)[1].text, 'no outline cached for New Zealand')
+  assert.deepEqual(sources(placement), ['TaxonWorks', 'TaxonWorks', 'TaxonWorks'])
+  assert.equal(found(placement)[0].text, 'NZCC: Northland has ISO code NZ')
+  assert.equal(found(placement)[1].text, 'NZ is the ISO code of New Zealand')
+  assert.equal(found(placement)[2].text, 'no outline cached for New Zealand')
   assert.equal(placement.shape, null)
   assert.equal(placement.reason, null)
 })
@@ -108,7 +107,10 @@ test('a gazetteer whose ISO code has no checklist is not placeable', () => {
 test('a Solomon Islands gazetteer lands in Solomon Islands though its country area has no ISO (R18)', () => {
   const placement = placeArea(gz(fx.gz3575), ctx)
   assert.equal(placement.checklist.name, 'Solomon Islands')
-  assert.equal(found(placement)[0].text, 'Solomon Islands: Guadalcanal has ISO code SB, Solomon Islands')
+  assert.deepEqual(found(placement).slice(0, 2).map((step) => [step.text, step.source, step.ref]), [
+    ['Solomon Islands: Guadalcanal has ISO code SB', 'TaxonWorks', undefined],
+    ['SB is the ISO code of Solomon Islands', 'manual', refOf('  Solomon Islands: SB')]
+  ])
 })
 
 test('a US state under GA 33412 lands in United States (R17)', () => {

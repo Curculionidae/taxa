@@ -15,7 +15,7 @@
 #   (Natural Earth is geometry only: country and state outlines. No name from it
 #                 decides anything; its state aliases are not read.)
 #   [manual]      a line in this file written by hand (manual section, checklists,
-#                 synonyms, parts, ignored_name_words, coastal_tolerance_degrees).
+#                 synonyms, parts, iso_codes, ignored_name_words, coastal_tolerance_degrees).
 #   [overlap]     a line in the overlap section: which country outlines the shape
 #                 of an area falls in, measured on the cached shapes.
 #   Manual lines win over overlap lines.
@@ -177,6 +177,57 @@ parts:
       areas: [GA 34185]   # TDWG L4 12FRA-FR, mainland only: its outline has no Channel Islands (12FRA has)
       rest: true
       box: [-5.5, 42.2, 8.3, 51.2]
+
+# ISO codes of countries whose TaxonWorks country area carries none (the
+# Natural Earth country areas and stubs in TaxonWorks have no ISO code). A
+# gazetteer is placed by its ISO code (step 4 of the decision order); for these
+# countries the link from the code to the checklist is this line, cited in the
+# step ("SB is the ISO code of Solomon Islands" [manual, placement.yml:N]).
+# Looked up by the checklist name or a synonym of it. Moved here from
+# scripts/data/country-iso.json on 2026-11-22.
+iso_codes:
+  Antigua and Barbuda: AG
+  Bolivia: BO
+  "Bonaire, Saint Eustatius and Saba": BQ
+  Bosnia and Herzegovina: BA
+  British Virgin Islands: VG
+  Brunei: BN
+  Cayman Islands: KY
+  Central African Republic: CF
+  Cocos Islands: CC
+  "Côte d'Ivoire": CI
+  Democratic Republic of the Congo: CD
+  Dominican Republic: DO
+  Equatorial Guinea: GQ
+  Falkland Islands: FK
+  French Southern Territories: TF
+  Guinea-Bissau: GW
+  Heard Island and McDonald Islands: HM
+  Iran: IR
+  Laos: LA
+  Micronesia: FM
+  Moldova: MD
+  North Korea: KP
+  North Macedonia: MK
+  Pitcairn Islands: PN
+  Russia: RU
+  Saint Helena: SH
+  Saint Vincent and the Grenadines: VC
+  Sao Tome and Principe: ST
+  Solomon Islands: SB
+  South Korea: KR
+  South Sudan: SS
+  Spain: ES
+  Syria: SY
+  Taiwan: TW
+  Tanzania: TZ
+  Timor-Leste: TL
+  Turks and Caicos Islands: TC
+  United States Minor Outlying Islands: UM
+  Venezuela: VE
+  "Virgin Islands, U.S.": VI
+  Western Sahara: EH
+
 manual:
   # TDWG areas where geometry alone would mislead
   - match: { tdwg: 12FRA }

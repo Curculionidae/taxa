@@ -14,7 +14,6 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/compare.mjs`, `scripts/compareCaches.mjs`: compare two caches record by record and write a report for the curator (see "Comparing two caches"); the pure helpers are tested in `compareCaches.test.js`.
 - `scripts/download.mjs`: everything the build fetches from TaxonWorks, and saving or reading it as files for offline runs (`--save`, `--from`).
 - `scripts/cacheFiles.mjs`: pure helpers that shape the written files (checklist keys, the country file header, index entries, `unplaced.json`); tested in `cacheFiles.test.js`.
-- `scripts/data/country-iso.json`: ISO codes of countries whose TaxonWorks area carries none.
 - `placement/specimen.js`, `placement/screen.js`, `placement/typeStatus.js`, `placement/footprint.js`: the specimen record and its label, the screening (which rows count), undetermined type specimens, the point of a georeference shape; each used by the build and the curator page alike (the curator page has no logic of its own: CLAUDE.md).
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
@@ -181,11 +180,13 @@ which reads the areas that asserted distributions use (`placement/areas.js`,
   its name (`french-guiana`, see "Building the cache").
 - ISO codes: a country takes its ISO code from its TaxonWorks area. Natural
   Earth country areas and countries used only through subdivisions carry
-  none, so the build passes `isoByName` (fourth argument, keys are
-  `normalizeName` of a country name), filled from
-  `scripts/data/country-iso.json`; it is looked up by the checklist name and
-  every synonym of it. Gazetteers are placed by ISO code, so without this a
-  Solomon Islands gazetteer (ISO SB) would find no checklist.
+  none; for those the rules file's `iso_codes` section gives it, looked up by
+  the checklist name and every synonym of it, and the checklist carries that
+  line as `isoRef` (also in `context.json`). Gazetteers are placed by ISO
+  code, so without it a Solomon Islands gazetteer (ISO SB) would find no
+  checklist; its step cites the line. A line no checklist uses is a build
+  warning saying why (no checklist of that name, or the checklist has its
+  code from TaxonWorks or its checklists entry).
 - `states` is true for the checklists named in the rules file's
   `state_countries` list (United States, Canada, Australia, China, Russia),
   the countries browsed by state. `parts` holds the part names
@@ -250,6 +251,13 @@ of the file describes every key; in short:
   Krai" finds Krasnoyarsk. Only for states, never for countries. The engine has
   no word list of its own; a state found only by leaving words out cites this
   line (see "States and provinces").
+- `iso_codes`: `Country name: XX`, one line per country whose TaxonWorks
+  country area carries no ISO code (41 on 2026-11-22; moved here from
+  `scripts/data/country-iso.json`). The ISO step of a gazetteer then reads
+  `Solomon Islands: Mbanika has ISO code SB` [TaxonWorks], `SB is the ISO
+  code of Solomon Islands` [manual, placement.yml:N]; with a code from
+  TaxonWorks the second step is [TaxonWorks] (`NZ is the ISO code of New
+  Zealand`).
 - `parts`: parts of a country that can be selected on their own, by country
   name (France: Corsica, Mainland France). Keys: `name`, `areas`, `names`,
   `box`, and `rest: true` on the part that takes every other record below
@@ -338,7 +346,8 @@ Decision order for an area; the first that applies decides:
    (Texas, GA 26386, under GA 237 United States). A country area whose name
    differs from its checklist gets a second, manual step citing the synonym
    line (`United States of America is a spelling of United States`).
-4. The ISO code of a gazetteer.
+4. The ISO code of a gazetteer, and the checklist with that code (from
+   TaxonWorks, or a line of `iso_codes`).
 5. An overlap rule for the area.
 6. Otherwise not placeable. Reasons: `spans several countries: <shares>` (from
    a `not_placeable` rule), `no checklist for <country or ISO code>`,
@@ -581,7 +590,8 @@ CollectionObject, DwC country "United Republic of Tanzania"  =>  Tanzania
   United Republic of Tanzania is a spelling of Tanzania          [manual, placement.yml:137]
 
 GZ 10453 Hawai'i: Kaua'i (ISO US)  =>  United States, state Hawaii
-  Hawai'i: Kaua'i has ISO code US, United States                 [TaxonWorks]
+  Hawai'i: Kaua'i has ISO code US                                [TaxonWorks]
+  US is the ISO code of United States                            [TaxonWorks]
   Hawai'i: Kaua'i (GZ 10453) lies in the state Hawaii            [overlap 100% Hawaii, placement.yml:578]
 
 GA 33876 Central European Russia (TDWG 14RUC)  =>  Russia, no state

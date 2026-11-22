@@ -34,6 +34,13 @@
 //   otu_parents.json             { [otuId]: parents | { error } } for OTUs the
 //                                DwC export leaves without classification (field
 //                                occurrences), GET /otus/:id?extend[]=parents
+//   type_names.json              { [name and authorship]: { taxonName, valid,
+//                                otuId } | { error } }: the names in the
+//                                typeStatus of undetermined type specimens
+//                                (collection objects without otu_id),
+//                                resolved by placement/typeStatus.js
+//                                resolveTypeName (about 45 s); their OTUs are
+//                                added to the otu_parents.json lookups
 //   specimen_areas.json          { [collectionObjectId]: geographicAreaId }, the
 //                                area of each specimen's collecting event, for
 //                                the specimens whose collecting event has one:
@@ -47,6 +54,7 @@
 // reported by the build; a server or network failure after retries stops the
 // download, so a cache missing data is never written.
 
+import { typeStatusName, typeNameKey, resolveTypeName } from '../placement/typeStatus.js'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseTsv } from '../data/tsv.js'
@@ -66,7 +74,8 @@ export const FILES = {
   associations: 'associations.json',
   associationOtus: 'association_otus.json',
   otuParents: 'otu_parents.json',
-  specimenAreas: 'specimen_areas.json'
+  specimenAreas: 'specimen_areas.json',
+  typeNames: 'type_names.json'
 }
 
 /**
@@ -255,6 +264,27 @@ export async function downloadData({ root, log = console.log }) {
     // Such an OTU has no DwC classification either: look up its parents too.
     if (SPECIES_RANKS.has(taxonName?.rank)) parentOtus.push(otuId)
   }
+  // The names in the type status of undetermined type specimens, and their OTUs' parents.
+  const getJson = async (path, params = {}) => {
+    const pairs = Object.entries(params).flatMap(([key, value]) =>
+      Array.isArray(value) ? value.map((item) => [`${key}[]`, item]) : [[key, value]])
+    return (await request(path, pairs)).json()
+  }
+  const typeNames = {}
+  const typeParsed = new Map()
+  for (const row of rows) {
+    if (row.dwc_occurrence_object_type !== 'CollectionObject' || row.otu_id || !row.typeStatus) continue
+    const parsed = typeStatusName(row.typeStatus)
+    if (parsed) typeParsed.set(typeNameKey(parsed), parsed)
+  }
+  await forEachLimited([...typeParsed.keys()], PARALLEL, async (key) => {
+    typeNames[key] = await resolveTypeName(typeParsed.get(key), getJson)
+  })
+  for (const resolved of Object.values(typeNames)) {
+    if (resolved.otuId && !parentOtus.includes(resolved.otuId)) parentOtus.push(resolved.otuId)
+  }
+  log(`${typeParsed.size} type status names, ${Object.values(typeNames).filter((resolved) => !resolved.error).length} resolved`)
+
   const otuParents = {}
   await forEachLimited(parentOtus, PARALLEL, async (otuId) => {
     const otu = await jsonOrError(`/otus/${otuId}`, [['extend[]', 'parents']])
@@ -296,7 +326,7 @@ export async function downloadData({ root, log = console.log }) {
   }
   log(`${events.size} collecting events, ${areaOfEvent.size} with an area, ${Object.keys(specimenAreas).length} specimens on them`)
 
-  return { csv, distributions, statusTags, reassessments, reassessmentCitations, associations, associationOtus, otuParents, specimenAreas }
+  return { csv, distributions, statusTags, reassessments, reassessmentCitations, associations, associationOtus, otuParents, specimenAreas, typeNames }
 }
 
 /**

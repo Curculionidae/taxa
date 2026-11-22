@@ -282,6 +282,16 @@ export function stateAreasOf(areas, ctx) {
 }
 
 /**
+ * The Placement of an asserted distribution without an area (or one the
+ * download lacks): not placeable, no steps. Used by the build and the curator page.
+ * @param {string} [reason]  'distribution has no area' or 'distribution not downloaded'
+ * @returns {Placement}
+ */
+export function placementWithoutArea(reason = 'distribution has no area') {
+  return { checklist: null, part: null, state: null, shape: null, reason, steps: [] }
+}
+
+/**
  * Place an area (the place an asserted distribution points to), without its
  * state. Synchronous; never calls the Geometry.
  * @param {import('./areas.js').Area} area

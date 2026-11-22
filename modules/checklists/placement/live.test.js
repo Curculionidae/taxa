@@ -166,13 +166,15 @@ test('cacheStatus: unplaced in the cache, with the reason', () => {
 })
 
 test('cacheStatus: outside the scope of the checklists, from the DwC fields', () => {
-  const status = (dwc, kind = 'CO') => cacheStatus({ kind, id: 1, dwc }, { checklistName: 'Ukraine', records: [], unplaced: {} }).text
+  const status = (dwc, kind = 'CO') => cacheStatus({ kind, id: 1, dwc: { otu_id: 7, ...dwc } }, { checklistName: 'Ukraine', records: [], unplaced: {} }).text
   assert.equal(status({ taxonRank: 'genus', superfamily: 'Curculionoidea' }), 'not listed: rank genus')
   assert.equal(status({ taxonRank: 'species', superfamily: 'Chrysomeloidea' }), 'not listed: not in Curculionoidea (Chrysomeloidea)')
   assert.equal(status({ taxonRank: 'species', superfamily: 'Curculionoidea', occurrenceStatus: 'absent' }), 'not listed: recorded as absent')
   assert.equal(status({ taxonRank: 'species', superfamily: 'Curculionoidea' }), 'not listed in the cache')
   // Field occurrences carry no superfamily: nothing to tell from.
   assert.equal(status({ taxonRank: 'species' }, 'FO'), 'not listed in the cache')
+  // A row without OTU: the build's reason (placement/screen.js).
+  assert.equal(cacheStatus({ kind: 'CO', id: 1, dwc: { taxonRank: 'species' } }, { checklistName: null, records: [], unplaced: {} }).text, 'not listed: no OTU')
   assert.equal(cacheStatus({ kind: 'AD', id: 1, absent: true }, { checklistName: null, records: null, unplaced: {} }).text,
     'not listed: distribution is absent')
 })
@@ -205,11 +207,13 @@ test('fromDwcRow: kind, id and RecordInput from a DwC row', () => {
   assert.equal(live.record.country, 'France')
 })
 
-test('leftOutReason: rank, absent, superfamily, else null', () => {
+test('leftOutReason: the build screening (screen.js) with the OTU parents unknown', () => {
   assert.equal(leftOutReason({ taxonRank: 'genus' }), 'rank genus')
-  assert.equal(leftOutReason({ taxonRank: 'species', occurrenceStatus: 'Absent' }), 'recorded as absent')
-  assert.equal(leftOutReason({ taxonRank: 'species', superfamily: 'Chrysomeloidea' }), 'not in Curculionoidea (Chrysomeloidea)')
-  assert.equal(leftOutReason({ taxonRank: 'subspecies', superfamily: 'Curculionoidea' }), null)
+  assert.equal(leftOutReason({ taxonRank: 'species' }), 'no OTU')
+  assert.equal(leftOutReason({ taxonRank: 'species', otu_id: 7, occurrenceStatus: 'Absent' }), 'recorded as absent')
+  assert.equal(leftOutReason({ taxonRank: 'species', otu_id: 7, superfamily: 'Chrysomeloidea' }), 'not in Curculionoidea (Chrysomeloidea)')
+  assert.equal(leftOutReason({ taxonRank: 'subspecies', otu_id: 7, superfamily: 'Curculionoidea' }), null)
+  assert.equal(leftOutReason({ taxonRank: 'species', otu_id: 7, superfamily: '' }), null)
 })
 
 // A paging stub: answers /asserted_distributions page by page, with headers.
@@ -276,17 +280,18 @@ test('fetchOtuSpecimens: by taxon name and kind, own OTU only, CSV when paged', 
 test('otuLeftOut: the OTU of the distributions must be a species or subspecies of Curculionoidea', () => {
   assert.equal(otuLeftOut({ rank: 'family', parentNames: ['Root', 'Curculionoidea'] }), 'rank family')
   assert.equal(otuLeftOut({ rank: null, parentNames: [] }), 'rank none')
-  assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] }), 'not in Curculionoidea')
+  assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] }), 'not in Curculionoidea (no superfamily)')
+  assert.equal(otuLeftOut({ rank: 'species', parentNames: ['Root', 'Chrysomeloidea'] }), 'not in Curculionoidea (Chrysomeloidea)')
   assert.equal(otuLeftOut({ rank: 'subspecies', parentNames: ['Root', 'Curculionoidea', 'Curculionidae'] }), null)
 })
 
 test('recordLeftOut: own DwC reason, absent, else the OTU reason (host plant specimen)', () => {
   const plant = otuLeftOut({ rank: 'species', parentNames: ['Root', 'Plantae'] })
   // A host plant specimen: species rank, no superfamily in its DwC row.
-  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', superfamily: '' } }, plant), 'not in Curculionoidea')
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', otu_id: 7, superfamily: '' } }, plant), 'not in Curculionoidea (no superfamily)')
   assert.equal(recordLeftOut({ dwc: { taxonRank: 'genus' } }, plant), 'rank genus')
-  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', superfamily: '' } }, null), null)
-  assert.equal(recordLeftOut({ absent: true }, null), 'absent')
+  assert.equal(recordLeftOut({ dwc: { taxonRank: 'species', otu_id: 7, superfamily: '' } }, null), null)
+  assert.equal(recordLeftOut({ absent: true }, null), 'distribution is absent')
   assert.equal(recordLeftOut({ absent: false }, 'rank family'), 'rank family')
   assert.equal(recordLeftOut({}, null), null)
 })
@@ -339,4 +344,27 @@ test('attachEventAreas: the OTU tab asks in batches and only for COs without coo
   assert.equal('eventArea' in lives[1].record, false)
   assert.equal('eventArea' in lives[2].record, false)
   assert.deepEqual(request.calls[0].params.collection_object_id, [1])
+})
+
+// Task 2: an undetermined type specimen, resolved like the build (typeStatus.js).
+test('lookupLive: an undetermined type takes the valid name of its type status, as the build', async () => {
+  const dwc = { scientificName: '', taxonRank: '', otu_id: null, typeStatus: 'paratype of Phaeopholus vietnamensis Legalov, 2026',
+    country: 'Vietnam', stateProvince: 'Yên Bái', decimalLatitude: 21.7, decimalLongitude: 104.9 }
+  const valid = { id: 1662470, cached: 'Phaeopholus vietnamensis', cached_author_year: 'Legalov, 2026', rank: 'species', cached_valid_taxon_name_id: 1662470 }
+  const request = stub({ '/collection_objects/2876460/dwc': dwc, '/taxon_names': [valid], '/otus': [{ id: 1475795 }] })
+  const result = await lookupLive({ kind: 'CO', id: 2876460 }, request)
+  assert.equal(result.subject.label, 'Phaeopholus vietnamensis Legalov, 2026 (paratype, no determination)')
+  assert.equal(result.otuId, 1475795)
+  assert.equal(result.dwc.taxonRank, 'species')
+  assert.equal(recordLeftOut({ dwc: result.dwc }, null), null)
+  assert.deepEqual(request.calls.find((call) => call.url === '/taxon_names').params, { name: 'Phaeopholus vietnamensis', name_exact: true })
+})
+
+test('lookupLive: a type status that names no taxon is not placeable, with the build reason', async () => {
+  const request = stub({ '/collection_objects/5/dwc': { typeStatus: 'holotype', country: 'Vietnam', decimalLatitude: 21.7, decimalLongitude: 104.9 } })
+  const result = await lookupLive({ kind: 'CO', id: 5 }, request)
+  const placement = await placeLive(result, createContext({ ...fixtures(), geometry: null }))
+  assert.equal(placement.checklist, null)
+  assert.equal(placement.reason, 'type status names no single taxon')
+  assert.equal(placement.steps[0].text, 'the type status "holotype" names no single taxon')
 })

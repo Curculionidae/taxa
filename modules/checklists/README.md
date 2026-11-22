@@ -15,6 +15,7 @@ Online (jrpletch/fleasoftheworld, `pages/checklists.vue` at 2afe35c).
 - `scripts/download.mjs`: everything the build fetches from TaxonWorks, and saving or reading it as files for offline runs (`--save`, `--from`).
 - `scripts/cacheFiles.mjs`: pure helpers that shape the written files (checklist keys, the country file header, index entries, `unplaced.json`); tested in `cacheFiles.test.js`.
 - `scripts/data/country-iso.json`: ISO codes of countries whose TaxonWorks area carries none.
+- `placement/specimen.js`, `placement/screen.js`, `placement/typeStatus.js`, `placement/footprint.js`: the specimen record and its label, the screening (which rows count), undetermined type specimens, the point of a georeference shape; each used by the build and the curator page alike (the curator page has no logic of its own: CLAUDE.md).
 - `scripts/measure-overlap.mjs`: measures areas and writes the overlap rules (`npm run checklists:measure`, see "Measuring overlap"); `scripts/geometry-node.mjs`: the outline lookups (Geometry) for Node and `measureShares`.
 - `public/checklists/`: the cache output (outside the module, served as static files).
 - `modules/checklists/.cache/` (not committed): `data/`, the saved TaxonWorks data; `old/`, a copy of an earlier cache for comparing.
@@ -41,7 +42,8 @@ of the size). In short:
 
 - Every record is placed by the placement engine (see "How a record is
   placed"): asserted distributions by their area, specimens and field
-  occurrences by their DwC country, else by their coordinates. Each record
+  occurrences by their coordinates (or a point in their georeference shape),
+  their collecting event's area, or their DwC fields. Each record
   carries `part` (France: Corsica, Mainland France) and `state` (six
   countries) when the engine finds one.
 - Distributions asserted for a biological association (e.g. "egg of Lixus
@@ -49,8 +51,27 @@ of the size). In short:
   DwC export; the build adds them for each beetle side of the association,
   with the association's reading shown next to the place. They are asserted
   distributions on an area, so they are placed like any other.
-- Only Curculionoidea, species and subspecies, present records. One taxon per
-  name (several OTUs of a name count once).
+- Only Curculionoidea, species and subspecies, present records, with an OTU
+  (`placement/screen.js` `screenRecord`, the same screening for the build and
+  the curator page). One taxon per name (several OTUs of a name count once).
+- Undetermined type specimens (no determination, only a type status: types
+  are never determined in this project, the type status is the
+  identification) take the valid name of their type status
+  (`placement/typeStatus.js`): the name exactly as the type status prints it
+  (subgenus, `var.` and `[sic]` included) is looked up with
+  `GET /taxon_names?name=…&name_exact=true` (without `name_exact` it is a
+  substring search); rows without rank (Combination rows) are dropped; when
+  several valid names remain, those with the same number of epithets (a
+  species, not its nominotypical subspecies), then those with the same author
+  (homonyms); then the valid name of a synonym and its OTU (several unnamed
+  OTUs on one name, a duplicate in TaxonWorks: the lowest id; same name and
+  classification, so it changes nothing). The label says so: `Phaeopholus
+  vietnamensis Legalov, 2026 (paratype, no determination)`. A type status that
+  names no taxon (`holotype`), several, or a name that does not resolve is
+  listed in `unplaced.json` with the reason (`type status names no single
+  taxon`, `type status name is ambiguous in TaxonWorks`, `type status name not
+  found in TaxonWorks`, `no OTU`). On 2026-11-22: 722 type rows, 704 resolved,
+  52 placed (two taxa new to their checklist), 648 without any locality.
 - `/dwc_occurrences` is not paged: that index has no stable order and loses
   about 5% of the rows. The download uses `/dwc_occurrences.csv` (one request).
 
@@ -698,6 +719,10 @@ The saved folder (`scripts/download.mjs`, `FILES`), one file per download:
 - `reassessments.json`, `reassessment_citations.json`: the Reassessment data
   attributes of distributions and their citations with source.
 - `associations.json`: the biological associations distributions are asserted for.
+- `type_names.json`: `{ [name and authorship]: { taxonName, valid, otuId } |
+  { error } }`, the type status names of undetermined type specimens resolved
+  by `placement/typeStatus.js` `resolveTypeName` (663 names, about 45 s); their
+  OTUs are added to the `otu_parents.json` lookups.
 - `association_otus.json`: OTU and taxon name of association OTUs without a
   DwC row; `otu_parents.json`: the parents of OTUs the DwC export leaves
   without classification. A stale or hidden OTU is kept as `{ error }`.
@@ -1155,6 +1180,10 @@ from the cache only when TaxonWorks changed since the build (or the rules
 file, before the next build); the cache line then shows the old result.
 
 Limits:
+
+- Types of an OTU are not on the OTU tab: an undetermined type has no OTU in
+  TaxonWorks' DwC rows, which the tab loads by OTU. Look one up by its id
+  (`CO 2876460`); the lookup resolves its type status as the build does.
 
 - An area no distribution uses cannot be fetched (TaxonWorks has no area
   endpoint): `used by no record`. When `areas.json` knows it as a parent

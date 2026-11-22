@@ -70,7 +70,20 @@ engine saw no coordinates. 41 specimens are like that.
 - Effect on the download of 2026-11-22: 24 of the 41 change (15 newly placed,
   9 gain a state), e.g. CO 2707818 China, state Xinjiang.
 
-## 2. Undetermined type specimens are counted
+## 2. Undetermined type specimens are counted (done 2026-11-22)
+
+Result on the download of 2026-11-22: 722 type rows, 704 resolved, 52 placed
+in 18 checklists (two taxa new to their checklist: Parasystates burgeoni in
+Uganda, Xestorhinus regularis vicinus in Kenya), 648 without any locality,
+18 listed with a reason (11 type statuses name no taxon, 4 ambiguous names,
+3 valid names without OTU). Built with the user's rule that the curator page
+runs the build's code: `placement/specimen.js` (record, label, event area,
+unresolved type), `placement/screen.js` (which rows count, replacing the
+build's `screenRow` body and the curator page's own `leftOutReason` /
+`otuLeftOut` / `recordLeftOut` logic) and `placement/typeStatus.js`, all
+used by both; the rule is in CLAUDE.md.
+
+Original plan:
 
 Why: 722 specimen rows have no determination, only a type status (the user
 never determines types: the type status is the identification). The build's

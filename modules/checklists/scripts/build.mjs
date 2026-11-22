@@ -54,7 +54,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compactChecklist } from '../data/compact.js'
-import { placeRecord } from '../placement/engine.js'
+import { placeRecord, placementWithoutArea } from '../placement/engine.js'
 import { formatPlacement, parseLookup } from '../placement/format.js'
 import { downloadData, saveData, loadData } from './download.mjs'
 import { createBuildContext, buildPaths, KIND } from './buildContext.mjs'
@@ -132,7 +132,7 @@ log(`${data.statusTags.length} adventive/endemic tags, ${data.reassessments.leng
 // (buildContext.mjs, shared with compare.mjs).
 const {
   rows, distributions, areas, areaOf, areasById, rules, level0Names, checklists, warnings, keys,
-  checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
+  typeReasonPlacement, checklistById, shapes, unusable, stateAreas, geometry, ctx, placeAreaRecord, recordInput, subjectOf, explainOne,
   screenRow
 } = await createBuildContext(data, { root: ROOT, log, fromDir })
 
@@ -180,8 +180,15 @@ const unplaced = { records: 0, taxa: new Set() }
 const recordsByArea = new Map() // area key -> number of records on it (placed or not)
 const placedBy = new Map() // 'AD [TaxonWorks]' -> count
 for (const row of rows) {
-  const { left, classification, lookupFailed, ad } = screenRow(row)
+  const { left, unplaced: typeReason, classification, lookupFailed, ad } = screenRow(row)
   if (left) continue
+  if (typeReason) {
+    // Placed (not placeable) by specimen.js typeReasonPlacement, as the curator page does.
+    const placement = typeReasonPlacement(row, typeReason)
+    if (verbose) console.log(formatPlacement(subjectOf(row, null), placement))
+    unplacedEntries.push({ reason: placement.reason, kind: 'CO', id: Number(row.dwc_occurrence_object_id), country: row.country })
+    continue
+  }
 
   const type = row.dwc_occurrence_object_type
   const kind = KIND[type] ?? type
@@ -192,7 +199,7 @@ for (const row of rows) {
   let placement
   if (type === 'AssertedDistribution') {
     placement = area ? await placeAreaRecord(area)
-      : { checklist: null, reason: ad ? 'distribution has no area' : 'distribution not downloaded', steps: [] }
+      : placementWithoutArea(ad ? 'distribution has no area' : 'distribution not downloaded')
   } else {
     placement = await placeRecord(recordInput(row), ctx)
   }

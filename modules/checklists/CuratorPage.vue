@@ -355,7 +355,7 @@ async function recordStatus({ kind, id }, live, placement) {
     const reason = await otuReason(live.otuId)
     if (reason) status = { listed: false, text: `not listed: ${reason}` }
   }
-  const leftOut = live.absent || /^not listed: (rank|recorded as absent|not in |distribution is absent)/.test(status.text)
+  const leftOut = live.absent || /^not listed: (rank|no OTU|recorded as absent|not in |distribution is absent)/.test(status.text)
   const differs = !leftOut && differsFromCache(placement, cachedPlacement({ kind, id }, { checklistName: name, records, unplaced }))
   return { ...status, differs }
 }

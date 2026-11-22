@@ -247,6 +247,8 @@ Import example (from `panels/PanelBiologicalAssociationsV2/`): `import DwcTable 
 
 One local module, `modules/checklists/`: the public page, a placement engine that decides which country checklist every asserted distribution, specimen and field occurrence belongs to, the hand-edited rules file `rules/placement.yml` (explanations cite it as `placement.yml:<line>`), and the scripts that build the cache `public/checklists/` (`npm run checklists`, `npm run checklists:measure`, `compare.mjs`). The curator page `/checklists/curator` (curator mode, `?curator=1`) looks up one record, area or OTU and shows the area tree, the unplaced records and the rules. **Read `modules/checklists/README.md`** before changing any of it; `DESIGN.md` is the approved design with an "As built" note. `scripts/update-caches.sh` rebuilds this cache with the others.
 
+**The curator page runs the real cache-build code, never its own.** Every decision, record mapping, screening (which rows count), label, reason and step text is a shared function in `modules/checklists/placement/` that the build (`scripts/buildContext.mjs`, `scripts/build.mjs`) calls too. The curator page (`CuratorPage.vue`, `components/`, `placement/live.js`) may only fetch from TaxonWorks (per record instead of in bulk) and show the result. Before adding logic to `live.js` or a curator component, check whether the build does the same; if so, move it into `placement/` and call it from both. The lookup exists to show exactly what the next build does; a parallel copy drifts and makes it lie.
+
 ## scientificName.js
 
 `panels/_shared/scientificName.js` — shared scientific-name text helpers: `escHtml` (null-safe HTML

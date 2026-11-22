@@ -15,9 +15,14 @@
 #   (Natural Earth is geometry only: country and state outlines. No name from it
 #                 decides anything; its state aliases are not read.)
 #   [manual]      a line in this file written by hand (manual section, checklists,
-#                 synonyms, parts, iso_codes, ignored_name_words, coastal_tolerance_degrees).
+#                 synonyms, parts, iso_codes, ignored_name_words, coastal_tolerance_degrees,
+#                 share_threshold_percent).
 #   [overlap]     a line in the overlap section: which country outlines the shape
-#                 of an area falls in, measured on the cached shapes.
+#                 of an area falls in, measured on the cached shapes. Also a
+#                 measurement the build makes itself (a point in an outline, the
+#                 share of a georeference shape); when it applies a setting of
+#                 this file (coastal_tolerance_degrees, share_threshold_percent),
+#                 the tag cites that line.
 #   Manual lines win over overlap lines.
 #
 # The overlap section is written by the measuring script (npm run
@@ -41,6 +46,10 @@
 #     Example: { name: Mayotte, iso2: YT, of: France, names: [Mayotte], box: [...], why: ... }
 #   coastal_tolerance_degrees  A point outside every outline but this close to
 #               one (in degrees) counts for that outline, as a coastal point.
+#   share_threshold_percent  The share of one outline that decides: an area (by
+#               the measuring script) or a specimen's georeference shape (by the
+#               build) lying this much or more in one country or state belongs
+#               there; less spans several.
 #   synonyms    Different spellings of one country. The first name is the checklist name.
 #     Example: [Tanzania, United Republic of Tanzania]
 #   parts       Parts of a country that can be selected on their own, by country name.
@@ -63,8 +72,9 @@
 #     Exactly one of the three actions per rule.
 #     why       the reason, for manual rules
 #     measured  the measurement, for overlap rules: the top four shares and the
-#               date; its first percentage is kept. A share of 90% or more gives
-#               subdivision_of, less gives not_placeable.
+#               date; its first percentage is kept. A share of
+#               share_threshold_percent (90%) or more gives subdivision_of, less
+#               gives not_placeable.
 #     Example: { match: { tdwg: 12SPA }, subdivision_of: { country: Spain } }
 #     Example of a state rule: { match: { area: "GZ 10453" },
 #               subdivision_of: { country: United States, state: Hawaii } }
@@ -166,6 +176,13 @@ ignored_name_words: [province, oblast, krai, kray, republic, of, autonomous, reg
 # counts for the nearest outline, unless a second one is nearly as close; the
 # step then says "within about 5 km of the coast of".
 coastal_tolerance_degrees: 0.05
+
+# An outline holding this share or more of a shape decides: the measuring
+# script writes subdivision_of for an area lying 90% or more in one country
+# (or state), else not_placeable; a specimen whose georeference is a drawn
+# shape is placed the same way ("Habitat in Saxonia, Austria" drawn over both
+# countries spans several countries).
+share_threshold_percent: 90
 
 parts:
   France:

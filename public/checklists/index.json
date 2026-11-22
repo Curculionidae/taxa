@@ -158,8 +158,8 @@
     41.2905
    ],
    "states": false,
-   "taxa": 237,
-   "records": 249
+   "taxa": 236,
+   "records": 248
   },
   {
    "key": "australia",
@@ -1227,7 +1227,7 @@
    ],
    "states": false,
    "taxa": 906,
-   "records": 1086
+   "records": 1085
   },
   {
    "key": "germany",
@@ -1516,7 +1516,7 @@
    ],
    "states": false,
    "taxa": 972,
-   "records": 1099
+   "records": 1098
   },
   {
    "key": "iceland",
@@ -1644,7 +1644,7 @@
    ],
    "states": false,
    "taxa": 1085,
-   "records": 1175
+   "records": 1174
   },
   {
    "key": "jamaica",
@@ -1708,7 +1708,7 @@
    ],
    "states": false,
    "taxa": 562,
-   "records": 645
+   "records": 641
   },
   {
    "key": "kenya",
@@ -3460,7 +3460,7 @@
    ],
    "states": false,
    "taxa": 1366,
-   "records": 18546
+   "records": 18545
   },
   {
    "key": "united-arab-emirates",
@@ -3690,7 +3690,7 @@
   }
  ],
  "unplaced": {
-  "records": 5527,
-  "taxa": 2246
+  "records": 5536,
+  "taxa": 2249
  }
 }

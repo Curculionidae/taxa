@@ -811,3 +811,11 @@ test('the first step of a specimen placed through its shape or collecting event 
   assert.equal((await placeRecord(specimen({ footprint: SQUARE }), rctx)).steps[0].via, 'shape')
   assert.equal((await placeRecord(specimen({ eventArea: evenk }), rctx)).steps[1].via, 'eventArea')
 })
+
+// Task 4: no state check against a parent that is the country itself.
+test('the parent-name state check does not run when the parent is the country', async () => {
+  const sakha = { ...evenk, name: 'Sakha' }
+  const texts = (await ad(sakha)).steps.map((step) => step.text)
+  assert.ok(texts.includes('the parent of Sakha (GA 900001) is the country itself'), texts.join('\n'))
+  assert.ok(!texts.some((text) => text.startsWith('the parent Russia')), texts.join('\n'))
+})

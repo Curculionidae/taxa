@@ -121,7 +121,7 @@ and `rules.json` work unchanged. The ISO step becomes
 `… has ISO code SB` [TaxonWorks], then `SB is the ISO code of Solomon Islands`
 [manual, placement.yml:N] (or [TaxonWorks] when TaxonWorks gives the code).
 
-## 4. No state check against a parent that is the country
+## 4. No state check against a parent that is the country (done 2026-11-22)
 
 `areaState` tries the parent's name as a state even when the parent is the
 country itself ("the parent Russia (GA 19713) is no state name of Russia").

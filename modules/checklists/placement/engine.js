@@ -848,7 +848,9 @@ function areaState(area, checklist, ctx, steps) {
   } else {
     steps.push(none(`${label(area)} is not a state-level area in TaxonWorks, so its name is not read as a state`, 'TaxonWorks'))
   }
-  const parentIsState = area.parentName && (area.level1 == null || area.parentId === area.level1)
+  // The parent's name is tried as the state, unless the parent is the country
+  // itself (an ne_states area under Russia: Russia is no state of Russia).
+  const parentIsState = area.parentName && !parentIsCountry && (area.level1 == null || area.parentId === area.level1)
   const fromParent = parentIsState ? matchSubdivision(index, area.parentName) : null
   const parentKey = area.parentId != null ? ` (GA ${area.parentId})` : ''
   if (fromParent) {
@@ -859,11 +861,12 @@ function areaState(area, checklist, ctx, steps) {
     }))
     return fromParent.state
   }
-  steps.push(none(!area.parentName
-    ? `${area.name} has no parent in TaxonWorks`
-    : parentIsState
-      ? `the parent ${area.parentName}${parentKey} is no state name of ${checklist.name}`
-      : `the parent ${area.parentName}${parentKey} is not the state-level area of ${area.name} in TaxonWorks`, 'TaxonWorks'))
+  let parentText
+  if (!area.parentName) parentText = `${area.name} has no parent in TaxonWorks`
+  else if (parentIsCountry) parentText = `the parent of ${label(area)} is the country itself`
+  else if (parentIsState) parentText = `the parent ${area.parentName}${parentKey} is no state name of ${checklist.name}`
+  else parentText = `the parent ${area.parentName}${parentKey} is not the state-level area of ${area.name} in TaxonWorks`
+  steps.push(none(parentText, 'TaxonWorks'))
   const measured = stateByRule(area, checklist, ctx, index, [[ctx.rules.overlap, 'overlap']], steps)
   if (measured) return measured
   steps.push(none(`no overlap rule gives ${label(area)} a state`, 'overlap'))

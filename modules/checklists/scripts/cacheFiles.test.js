@@ -111,6 +111,21 @@ test('specimensSummary: record count and how many by which first step', () => {
   assert.deepEqual(specimensSummary([]), { records: 0, how: 'none' })
 })
 
+test('specimensSummary: checks that found nothing and the lead steps of shape and collecting event area', () => {
+  const summary = specimensSummary([
+    placement('Russia', [step('no coordinates and no georeference shape', 'TaxonWorks', { none: true }),
+      step("the collecting event's area is Yakutsk gorsovet (GA 22258)", 'TaxonWorks', { via: 'eventArea' }),
+      step('Yakutsk gorsovet is in Russia (GA 19713)')]),
+    placement('China', [step('the georeference is a shape; the point 36.8, 78.2 inside it is used', 'TaxonWorks', { via: 'shape' }),
+      step('DwC country China carries no name of a checklist of its own', 'manual', { none: true }),
+      step('DwC country is China')]),
+    placement('Kazakhstan', [step('the georeference is a shape; the point 1, 2 inside it is used', 'TaxonWorks', { via: 'shape' }),
+      step('no DwC country', 'TaxonWorks', { none: true }),
+      step('coordinates 1, 2 lie inside Kazakhstan', 'overlap')])
+  ])
+  assert.equal(summary.how, 'by DwC country 1 [TaxonWorks], by coordinates inside the outline 1 [overlap], by the collecting event area 1 [TaxonWorks]')
+})
+
 test('checklistHeader: fixed key order and the rules file', () => {
   const header = checklistHeader({
     key: 'french-guiana', name: 'French Guiana', iso2: 'GF', outline: 'GeographicArea/32253',

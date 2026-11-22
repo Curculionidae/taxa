@@ -29,7 +29,7 @@
 // object_tag; the build takes the DwC scientificName of the same OTU, which
 // is normally the same text.
 import { toArea } from './areas.js'
-import { placeRecord } from './engine.js'
+import { placeRecord, hasPoint } from './engine.js'
 import { parseTsv } from '../data/tsv.js'
 
 const SUPERFAMILY = 'Curculionoidea'
@@ -83,9 +83,15 @@ export async function lookupLive({ kind, id }, request = defaultRequest, { areas
     if (kind === 'CO' || kind === 'FO') {
       const path = kind === 'CO' ? `/collection_objects/${id}/dwc` : `/field_occurrences/${id}/dwc`
       const { data: dwc } = await request.get(path)
+      const record = recordFromDwc(TYPE_OF_KIND[kind], id, dwc)
+      if (kind === 'CO' && !hasPoint(record)) {
+        const { data: object } = await request.get(`/collection_objects/${id}`)
+        const event = object?.collecting_event_id ? (await request.get(`/collecting_events/${object.collecting_event_id}`)).data : null
+        if (event?.geographic_area_id) record.eventArea = await areaById(event.geographic_area_id, request)
+      }
       return {
         subject: { kind, id, label: dwc.scientificName || '' },
-        record: recordFromDwc(TYPE_OF_KIND[kind], id, dwc),
+        record,
         dwc,
         ...(dwc.otu_id ? { otuId: dwc.otu_id } : {})
       }
@@ -282,6 +288,56 @@ export async function fetchOtuSpecimens({ id, taxonNameId }, request = defaultRe
   return rows
 }
 
+/**
+ * The collecting event areas of the collection objects among `lives` that have
+ * no coordinates, set as `record.eventArea`, as the build has them
+ * (download.mjs specimen_areas.json, buildContext.mjs recordInput): the full
+ * Area when a distribution uses it, else only its key. The engine uses the
+ * area only without coordinates, so the others are not asked for.
+ *   GET /collection_objects?collection_object_id[]=…   (100 per request)
+ *   GET /collecting_events?collecting_event_id[]=…     (100 per request)
+ *   GET /asserted_distributions?geo_shape_id[]=…        (one per area)
+ * @param {LiveResult[]} lives  from fromDwcRow (changed in place)
+ * @param {Request} [request]
+ * @returns {Promise<void>}
+ */
+export async function attachEventAreas(lives, request = defaultRequest) {
+  const wanted = lives.filter((live) => live.record.type === 'CollectionObject' && !hasPoint(live.record))
+  const eventOf = new Map()
+  for (const ids of batches(wanted.map((live) => live.record.id))) {
+    const { data } = await request.get('/collection_objects', { params: { collection_object_id: ids, per: ids.length } })
+    for (const object of data ?? []) if (object.collecting_event_id) eventOf.set(Number(object.id), object.collecting_event_id)
+  }
+  const areaOfEvent = new Map()
+  for (const ids of batches([...new Set(eventOf.values())])) {
+    const { data } = await request.get('/collecting_events', { params: { collecting_event_id: ids, per: ids.length } })
+    for (const event of data ?? []) if (event.geographic_area_id) areaOfEvent.set(event.id, event.geographic_area_id)
+  }
+  const areas = new Map()
+  for (const areaId of new Set(areaOfEvent.values())) areas.set(areaId, await areaById(areaId, request))
+  for (const live of wanted) {
+    const areaId = areaOfEvent.get(eventOf.get(live.record.id))
+    if (areaId) live.record.eventArea = areas.get(areaId)
+  }
+}
+
+// Lists of at most 100, the most ids TaxonWorks takes in one URL here.
+function batches(ids) {
+  const out = []
+  for (let i = 0; i < ids.length; i += 100) out.push(ids.slice(i, i + 100))
+  return out
+}
+
+// A geographic area by its id, through any distribution on it, as the build
+// knows areas; only its key when no distribution uses it.
+async function areaById(id, request) {
+  const { data } = await request.get('/asserted_distributions', {
+    params: { geo_shape_id: [id], geo_shape_type: ['GeographicArea'], per: 1, extend: ['asserted_distribution_shape'] }
+  })
+  const ad = Array.isArray(data) ? data[0] : null
+  return ad?.asserted_distribution_shape ? toArea('GeographicArea', ad.asserted_distribution_shape) : { key: `GA ${id}` }
+}
+
 // 'used by no record', with the children when areas.json lists the area as a
 // parent known only by name (French Guiana, the parent of Cayenne).
 function usedByNoRecord(kind, id, areas) {
@@ -309,7 +365,8 @@ export function recordFromDwc(type, id, dwc) {
     county: dwc.county,
     locality: dwc.verbatimLocality || dwc.locality,
     lat: dwc.decimalLatitude,
-    lng: dwc.decimalLongitude
+    lng: dwc.decimalLongitude,
+    ...(dwc.footprintWKT ? { footprint: dwc.footprintWKT } : {})
   }
 }
 

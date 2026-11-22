@@ -480,6 +480,7 @@ export function splitRefs(text) {
 export function sourceTags(placement) {
   const tags = []
   for (const step of placement?.steps ?? []) {
+    if (step.none) continue
     const tag = sourceTag(step)
     if (!tags.includes(tag)) tags.push(tag)
   }
@@ -604,7 +605,7 @@ export function plainReasons(placement) {
 }
 
 function partReason(steps) {
-  const step = steps.find((candidate) => candidate.stage === 'part')
+  const step = steps.find((candidate) => candidate.stage === 'part' && !candidate.none)
   if (!step) {
     const rule = steps.find((candidate) => candidate.stage === 'checklist' && candidate.decidesPart)
     return rule ? { text: 'manual rule', ref: rule.ref ?? null } : null
@@ -618,7 +619,7 @@ function partReason(steps) {
 }
 
 function stateReason(steps) {
-  const step = steps.find((candidate) => candidate.stage === 'state' && !candidate.text.startsWith('no state'))
+  const step = steps.find((candidate) => candidate.stage === 'state' && !candidate.none && !candidate.text.startsWith('no state'))
   if (!step) return null
   const ref = step.ref ?? null
   const text = step.text

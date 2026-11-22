@@ -8,7 +8,7 @@
 // seconds. measure-overlap.mjs reads the same folder (distributions.json and
 // dwc_occurrences.csv).
 //
-// What is downloaded (about 2 minutes), and the file it is saved as:
+// What is downloaded (about 3 minutes), and the file it is saved as:
 //   dwc_occurrences.csv          GET /dwc_occurrences.csv, every DwC occurrence
 //                                in one request, as TaxonWorks sends it (tab
 //                                separated). Not paged: /dwc_occurrences has no
@@ -34,6 +34,15 @@
 //   otu_parents.json             { [otuId]: parents | { error } } for OTUs the
 //                                DwC export leaves without classification (field
 //                                occurrences), GET /otus/:id?extend[]=parents
+//   specimen_areas.json          { [collectionObjectId]: geographicAreaId }, the
+//                                area of each specimen's collecting event, for
+//                                the specimens whose collecting event has one:
+//                                GET /collecting_events, every page (ordered by
+//                                id), then GET /collection_objects with
+//                                collecting_event_id[] for those with an area
+//                                (about 15 s). The DwC export has no collecting
+//                                event id, and field occurrences have no index
+//                                route, so they are not covered.
 // A client error (404, 403: a stale or hidden OTU) is kept as { error } and
 // reported by the build; a server or network failure after retries stops the
 // download, so a cache missing data is never written.
@@ -56,7 +65,8 @@ export const FILES = {
   reassessmentCitations: 'reassessment_citations.json',
   associations: 'associations.json',
   associationOtus: 'association_otus.json',
-  otuParents: 'otu_parents.json'
+  otuParents: 'otu_parents.json',
+  specimenAreas: 'specimen_areas.json'
 }
 
 /**
@@ -252,7 +262,41 @@ export async function downloadData({ root, log = console.log }) {
   })
   log(`${associations.length} associations, ${otuIds.length} association OTUs and ${parentOtus.length} OTU classifications looked up`)
 
-  return { csv, distributions, statusTags, reassessments, reassessmentCitations, associations, associationOtus, otuParents }
+  // 6. The areas of the specimens' collecting events.
+  const eventParams = (page) => [['per', PER], ['page', page]]
+  const firstEvents = await request('/collecting_events', eventParams(1))
+  const eventPages = Number(firstEvents.headers.get('pagination-total-pages')) || 1
+  const events = new Map((await firstEvents.json()).map((event) => [event.id, event]))
+  await forEachLimited(Array.from({ length: eventPages - 1 }, (_, i) => i + 2), PARALLEL, async (page) => {
+    for (const event of await (await request('/collecting_events', eventParams(page))).json()) events.set(event.id, event)
+  })
+  const expectedEvents = Number(firstEvents.headers.get('pagination-total'))
+  if (events.size !== expectedEvents) throw new Error(`got ${events.size} of ${expectedEvents} collecting events`)
+  const areaOfEvent = new Map([...events.values()].filter((event) => event.geographic_area_id).map((event) => [event.id, event.geographic_area_id]))
+  const specimenAreas = {}
+  const eventIds = [...areaOfEvent.keys()]
+  for (let i = 0; i < eventIds.length; i += 50) {
+    const batch = eventIds.slice(i, i + 50).map((id) => ['collecting_event_id[]', id])
+    let total = null
+    const seenInBatch = new Set()
+    for (let page = 1, pages = 1; page <= pages; page++) {
+      const response = await request('/collection_objects', [...batch, ['per', PER], ['page', page]])
+      pages = Number(response.headers.get('pagination-total-pages')) || 1
+      total = Number(response.headers.get('pagination-total'))
+      for (const object of await response.json()) {
+        seenInBatch.add(object.id)
+        const area = areaOfEvent.get(object.collecting_event_id)
+        if (!area) throw new Error(`collection object ${object.id} has collecting event ${object.collecting_event_id}, which was not asked for`)
+        specimenAreas[object.id] = area
+      }
+    }
+    if (Number.isFinite(total) && seenInBatch.size !== total) {
+      throw new Error(`got ${seenInBatch.size} of ${total} collection objects of collecting events ${i + 1} to ${i + batch.length}`)
+    }
+  }
+  log(`${events.size} collecting events, ${areaOfEvent.size} with an area, ${Object.keys(specimenAreas).length} specimens on them`)
+
+  return { csv, distributions, statusTags, reassessments, reassessmentCitations, associations, associationOtus, otuParents, specimenAreas }
 }
 
 /**
@@ -277,7 +321,12 @@ export function loadData(dir) {
   const data = {}
   for (const [part, file] of Object.entries(FILES)) {
     const path = join(dir, file)
-    if (!existsSync(path)) throw new Error(`no ${path}: save a download first (npm run checklists -- --save ${dir})`)
+    if (!existsSync(path)) {
+      const older = Object.values(FILES).some((name) => existsSync(join(dir, name)))
+      throw new Error(older
+        ? `no ${path}: this folder was saved before ${file} was part of the download; save a new one (npm run checklists -- --save ${dir})`
+        : `no ${path}: save a download first (npm run checklists -- --save ${dir})`)
+    }
     const text = readFileSync(path, 'utf8')
     data[part] = part === 'csv' ? text : JSON.parse(text)
   }

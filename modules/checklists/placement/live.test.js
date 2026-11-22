@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   lookupLive, recordFromDwc, cacheStatus, plainLabel, fromDistribution, fromDwcRow, placeLive, leftOutReason,
-  fetchOtuDistributions, fetchDistributionsByIds, fetchOtuSpecimens, otuLeftOut, recordLeftOut
+  fetchOtuDistributions, fetchDistributionsByIds, fetchOtuSpecimens, otuLeftOut, recordLeftOut, attachEventAreas
 } from './live.js'
 import { compileRules } from './rules.js'
 import { toArea } from './areas.js'
@@ -289,4 +289,54 @@ test('recordLeftOut: own DwC reason, absent, else the OTU reason (host plant spe
   assert.equal(recordLeftOut({ absent: true }, null), 'absent')
   assert.equal(recordLeftOut({ absent: false }, 'rank family'), 'rank family')
   assert.equal(recordLeftOut({}, null), null)
+})
+
+// Task 1 (PLAN-specimen-data.md): the collecting event's area, as the build has it.
+const AREA_22258 = {
+  type: 'GeographicArea', id: 22258, name: 'Yakutsk gorsovet', level0_id: 19713, level1_id: 20864, level2_id: 22258,
+  parent_id: 20864, iso_3166_a2: null, tdwgID: null, data_origin: 'gadm',
+  geographic_area_type: { id: 9, name: 'District' }, parent: { name: 'Sakha' }
+}
+
+test('lookupLive: a CO without coordinates gets its collecting event area, through a distribution on it', async () => {
+  const request = stub({
+    '/collection_objects/1383838/dwc': { scientificName: 'Parameira gebleri', country: 'Russia', stateProvince: 'Sakha', verbatimLocality: 'Yakutsk env.' },
+    '/collection_objects/1383838': { id: 1383838, collecting_event_id: 406911 },
+    '/collecting_events/406911': { id: 406911, geographic_area_id: 22258 },
+    '/asserted_distributions': [{ id: 1, asserted_distribution_shape_type: 'GeographicArea', asserted_distribution_shape: AREA_22258 }]
+  })
+  const result = await lookupLive({ kind: 'CO', id: 1383838 }, request)
+  assert.deepEqual(result.record.eventArea, toArea('GeographicArea', AREA_22258))
+  assert.deepEqual(request.calls.at(-1).params, { geo_shape_id: [22258], geo_shape_type: ['GeographicArea'], per: 1, extend: ['asserted_distribution_shape'] })
+})
+
+test('lookupLive: an event area no distribution uses is only its key; no area, no eventArea', async () => {
+  const dwc = { scientificName: 'x', country: 'Russia' }
+  const unused = await lookupLive({ kind: 'CO', id: 5 }, stub({
+    '/collection_objects/5/dwc': dwc, '/collection_objects/5': { collecting_event_id: 9 },
+    '/collecting_events/9': { geographic_area_id: 777 }, '/asserted_distributions': []
+  }))
+  assert.deepEqual(unused.record.eventArea, { key: 'GA 777' })
+  const none = await lookupLive({ kind: 'CO', id: 5 }, stub({
+    '/collection_objects/5/dwc': dwc, '/collection_objects/5': { collecting_event_id: 9 }, '/collecting_events/9': { geographic_area_id: null }
+  }))
+  assert.equal('eventArea' in none.record, false)
+})
+
+test('attachEventAreas: the OTU tab asks in batches and only for COs without coordinates', async () => {
+  const lives = [
+    fromDwcRow({ dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: '1', country: 'Russia' }),
+    fromDwcRow({ dwc_occurrence_object_type: 'CollectionObject', dwc_occurrence_object_id: '2', decimalLatitude: '1', decimalLongitude: '2' }),
+    fromDwcRow({ dwc_occurrence_object_type: 'FieldOccurrence', dwc_occurrence_object_id: '3' })
+  ]
+  const request = stub({
+    '/collection_objects': [{ id: 1, collecting_event_id: 406911 }],
+    '/collecting_events': [{ id: 406911, geographic_area_id: 22258 }],
+    '/asserted_distributions': [{ id: 1, asserted_distribution_shape_type: 'GeographicArea', asserted_distribution_shape: AREA_22258 }]
+  })
+  await attachEventAreas(lives, request)
+  assert.equal(lives[0].record.eventArea.key, 'GA 22258')
+  assert.equal('eventArea' in lives[1].record, false)
+  assert.equal('eventArea' in lives[2].record, false)
+  assert.deepEqual(request.calls[0].params.collection_object_id, [1])
 })

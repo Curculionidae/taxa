@@ -23,6 +23,9 @@
     fetchOtuDistributions             GET /asserted_distributions, otu_id[], per=500, paged
     fetchOtuSpecimens                 GET /dwc_occurrences by taxon name and kind (CSV when paged),
                                       rows of this OTU only
+    attachEventAreas                  for collection objects without coordinates, the area
+                                      of their collecting event (GET /collection_objects,
+                                      /collecting_events, /asserted_distributions), as the build
   Each record is placed with placeLive in the engine context of the cache files
   (geometry-browser.js loadCacheContext), so the result equals the build's.
   The Source column lists every source that contributed to the row's
@@ -182,7 +185,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { makeAPIRequest } from '@/utils/request'
 import {
-  fetchOtuDistributions, fetchOtuSpecimens, fromDistribution, fromDwcRow, placeLive, recordLeftOut, otuLeftOut, plainLabel
+  fetchOtuDistributions, fetchOtuSpecimens, fromDistribution, fromDwcRow, attachEventAreas, placeLive, recordLeftOut, otuLeftOut, plainLabel
 } from '../placement/live.js'
 import { decisionOf, summarizeOtu, cachedPlacement, differsFromCache, sourceTags } from '../placement/overview.js'
 import CopyId from './CopyId.vue'
@@ -252,7 +255,9 @@ async function load(id) {
     ])
     if (stale()) return
 
-    const lives = [...distributions.map(fromDistribution), ...specimens.map(fromDwcRow)]
+    const specimenLives = specimens.map(fromDwcRow)
+    await attachEventAreas(specimenLives)
+    const lives = [...distributions.map(fromDistribution), ...specimenLives]
     const placed = []
     for (const [index, live] of lives.entries()) {
       if (index % 25 === 0) progress.value = `Placing ${index + 1} of ${lives.length}`

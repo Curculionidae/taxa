@@ -189,17 +189,26 @@ export async function createBuildContext(data, { root, log = console.log, warn =
     if (!areaPlacements.has(area.key)) areaPlacements.set(area.key, await placeRecord({ type: 'AssertedDistribution', id: 0 }, ctx, area))
     return areaPlacements.get(area.key)
   }
-  // A specimen or field occurrence, by its DwC fields.
-  const recordInput = (row) => ({
-    type: row.dwc_occurrence_object_type,
-    id: Number(row.dwc_occurrence_object_id),
-    country: row.country,
-    stateProvince: row.stateProvince,
-    county: row.county,
-    locality: row.verbatimLocality || row.locality,
-    lat: row.decimalLatitude,
-    lng: row.decimalLongitude
-  })
+  // A specimen or field occurrence, by its DwC fields (with the georeference
+  // shape, footprintWKT), and for a collection
+  // object the area of its collecting event (download.mjs specimen_areas.json):
+  // the full Area when a distribution uses it, else only its key.
+  const recordInput = (row) => {
+    const id = Number(row.dwc_occurrence_object_id)
+    const eventAreaId = row.dwc_occurrence_object_type === 'CollectionObject' ? data.specimenAreas?.[id] : null
+    return {
+      type: row.dwc_occurrence_object_type,
+      id,
+      country: row.country,
+      stateProvince: row.stateProvince,
+      county: row.county,
+      locality: row.verbatimLocality || row.locality,
+      lat: row.decimalLatitude,
+      lng: row.decimalLongitude,
+      ...(row.footprintWKT ? { footprint: row.footprintWKT } : {}),
+      ...(eventAreaId ? { eventArea: areasById.get(Number(eventAreaId)) ?? { key: `GA ${eventAreaId}` } } : {})
+    }
+  }
   // What formatPlacement prints first: kind, id, label and the area behind it.
   const subjectOf = (row, area) => ({
     kind: KIND[row.dwc_occurrence_object_type] ?? row.dwc_occurrence_object_type,

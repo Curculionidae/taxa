@@ -13,7 +13,7 @@
 //   --verbose      print every record's placement (placement/format.js)
 //   --explain <x>  print the placement of one record or area and stop: "AD 556796",
 //                  "co 12", "GA 8837", "GZ10453" (any form parseLookup reads)
-// Without --from it downloads (scripts/download.mjs, about 2 minutes).
+// Without --from it downloads (scripts/download.mjs, about 3 minutes).
 //
 // What it reads besides TaxonWorks: rules/placement.yml (the placement rules),
 // public/map-shapes/ (cached outlines), public/checklists/fallback-shapes.geojson

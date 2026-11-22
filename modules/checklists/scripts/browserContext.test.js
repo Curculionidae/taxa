@@ -10,7 +10,11 @@
 //   - 200 specimens and field occurrences of the country files (checklist, part,
 //     state): 100 spread over all of them, 100 placed by their coordinates
 //     (no DwC country), which exercise the outlines; their RecordInput is made
-//     with live.js recordFromDwc from the saved DwC rows;
+//     with live.js recordFromDwc from the saved DwC rows, with the collecting
+//     event area set as live.js attachEventAreas sets it (the Area of a
+//     distribution on it, else its key; from specimen_areas.json);
+//   - every listed specimen placed through a georeference shape or through its
+//     collecting event area (the two specimen paths of 2026-11-22);
 //   - the specimens unplaced for their coordinates (unplaced.json), same reason.
 // Needs the saved data of `npm run checklists -- --save` in
 // modules/checklists/.cache/data and a cache built from it; skipped without them.
@@ -20,7 +24,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCacheContext } from '../placement/geometry-browser.js'
-import { placeRecord } from '../placement/engine.js'
+import { placeRecord, hasPoint } from '../placement/engine.js'
 import { toArea } from '../placement/areas.js'
 import { recordFromDwc } from '../placement/live.js'
 import { expandChecklist } from '../data/compact.js'
@@ -30,8 +34,9 @@ import { parseTsv } from './download.mjs'
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const PUBLIC = join(ROOT, 'public/')
 const DATA = join(ROOT, 'modules/checklists/.cache/data/')
-const ready = existsSync(join(PUBLIC, 'checklists/context.json')) && existsSync(join(DATA, 'distributions.json'))
-const skip = ready ? false : 'needs modules/checklists/.cache/data and public/checklists/context.json'
+const ready = existsSync(join(PUBLIC, 'checklists/context.json')) && existsSync(join(DATA, 'distributions.json')) &&
+  existsSync(join(DATA, 'specimen_areas.json'))
+const skip = ready ? false : 'needs modules/checklists/.cache/data (with specimen_areas.json) and public/checklists/context.json'
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 // The browser's fetchJson, reading the same files from disk.
@@ -89,13 +94,27 @@ test('browser context reproduces 200 specimen placements of the country files an
   const taken = new Set(coordinateSample)
   const sample = [...coordinateSample, ...spread(all.filter((key) => !taken.has(key)), 200 - coordinateSample.length)]
 
-  const place = (key) => {
-    const [kind, id] = key.split(' ')
-    const type = kind === 'CO' ? 'CollectionObject' : 'FieldOccurrence'
-    return placeRecord(recordFromDwc(type, Number(id), dwcRows.get(key)), ctx)
+  // The collecting event areas as the curator page gets them: the Area of a
+  // distribution on it (toArea of asserted_distribution_shape), else its key.
+  const specimenAreas = readJson(join(DATA, 'specimen_areas.json'))
+  const areaById = new Map()
+  for (const ad of readJson(join(DATA, 'distributions.json'))) {
+    const shape = ad.asserted_distribution_shape
+    if (shape && ad.asserted_distribution_shape_type === 'GeographicArea' && !areaById.has(shape.id)) areaById.set(shape.id, toArea('GeographicArea', shape))
   }
+  const inputOf = (key) => {
+    const [kind, id] = key.split(' ')
+    const record = recordFromDwc(kind === 'CO' ? 'CollectionObject' : 'FieldOccurrence', Number(id), dwcRows.get(key))
+    const areaId = kind === 'CO' && !hasPoint(record) ? specimenAreas[id] : null
+    if (areaId) record.eventArea = areaById.get(Number(areaId)) ?? { key: `GA ${areaId}` }
+    return record
+  }
+  const place = (key) => placeRecord(inputOf(key), ctx)
+  // Every listed specimen placed through its georeference shape or its collecting event area.
+  const pathSample = all.filter((key) => !sample.includes(key) && dwcRows.get(key) && !String(dwcRows.get(key).decimalLatitude ?? '').trim() &&
+    (String(dwcRows.get(key).footprintWKT ?? '').trim() || inputOf(key).eventArea))
   const differ = []
-  for (const key of sample) {
+  for (const key of [...sample, ...pathSample]) {
     const placement = await place(key)
     const got = { checklist: placement.checklist?.name ?? null, part: placement.part, state: placement.state }
     if (JSON.stringify(got) !== JSON.stringify(cached.get(key))) differ.push(`${key}: ${JSON.stringify(got)} vs ${JSON.stringify(cached.get(key))}`)
@@ -108,7 +127,7 @@ test('browser context reproduces 200 specimen placements of the country files an
     const placement = await place(key)
     if (placement.reason !== reason) differ.push(`${key}: ${placement.reason} vs ${reason}`)
   }
-  console.log(`specimens: ${sample.length} compared (${coordinateSample.length} by coordinates of ${byCoordinates.length}), ${unplaced.length} unplaced by coordinates, ${differ.length} differ`)
+  console.log(`specimens: ${sample.length} compared (${coordinateSample.length} by coordinates of ${byCoordinates.length}), ${pathSample.length} by shape or collecting event area, ${unplaced.length} unplaced by coordinates, ${differ.length} differ`)
   assert.deepEqual(differ, [])
   assert.equal(sample.length, 200)
 })
